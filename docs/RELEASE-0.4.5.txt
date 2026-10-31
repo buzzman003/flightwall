@@ -1,6 +1,6 @@
 FLIGHT WALL 0.4.5 - DECK PROGRESS, AM/PM, WEATHER AND FLIGHT STATUS
 
-SOURCE CANDIDATE / NATIVE RELEASE PENDING
+PUBLISHED, VERIFIED AND STAGED - NEXT SAFE PORTS LAUNCH
 
 * Progress uses the actual per-frame eligible rotation, left-to-right, rather
   than a fixed list of view types. Individual trip pages and priority repeats
@@ -48,9 +48,19 @@ VALIDATION
 
 Windows full snapshot passed 669 tests and 429 subtests, with 49 expected platform/dependency
 skips; final affected status/cost/deck/view integration passed 59 tests and 39 subtests.
-Linux must pass the full final inventory with zero skips plus frozen OpenGL,
-software fallback, fresh install and both real executable upgrade/rollback
-paths before signing/publication. Physical 0.4.5 TV/provider checks not performed.
+Linux passed 745 tests and 434 subtests with zero skips/failures. Frozen
+OpenGL/software fallback, fresh install, original 0.3.0 and published 0.4.4
+executable upgrades and failed-start rollback passed. Public downloads matched
+the pinned Ed25519 signature, full native inventories, checksums and source.
+Maximum required glibc remains 2.36. Physical 0.4.5 TV/provider checks are not
+performed; the current 0.4.4 GUI was intentionally left running.
+
+The private backup captured 41 coherent individual files while the app ran,
+not a quiesced whole-application instant. Eight protected credential/client
+files matched; no ephemeral refresh exception was needed. Existing config,
+automatic-update preference and original 0.3.0 recovery helper verified intact.
+Pending 0.4.5's archive hash matches the independently verified public download.
+Exit normally, then open Ports again to activate. No OS restart is needed.
 Alexa device discovery, native global timer bridges, Lisa's own phone consent
 and shopping/SMS account setup are separate pending integrations. No claim of
 those connections or any paid-data result is made by this release.
@@ -59,3 +69,9 @@ Primary references (checked October 31, 2026):
 https://www.flightaware.com/commercial/aeroapi/
 https://www.flightaware.com/commercial/aeroapi/resources/aeroapi-openapi.yml
 https://www.flightaware.com/commercial/aeroapi/#pricing
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.5
+Build: https://github.com/buzzman003/flightwall/actions/runs/41253440403
+Source: 6d7fd9b9c01ac6d7185b63290748f1fd645d7e8a
+Update ZIP SHA256: 1d233b416364b2baf52e4c5e477ca044be76d12a3a2df92ce306cc765708eb10
+Installer SHA256: 68c87b6834d1bb90f3b57bcee455e4a5f509cecdf82d59660b45c48812a41e9f

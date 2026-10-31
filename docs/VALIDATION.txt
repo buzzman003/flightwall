@@ -1,5 +1,30 @@
 FLIGHT WALL: VALIDATION RECORD
 
+PUBLISHED AND STAGED 0.4.5 - OCTOBER 31, 2026
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.5
+Build: https://github.com/buzzman003/flightwall/actions/runs/41253440403
+Source: 6d7fd9b9c01ac6d7185b63290748f1fd645d7e8a
+
+Linux 745 tests and 434 subtests passed, zero skips/failures. Source/frozen OpenGL,
+software fallback, fresh installation, original 0.3.0 and published 0.4.4 native
+executable upgrades and failed-start rollback passed. Original recovery and
+all synthetic fixtures preserved; glibc max 2.36. Independent public downloads
+verified pinned Ed25519 signature, every signed ZIP file against both native
+reports, checksums, reviewed Python source and matching Alexa companions.
+The companion model/handler have no new deployment requirement for this patch.
+UpdateZIP SHA256:1d233b416364b2baf52e4c5e477ca044be76d12a3a2df92ce306cc765708eb10
+Installer SHA256:68c87b6834d1bb90f3b57bcee455e4a5f509cecdf82d59660b45c48812a41e9f
+
+GUI-live staging succeeded without terminating/restarting GUI, services or OS.
+Backup verified 41 coherent individual-file snapshots, not a globally quiesced
+snapshot. Eight protected credential/client files matched exactly (zero Google
+ephemeral-refresh exceptions). Existing configuration values, automatic-update
+preference and original 0.3.0 recovery link/executable verified unchanged.
+Current/health remain 0.4.4 and GUI running; pending 0.4.5 hash matches the verified
+archive, minimum floor 0.4.5, automatic updates false. New code activates on the
+next normal Ports launch. No physical 0.4.5 card, weather-cadence or real paid
+provider acceptance is claimed. Paid tracking is not connected by this build.
 0.4.5 SOURCE CANDIDATE - OCTOBER31,2026
 
 Owner authorized the previously deferred deck/AMPM feedback,15minuteweather

@@ -301,3 +301,13 @@ Future private setup must review current rates/90dayexpiry, provider billing,
 choose airline and enter key in the terminal; never chat or publicGitHub.
 Lisa consent/iPhone pairing, SMS sender and native-global-timer host remain
 pending separately; do not silently provision those accounts or phone access.
+
+0.4.5 PUBLISHED AND STAGED
+
+Signed release/native gates and independent download verification passed.
+Staged without GUI/service restart; current0.4.4 continues. Normal exit and
+next Ports open activates0.4.5. Verify actual deck markers, AMPM and weather
+icons/cadence then; activation preservation helper is ready privately.
+Tracking capability is shipped but API connection remains a separate step;
+no paid calls or real early/late alerts are claimed. Keep games, credentials,
+original recovery and all current household settings intact.

@@ -1,10 +1,17 @@
 FLIGHT WALL 0.4.5
 
-0.4.5 source adds actual-deck progress squares, AM/PM clocks throughout the
+The signed 0.4.5 release is published, independently verified and staged for
+the owner's next safe Ports launch. Linux passed 745 tests and 434 subtests,
+zero skips/failures, plus native installation/upgrade/rollback gates. The
+current 0.4.4 display was left running; 41 coherent private-file snapshots and
+protected-credential checks passed before staging. Existing settings and
+the original recovery helper are preserved.
+
+0.4.5 adds actual-deck progress squares, AM/PM clocks throughout the
 TV, automatic 15-minute weather polling and crisp weather icons. Operating
 flight status/early-late cards are prepared for AeroAPI, with a shared monthly
 app request budget capped at $5. No account/key has been connected; paid
-tracking remains off. See docs/RELEASE-0.4.5.txt for candidate/release status.
+tracking remains off. See docs/RELEASE-0.4.5.txt for release and next-launch status.
 No close/reopen is needed for routine weather refresh. Program changes still
 activate only at the next safe Ports launch; local source edits are not a
 new executable. Previous installed-release evidence follows.
