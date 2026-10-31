@@ -1,12 +1,13 @@
-FLIGHT WALL 0.4.2 SOURCE CANDIDATE
+FLIGHT WALL 0.4.2
 
-This checkout contains the 0.4.2 candidate. It has not been built, signed,
-published or installed as a Linux release. The owner's TV still runs the
-published 0.4.1 executable. The owner has now confirmed its upcoming-trip
-schedule is readable; reliable physical Echo invocation remains unresolved.
-See docs/RELEASE-0.4.2.txt for candidate changes and docs/VALIDATION.txt for
-the separate source, release and actual-device evidence.
-Current published release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
+The signed 0.4.2 Linux release is published and independently verified. Linux
+validation passed 645 tests and 373 subtests, with no skips or failures, plus
+native graphics, fresh installation, upgrade and rollback checks. On the
+owner's Batocera it is staged for the next normal Ports launch; the healthy
+0.4.1 service remains active. Activation and live feed checks are pending.
+See docs/RELEASE-0.4.2.txt for changes and docs/VALIDATION.txt for the separate
+source, release and physical-device evidence. Echo opening remains unresolved.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.2
 
 Your calendar-driven flight board and household display, delivered as a
 Batocera Port. Initial platform: x86_64 Batocera 42 on an HP Ryzen mini PC
@@ -49,7 +50,7 @@ elapsed days; the owner's current setting is seven). Once eligible, the
 preview shows the next five local calendar days starting with the next leg.
 Longer breaks show household views instead of distant flight detail. Trip
 cards and maps show a dated range with colors per day and a paged legend.
-The 0.4.2 candidate removes route-number plates from the map, keeping airport
+Version 0.4.2 removes route-number plates from the map, keeping airport
 codes and a date/city-pair legend. It also enlarges the custody heading.
 A dated range is not a guessed roster rotation. The display uses
 the configured household time zone, including its daylight-saving changes.
@@ -63,11 +64,12 @@ are unchanged. Alexa commands require a matching board and skill/Lambda.
 Ordinary Alexa timers and its
 built-in shopping list do not automatically synchronize with Flight Wall.
 
-The 0.4.2 candidate adds an optional NWS today/tomorrow forecast and overnight
+Version 0.4.2 adds an optional NWS today/tomorrow forecast and overnight
 rain reminder for outdoor cushions. Missing or stale data stays unknown or
 stale, never a promise of dry weather. Optional ADSB.lol nearby traffic uses a
-local position map with a configurable statute-mile radius, fresh positions with ground reports filtered out, and
-tail/type when supplied. These public feeds need no FlightAware
+local position map with a configurable statute-mile radius, fresh positions
+with explicit ground reports filtered out, and tail/type when supplied.
+Unknown altitude remains unknown. These public feeds need no FlightAware
 subscription. Enabling them discloses their configured query location to the
 provider; weather can use a separate coarse point kept in private settings.
 Neither feature is enabled by a normal offline DEMO launch. See docs/FEEDS.txt.

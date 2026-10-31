@@ -1,9 +1,10 @@
 OPTIONAL LIVE FLIGHTS, NEARBY TRAFFIC AND WEATHER
-Flight Wall 0.4.2 source candidate - October 31, 2026
+Flight Wall 0.4.2 - October 31, 2026
 
-The weather card and nearby-map changes below require the next signed 0.4.2
-Linux release. They are not installed on the owner's current 0.4.1 board.
-Normal first launch remains offline DEMO; optional feeds are disabled.
+The weather card and nearby-map changes below are included in published 0.4.2.
+On the owner's board the signed update is staged; activation and live provider
+checks are pending. Normal first launch remains offline DEMO, with optional
+feeds disabled. Publishing or installing the app does not enable a provider.
 
 Start with the calendar and demo display. Both work without paid flight data.
 The route on the map is a planned great-circle route, not an aircraft track.

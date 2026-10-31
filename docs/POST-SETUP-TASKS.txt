@@ -24,21 +24,22 @@ The owner confirmed a readable upcoming-trip schedule after the live preview
 lead-in was changed to seven days. Glow/dot-gap settings were saved separately.
 Those settings do not deploy new code or change the five-calendar-day trip span.
 
-The authorized 0.4.2 source candidate adds five-minute DONE expiry, a cleaner
-trip map without route-number plates, a larger custody heading, optional NWS
-weather and a fresh nearby-aircraft position map with a statute-mile radius.
-See RELEASE-0.4.2.txt and FEEDS.txt. No 0.4.2 Linux executable has been built,
-signed, published or installed. The Windows source suite passed 595 tests and
-367 subtests, with 48 platform/dependency skips; mandatory Linux/native gates
-remain pending. Keep 0.4.1 running until an approved signed next-launch update.
+Published signed 0.4.2 adds five-minute DONE expiry, a cleaner trip map without
+route-number plates, a larger custody heading, optional NWS weather and a fresh
+nearby-aircraft map with a statute-mile radius. See RELEASE-0.4.2.txt and FEEDS.txt.
+Linux passed 645 tests/373 subtests with no skips or failures, plus frozen
+OpenGL/software, fresh installation, genuine upgrades and rollback. Independent
+signature/full-inventory verification passed. The update is staged after a
+verified private backup; 0.4.1 remains active until the next normal Ports launch.
+The already deployed Alexa handler/model matches the 0.4.2 companion contents;
+no new upload/rebuild is needed. Physical opening remains a separate issue.
 
 0.4.2 RELEASE / DEVICE FOLLOW-UP
 
-1. Complete the mandatory Linux source suite and offscreen OpenGL/software
-   checks. Gate original 0.3.0 -> candidate and original 0.3.0 -> published
-   0.4.1 -> candidate, with failed-start rollback, private fixtures and the
-   original pinned 0.3.0 recovery helper. Verify signing and public downloads
-   before staging. Do not reuse a published version or reset settings/logins.
+1. Complete the owner's next normal Ports launch, then independently verify
+   current 0.4.2, startup health, version floor, private-data/settings preservation
+   and unchanged original 0.3.0 recovery helper. The signed release and staging
+   checks passed; do not treat pending state as activation or reset logins.
 2. After an authorized installation, check the clean trip map, enlarged custody
    heading, timer five-minute disappearance and normal service/GUI handoff on
    the physical TV. Preserve running timers and inspect only disposable tests.
@@ -131,10 +132,10 @@ quality of every animation transition.
 
 TIMER FOLLOW-UP
 
-* The 0.4.2 candidate hides DONE timers at end + five minutes, including paused
+* Version 0.4.2 hides DONE timers at end + five minutes, including paused
   or cached display state; it does not shorten running timers. One old completed
   live timer was separately removed by its inspected exact ID, preserving others.
-  Automatic disappearance has not yet been deployed or verified on the TV.
+  The update is staged; automatic disappearance is not yet verified on the TV.
 
 * The tested Echo start/cancel commands and physical timer strip passed. Check
   more arbitrary spoken labels, the five-timer layout and animation quality.
@@ -161,7 +162,7 @@ TIMER FOLLOW-UP
   owner-completed Amazon authentication and real device tests are still needed.
   No Home Assistant host/account was provisioned, no broader permission was
   granted, and no native-timer adapter or app update was deployed.
-* Any shipped code fix or timer integration requires a version above 0.4.1,
+* Any further shipped code fix or timer integration requires a version above 0.4.2,
   relevant tests and the established signed release/next-launch workflow.
 
 HOME ASSISTANT HOST AND NATIVE SHOPPING FOLLOW-UP

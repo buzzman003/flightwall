@@ -1,14 +1,24 @@
 FLIGHT WALL 0.4.2: DISPLAY CLARITY, TIMER EXPIRY AND LOCAL FEEDS
-Source candidate - October 31, 2026
+Published signed release - October 31, 2026
 
 STATUS
 
-0.4.2 exists as source only at this checkpoint. It has not been built, signed,
-published or installed. Published 0.4.1 remains active on the owner's TV.
-Relevant source checks are in VALIDATION.txt; actual Linux/native acceptance
-and physical TV/provider checks must be reported separately.
-The Windows suite passed 595 tests and 367 subtests, with 48 expected platform/
-dependency skips. SDL dummy-driver checks do not establish native OpenGL.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.2
+Build: https://github.com/buzzman003/flightwall/actions/runs/41241887427
+Release source: 22a42dd049b4c49988d98d8f30c9d6f247f36ad3
+
+Linux validation passed 645 tests and 373 subtests, with zero skips or failures.
+Native OpenGL/software rendering, fresh installation, original 0.3.0 and
+published 0.4.1 executable upgrades and failed-start rollback all passed.
+Twenty-one synthetic private fixtures were preserved; glibc remains <=2.36.
+Independent verification checked the signed manifest and full ZIP inventory
+against the unchanged trusted public key. Detailed evidence is in VALIDATION.txt.
+
+The signed update is staged on the owner's Batocera after a verified private
+backup. The healthy 0.4.1 service is still active; 0.4.2 activation awaits the
+next normal Ports launch. Physical TV and live provider checks remain pending.
+The earlier Windows suite passed 595 tests/367 subtests with 48 expected skips;
+final review checks passed 71 tests/79 subtests. Linux was the release gate.
 
 CHANGES
 
@@ -41,16 +51,15 @@ PRIVACY AND PRESERVATION
 Weather is off by default and never contacts a provider during DEMO. A separate
 coarse weather point is stored separately in private settings; there is no
 implicit fallback to the home pin or Google sign-in. NWS receives the configured
-query point. ADSB.lol
-receives the configured home/display pin when nearby traffic is enabled.
+query point. ADSB.lol receives the configured home/display pin when nearby traffic is enabled.
 Neither coordinate appears in public settings or release artifacts. Maintenance
 status omits absolute aircraft coordinates when home-relative offsets are present.
 See FEEDS.txt for setup, coverage, freshness and provider documentation.
 
 Credentials, calendar caches, artwork, mutable config and timer/list data stay
-outside releases. The release gate must check both original 0.3.0 -> 0.4.2 and
-0.3.0 -> published 0.4.1 -> 0.4.2, including failed-start rollback to 0.4.1 while
-retaining the original pinned 0.3.0 recovery helper and trusted public key.
+outside releases. The native release gate passed both original 0.3.0 -> 0.4.2
+and 0.3.0 -> published 0.4.1 -> 0.4.2, including failed-start rollback to 0.4.1
+while retaining the original pinned 0.3.0 recovery helper and trusted public key.
 Signed updates activate only on the next safe Ports launch. Windows edits do
 not update the Linux executable.
 
@@ -58,11 +67,13 @@ SEPARATE LIVE SETTINGS / OPEN ITEMS
 
 The owner's existing 0.4.1 settings now use a seven-day flight-preview lead-in
 and adjusted glow/dot gap. The owner confirmed a clear upcoming-trip schedule.
-Those saves do not deploy this candidate. The preview's content span remains
+Those setting saves did not deploy new code. The preview's content span remains
 five local calendar days starting at the next leg; the lead-in uses elapsed days.
 
 Physical Alexa invocation remains unreliable despite successful in-session
 simulator controls. The enabled private development skill did not appear in
-the tested Routine Skills action list. This candidate does not claim to repair
-Amazon routing. Native Alexa timer mirroring and shopping/email/IFTTT work
+the tested Routine Skills action list. All files inside the 0.4.1 and 0.4.2
+Lambda ZIPs match, and the interaction models are identical; the already deployed
+0.4.1 handler/model therefore matches 0.4.2. No new AWS upload or model rebuild
+was needed. This release does not claim to repair Amazon routing. Native Alexa timer mirroring and shopping/email/IFTTT work
 remain separate; no Home Assistant bridge is connected by this release.
