@@ -4,16 +4,19 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
-PUBLISHED AND STAGED 0.4.2 / ACTIVATION PENDING - OCTOBER 31, 2026
+PUBLISHED AND ACTIVATED 0.4.2 - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.2
 Successful build: https://github.com/buzzman003/flightwall/actions/runs/41241887427
 Release source commit: 22a42dd049b4c49988d98d8f30c9d6f247f36ad3
 
-The signed 0.4.2 Linux release is public and independently verified. It has
-been staged on the owner's Batocera, with the healthy 0.4.1 background service
-still active. Activation awaits the next normal Ports launch; actual 0.4.2 TV
-and live provider checks remain pending. See RELEASE-0.4.2.txt for behavior.
+The signed 0.4.2 Linux release is public, independently verified and active on
+the owner's Batocera. Startup/preservation checks passed and the owner confirmed
+the cleaner trip map looks much better. Explicitly approved NWS and ADSB.lol
+queries returned a fresh forecast and a valid empty aircraft response. The owner
+confirmed the weather card displays correctly. Live storage/API timer expiry
+passed without cancellation; visual TV-strip expiry remains unconfirmed.
+See RELEASE-0.4.2.txt for behavior.
 
 * TimerStore and the display enforce an end-exclusive five-minute DONE period
   after each deadline, including cached state during backend outages. Focused
@@ -22,7 +25,8 @@ and live provider checks remain pending. See RELEASE-0.4.2.txt for behavior.
 * The 0.4.2 trip map removes route-number plates/connector strokes while
   retaining airport codes, date colors and paged date/city-pair legends. The
   custody heading is larger. Upcoming-trip selection and flight priority are
-  unchanged; these visual changes have not been checked on the physical TV.
+  unchanged. The owner confirmed the cleaner trip map on the physical TV;
+  the enlarged custody heading has not received a separate visual confirmation.
 * Optional NWS weather has synthetic tests for today/tomorrow, DST, the remaining
   active night before 08:00, the coming 18:00-08:00 window, missing/overlapping
   probability coverage and independent daily/hourly freshness. The source and
@@ -67,12 +71,48 @@ and live provider checks remain pending. See RELEASE-0.4.2.txt for behavior.
   differs. The existing deployed 0.4.1 handler/model therefore already matches
   this release; no new AWS upload or model rebuild was needed. Physical opening
   remains unresolved, and no account connection or routing repair is implied.
-* On the real Batocera, a private 41-file backup was verified before staging.
-  Stable wrappers and the original recovery helper were preserved; the signed
-  0.4.2 update is pending and the 0.4.1 background service is healthy. This is
-  staging evidence, not activation or completed post-update preservation proof.
-  NWS and five-mile nearby traffic have not yet been enabled or live-verified.
+* A private 41-file backup was verified before staging. After the owner's
+  normal Ports launch, independent checks verified active 0.4.2, pending=false
+  and awaiting_health=false. All original settings were preserved, with no
+  added default keys. All 41 original private files remained; eight protected
+  files, five stable wrappers and the original 0.3.0 recovery binary matched
+  their pre-update hashes. No credential refresh exception was needed. Normal-
+  TLS public health returned ok=true and version 0.4.2.
+* After the owner explicitly approved both provider/location disclosures,
+  only the weather toggle, separate coarse forecast coordinates, nearby toggle
+  and five-statute-mile radius were saved. The NWS point was explicitly chosen
+  for this setup; the app does not infer or automatically coarsen a home pin.
+  FlightAware remained disabled. Coordinates and household forecast values are
+  omitted from this public record.
+* The running app reported NWS READY with complete fresh daily/hourly data,
+  correct today/tomorrow dates and complete coverage of the DST-spanning local
+  overnight window. This verifies real provider ingestion, not a guarantee of
+  weather conditions. The owner confirmed that the weather card displays correctly.
+  The weather cache has mode 0600 and no coordinate fields.
+* The running app had no fresh eligible nearby aircraft. An independent normal-
+  TLS request to the same ADSB.lol query returned HTTP 200, a fresh provider
+  timestamp, valid v2 schema and an empty aircraft list. The containing provider
+  circle was used for the app's exact five-statute-mile filter. This is a valid
+  empty response, not proof of an empty sky or a positive-aircraft display test.
+* A disposable five-second Flight Wall timer verified natural expiry and DONE
+  retention on the installed app. The same exact timer remained expired/DONE
+  about 150.6 seconds after its deadline, then was absent from the API at 325
+  seconds after the deadline, with no cancel/delete request. The timer list
+  returned to its empty baseline. This verifies live storage/API expiry after
+  five minutes; the exact boundary and per-frame hiding have source/native test
+  coverage, but owner visual confirmation of TV-strip removal was not obtained.
+* After feed setup, the voice-only credential received HTTP 200 from context/
+  timer reads and HTTP 401 from private status, display and MCP GET routes.
   No paid account was provisioned and no message was sent.
+* The owner liked the weather display and LED dots but reported fade/ghosting
+  affecting legibility. An allowlisted settings save changed only glow from
+  0.08 to zero; LED effect and dot gap were unchanged. The owner then confirmed
+  the text looks better while keeping the LED dots. Read-only source review
+  found nearest texture sampling and a LANCZOS content resize while timer
+  overlays are present; this identifies a
+  possible additional source of softness, not a proven cause on this TV.
+  No renderer code was changed after release. Pixel weather icons and improved
+  text clarity during overlay resizing are future work in POST-SETUP-TASKS.txt.
 
 LIVE 0.4.1 SETTINGS AND ALEXA FOLLOW-UP - OCTOBER 31, 2026
 

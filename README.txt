@@ -2,9 +2,12 @@ FLIGHT WALL 0.4.2
 
 The signed 0.4.2 Linux release is published and independently verified. Linux
 validation passed 645 tests and 373 subtests, with no skips or failures, plus
-native graphics, fresh installation, upgrade and rollback checks. On the
-owner's Batocera it is staged for the next normal Ports launch; the healthy
-0.4.1 service remains active. Activation and live feed checks are pending.
+native graphics, fresh installation, upgrade and rollback checks. The owner's
+Batocera has activated 0.4.2 with preservation verified, and the owner confirmed
+the cleaner map looks much better. After explicit location-sharing approval,
+NWS returned a fresh forecast and ADSB.lol returned a valid empty aircraft
+response. The owner confirmed the weather card, and the installed app's timer
+list passed automatic five-minute expiry. Visual TV-strip expiry remains unchecked.
 See docs/RELEASE-0.4.2.txt for changes and docs/VALIDATION.txt for the separate
 source, release and physical-device evidence. Echo opening remains unresolved.
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.2

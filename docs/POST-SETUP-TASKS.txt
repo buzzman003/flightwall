@@ -18,8 +18,9 @@ the dinner feature, and none has been performed.
 
 CURRENT SCOPE
 
-Published signed 0.4.1 is active on the TV and the matching dinner Lambda/model
-is deployed. In-session simulator saves passed; physical opening is unreliable.
+Published signed 0.4.2 is active on the TV; the existing dinner Lambda/model
+matches its unchanged Alexa companion contents. In-session simulator saves
+passed; physical opening is unreliable.
 The owner confirmed a readable upcoming-trip schedule after the live preview
 lead-in was changed to seven days. Glow/dot-gap settings were saved separately.
 Those settings do not deploy new code or change the five-calendar-day trip span.
@@ -29,26 +30,27 @@ route-number plates, a larger custody heading, optional NWS weather and a fresh
 nearby-aircraft map with a statute-mile radius. See RELEASE-0.4.2.txt and FEEDS.txt.
 Linux passed 645 tests/373 subtests with no skips or failures, plus frozen
 OpenGL/software, fresh installation, genuine upgrades and rollback. Independent
-signature/full-inventory verification passed. The update is staged after a
-verified private backup; 0.4.1 remains active until the next normal Ports launch.
+signature/full-inventory verification passed. The normal Ports launch activated
+0.4.2 with private-data/settings/wrapper/original-recovery preservation verified.
+The owner confirmed that the cleaner trip map looks much better.
 The already deployed Alexa handler/model matches the 0.4.2 companion contents;
 no new upload/rebuild is needed. Physical opening remains a separate issue.
 
 0.4.2 RELEASE / DEVICE FOLLOW-UP
 
-1. Complete the owner's next normal Ports launch, then independently verify
-   current 0.4.2, startup health, version floor, private-data/settings preservation
-   and unchanged original 0.3.0 recovery helper. The signed release and staging
-   checks passed; do not treat pending state as activation or reset logins.
-2. After an authorized installation, check the clean trip map, enlarged custody
-   heading, timer five-minute disappearance and normal service/GUI handoff on
-   the physical TV. Preserve running timers and inspect only disposable tests.
-3. Before enabling feeds, privately confirm the chosen coarse NWS query point
-   and ADSB.lol use of the existing home/display pin. Check real coverage and
-   the five-statute-mile circle, reported tail/type, source age and stale hiding.
-   Check today's/tomorrow's forecast and the explicit remaining-night reminder;
-   missing data cannot support a dry-weather conclusion. No paid API is required
-   for these two optional providers, but rate/access/coverage limits still apply.
+1. Completed: normal Ports activation, healthy 0.4.2, no pending/startup-health
+   flags, preserved private data/settings/wrappers and original 0.3.0 recovery.
+   The owner confirmed the cleaner map. Preserve these checks for future updates.
+2. Live timer storage/API expiry passed: DONE inside five minutes, absent afterward
+   without cancellation, with the original empty baseline restored. Still check
+   visual TV-strip disappearance, the enlarged custody heading and normal service/
+   GUI handoff. Per-frame expiry and inset behavior have source/native coverage.
+3. Both feeds were enabled after explicit provider/location consent. NWS returned
+   complete fresh data and the owner confirmed the weather card. ADSB.lol returned
+   a valid fresh empty aircraft list. Still check positive-aircraft coverage, tail/
+   type and stale hiding. Empty data does not prove an empty sky; missing weather
+   cannot support a dry-weather conclusion. No paid API is required for these two
+   optional providers, but rate/access/coverage limits still apply.
 4. Continue timestamped Alexa routing diagnosis separately. The development
    skill is enabled but absent from the tested Routine Skills list. The owner
    confirmed the expected active account and an English language label; verify
@@ -57,6 +59,27 @@ no new upload/rebuild is needed. Physical opening remains a separate issue.
    Lambda logs, with no intervening START records. This supports, but does not
    prove, pre-handler routing failure. Do not repeat re-enable/rename guesses
    or claim the Routine workaround is available on this private skill.
+
+NEXT VISUAL UPDATE
+
+The owner likes the crisp LED dots and weather card, but reported fade/ghosting
+that hurts text legibility. The immediate live setting changed only glow from
+0.08 to zero; LED effect and dot gap stayed unchanged. The owner confirmed that
+the sharper text looks better. Preserve this no-glow preference.
+Do not replace the already published 0.4.2 release.
+
+* Add small retro pixel weather icons based only on actual known forecast states.
+  Unknown/stale/missing states must remain explicit; icons cannot invent weather
+  or replace the source time, rain-risk text or coverage warning.
+* Review crisp text while timer/shopping overlays resize the content. The current
+  logical-frame inset uses LANCZOS; texture sampling is already nearest. Compare
+  readable pixel strokes throughout transitions and at rest, with timers/ticker
+  both present. Do not assume that switching filters alone fixes every artifact.
+  Preserve the 512x256 canvas, aspect ratio, own LED effect, software fallback,
+  flight priority and per-frame privacy/expiry. No RetroArch shader is involved.
+* Any code change requires a version above 0.4.2, relevant rendering/native tests
+  and the established signed release workflow. These items are planned, not
+  implemented or deployed by the glow setting change.
 
 TEN-DAY CUSTODY OUTLOOK
 
@@ -135,7 +158,8 @@ TIMER FOLLOW-UP
 * Version 0.4.2 hides DONE timers at end + five minutes, including paused
   or cached display state; it does not shorten running timers. One old completed
   live timer was separately removed by its inspected exact ID, preserving others.
-  The update is staged; automatic disappearance is not yet verified on the TV.
+  Version 0.4.2 is active; storage/API automatic expiry passed without cancellation.
+  TV-strip disappearance still needs direct visual confirmation.
 
 * The tested Echo start/cancel commands and physical timer strip passed. Check
   more arbitrary spoken labels, the five-timer layout and animation quality.

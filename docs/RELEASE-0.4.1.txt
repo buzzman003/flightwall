@@ -1,8 +1,9 @@
 FLIGHT WALL 0.4.1: SHORT DINNER COMMANDS
 
-This is the 0.4.1 release-time record. Later owner TV confirmation and Alexa
-log/Routine observations are recorded in VALIDATION.txt. The 0.4.2 source
-candidate is described separately; published 0.4.1 remains active on the TV.
+This is the historical 0.4.1 release-time record. The owner has since activated
+published 0.4.2; its preservation, TV/provider checks and remaining Alexa routing
+limitations are recorded in VALIDATION.txt and RELEASE-0.4.2.txt. The deployment
+paragraphs below describe the earlier 0.4.1 checkpoint.
 
 Published signed Linux release:
 https://github.com/buzzman003/flightwall/releases/tag/v0.4.1

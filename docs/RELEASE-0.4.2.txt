@@ -14,9 +14,15 @@ Twenty-one synthetic private fixtures were preserved; glibc remains <=2.36.
 Independent verification checked the signed manifest and full ZIP inventory
 against the unchanged trusted public key. Detailed evidence is in VALIDATION.txt.
 
-The signed update is staged on the owner's Batocera after a verified private
-backup. The healthy 0.4.1 service is still active; 0.4.2 activation awaits the
-next normal Ports launch. Physical TV and live provider checks remain pending.
+The owner's normal Ports launch activated 0.4.2. Independent checks verified
+healthy startup, no pending update and preservation of private files, settings,
+stable wrappers and original recovery. The owner confirmed the cleaner map
+looks much better. After explicit approval of each provider's location query,
+NWS returned a complete fresh forecast; ADSB.lol returned a valid fresh empty
+response. This does not prove an empty sky. The owner confirmed the weather
+card displays correctly. A live timer remained DONE inside its five-minute
+window and disappeared from the app's timer list afterward without cancellation;
+visual confirmation of the TV strip disappearing was not obtained.
 The earlier Windows suite passed 595 tests/367 subtests with 48 expected skips;
 final review checks passed 71 tests/79 subtests. Linux was the release gate.
 
@@ -48,10 +54,11 @@ CHANGES
 
 PRIVACY AND PRESERVATION
 
-Weather is off by default and never contacts a provider during DEMO. A separate
-coarse weather point is stored separately in private settings; there is no
-implicit fallback to the home pin or Google sign-in. NWS receives the configured
-query point. ADSB.lol receives the configured home/display pin when nearby traffic is enabled.
+Weather is off by default and never contacts a provider during DEMO. An owner-
+chosen forecast point is stored in private settings; the app does not coarsen
+it automatically or fall back to the home pin or Google sign-in. NWS receives
+the configured query point. ADSB.lol receives the configured home/display pin
+when nearby traffic is enabled.
 Neither coordinate appears in public settings or release artifacts. Maintenance
 status omits absolute aircraft coordinates when home-relative offsets are present.
 See FEEDS.txt for setup, coverage, freshness and provider documentation.
@@ -65,8 +72,12 @@ not update the Linux executable.
 
 SEPARATE LIVE SETTINGS / OPEN ITEMS
 
-The owner's existing 0.4.1 settings now use a seven-day flight-preview lead-in
+The owner's settings, carried forward from 0.4.1, use a seven-day preview lead-in
 and adjusted glow/dot gap. The owner confirmed a clear upcoming-trip schedule.
+After reporting ghosting, the owner requested sharper text: glow alone changed
+from 0.08 to zero, preserving LED dots and dot gap. The owner confirmed the text
+looks better. Small pixel weather icons and clearer text during timer-overlay resizing
+are recorded as a future visual update; no further renderer code changed here.
 Those setting saves did not deploy new code. The preview's content span remains
 five local calendar days starting at the next leg; the lead-in uses elapsed days.
 
@@ -75,5 +86,6 @@ simulator controls. The enabled private development skill did not appear in
 the tested Routine Skills action list. All files inside the 0.4.1 and 0.4.2
 Lambda ZIPs match, and the interaction models are identical; the already deployed
 0.4.1 handler/model therefore matches 0.4.2. No new AWS upload or model rebuild
-was needed. This release does not claim to repair Amazon routing. Native Alexa timer mirroring and shopping/email/IFTTT work
-remain separate; no Home Assistant bridge is connected by this release.
+was needed. This release does not claim to repair Amazon routing. Native Alexa
+timer mirroring and shopping/email/IFTTT work remain separate; no Home Assistant
+bridge is connected by this release.
