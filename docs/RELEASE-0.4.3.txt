@@ -1,0 +1,51 @@
+FLIGHT WALL 0.4.3 - CLEAR MAPS, VPS TIMES AND DINNER NOTICE
+
+SOURCE CANDIDATE
+
+The installed 0.4.2 release remains unchanged until a signed 0.4.3 executable
+has passed the Linux/native workflow, been verified and activated at a normal
+Ports launch. Local edits do not update the Batocera executable or Alexa model.
+
+* Trip/leg geographic layers no longer draw airport-code labels over routes.
+  Date colors, endpoint markers and the dated city-pair legend remain.
+* An inbound VPS row with an exact immediate outbound now shows the outbound
+  date and Central clock, in addition to its planned stay. A matching layover
+  card already has the full dated departure; the update makes it easy to find
+  on the upcoming-trip schedule too.
+* Optional brief_leave_times_enabled defaults false and is local-only.
+  Read descriptions transiently only from Chris's selected secondary calendar;
+  retain labeled recommended/report-safe timestamps from the confirmed VPS
+  Home Overnight format, with arrival/report anchors. Require exact matching
+  inbound arrival, immediate operating outbound and report. Unknown formats,
+  invalid civil times and ambiguous matches do not supply a leave time.
+  No original note, personal message, crew list or contact is cached.
+* brief_leave_policy defaults conflict: distinct values produce a check-time
+  warning rather than a selected clock. Owner-selected report_safe/recommended
+  policies display that labeled source clock while retaining VERIFY REPORT.
+  This feature reads planning notes; it does not calculate or guarantee an
+  operationally correct departure-from-home time.
+* Dinner keeps its configured window (default14:30-19:00, end-exclusive).
+  Each displayed frame uses the household local clock: green SNACKS OK before
+  17:00, red NO MORE SNACKS from17:00. Custody/privacy and appointments retain
+  their existing rules. Side dishes can be part of the spoken meal phrase.
+* The nearby map draws real bundled regional OSM shoreline, water, roads,
+  US98 and runway geometry. It has no airport-name labels. The geographic
+  patch bypasses LED dots at TV presentation resolution; titles/details retain
+  the normal board style. The patch follows timer/ticker animation and honors
+  brightness in OpenGL and software fallback. Missing/out-of-region data keeps
+  the existing position plot. The saved center never enters status/MCP JSON.
+* The regional map download uses a fixed public city-region bounding box,
+  never the household point. OSM attribution and ODbL apply to the database;
+  its source, date and preparation script ship with the source package.
+  Aircraft remain received fresh positions within the configured radius,
+  not interpolated tracks. No paid provider or route enrichment is enabled.
+* Additional Alexa dinner samples use the existing skill intents. Physical
+  Echo discovery remains unresolved and requires an Amazon/account routing
+  investigation; model edits alone cannot promise to fix it.
+
+VALIDATION
+
+Source tests and visual previews are recorded in docs/VALIDATION.txt. Native
+release gates use original0.3.0 and published0.4.2 executables, preserving the
+original0.3.0 recovery helper, private settings/credentials and unrelated games.
+No new physical TV, phone, paid-provider or Alexa speech success is implied.

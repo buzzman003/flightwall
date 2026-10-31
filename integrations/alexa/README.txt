@@ -6,6 +6,10 @@ After installing the matching adapter/model, candidate direct forms are:
 Inside the confirmed skill session, use "dinner today is chicken teriyaki"
 or "dinner tomorrow is tacos and rice". Alexa reads the saved meal/day briefly.
 For another date, say "set dinner for Friday", then provide the meal.
+The next model also accepts "add teriyaki chicken and rice for dinner today".
+Include side dishes in that same meal phrase; they are not a required question.
+Missing meal or date details are requested before saving. This model change
+does not fix Amazon skill discovery and needs its own build/recognition check.
 
 These phrases require live recognition checks. The owner's Alexa has sometimes
 routed direct dinner requests into native announcements, including an "ask"
@@ -73,8 +77,9 @@ help for meal instructions. The generic fallback does not repeat a long menu.
 
 Timers are persisted Flight Wall countdowns, with labels of 1-80 characters
 and whole-second durations from 1 second to 24 hours. Up to five are displayed.
-Finished timers remain DONE until dismissed; a new timer can replace the oldest
-finished one when all five display positions are occupied. Five running timers
+Finished timers remain DONE for five minutes after their deadline, then hide
+automatically. A new timer can replace the oldest finished one when all five
+display positions are occupied. Five running timers
 must be reduced before adding another. List timers announces their numbers;
 cancel timer number two can disambiguate duplicate labels. Timer deadlines
 survive service restarts and device reboots; the device clock must be correct.

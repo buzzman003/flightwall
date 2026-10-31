@@ -65,6 +65,20 @@ def test_deadhead_breaks_assumed_vps_layover():
     assert "departure" not in row
 
 
+def test_vps_leave_time_stays_distinct_from_next_day_departure():
+    legs = [leg("in", "ATL", "VPS", "2026-11-06T21:00:00Z", "2026-11-06T23:00:00Z"),
+            leg("out", "VPS", "ATL", "2026-11-07T14:00:00Z", "2026-11-07T16:00:00Z",
+                leave_at="2026-11-07T11:45:00Z")]
+    row, = local_visits({"flights": legs}, dt("2026-11-07T01:00:00Z"))
+    assert row["departure"] == "2026-11-07T14:00:00+00:00"
+    assert row["leave_at"] == "2026-11-07T11:45:00+00:00"
+    assert row["duration_minutes"] == 15 * 60
+    for value in (None, "2026-11-07T11:45:00", "2026-11-07T14:01:00Z", "2026-11-06T22:59:00Z"):
+        legs[1]["leave_at"] = value
+        row, = local_visits({"flights": legs}, dt("2026-11-07T01:00:00Z"))
+        assert "leave_at" not in row
+
+
 def test_trip_lead_in_hides_distant_roster_and_pages_each_leg():
     now = dt("2026-10-31T12:00:00Z")
     flights = [leg("distant", "ATL", "VPS", "2026-11-20T12:00:00Z", "2026-11-20T14:00:00Z")]

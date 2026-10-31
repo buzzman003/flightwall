@@ -84,6 +84,14 @@ def local_visits(snapshot, now, *, include_future=False):
             departure, _, outbound = legs[index + 1]
             if not outbound.get("deadhead") and outbound.get("origin") == airport and arrival < departure <= arrival + timedelta(days=4):
                 item.update(departure=departure.isoformat(), duration_minutes=int((departure - arrival).total_seconds() / 60))
+                try:
+                    leave = stamp(outbound.get("leave_at"))
+                    if max(arrival, departure - timedelta(days=1)) < leave <= departure:
+                        item["leave_at"] = leave.isoformat()
+                except (ValueError, TypeError, AttributeError, OverflowError):
+                    pass
+                if outbound.get("leave_conflict") is True:
+                    item["leave_conflict"] = True
                 display_end = max(display_end, departure)
         item.update(display_start=display_start.isoformat(), display_end=display_end.isoformat())
         if display_start <= now < display_end or include_future and now < display_end:

@@ -463,6 +463,64 @@ class HouseholdManagerTests(unittest.TestCase):
         self.config["hotel_details_enabled"] = False
         self.assertEqual(self.manager.status()["flight_snapshot"]["layovers"], [])
 
+    def brief_api(self, client, path, parameters):
+        if "flight-main" in path:
+            self.calls.append((client.data_dir.name, path, deepcopy(parameters)))
+            return {"timeZone": "America/Chicago", "items": [
+                event("DL18: ATL-VPS", "2026-10-22T20:00:00Z", "2026-10-22T22:00:00Z"),
+                event("DL19: VPS-ATL", "2026-10-23T14:00:00Z", "2026-10-23T16:00:00Z"),
+                event("Report: 0800L", "2026-10-23T13:00:00Z", "2026-10-23T18:00:00Z")]}
+        if "flight-secondary" in path:
+            self.calls.append((client.data_dir.name, path, deepcopy(parameters)))
+            return {"timeZone": "America/Chicago", "items": [event(
+                "🏠 Buzz Flight Brief — VPS Home Overnight (Oct 22–23)", "2026-10-22T22:00:00Z", "2026-10-23T13:00:00Z",
+                description="LEAVE HOME FOR VPS — requested aircraft-arrival formula: RECOMMENDED\n6:30 AM\n"
+                            "IMPORTANT REPORT-TIME CONFLICT: To meet scheduled report on time, leave by 6:20 AM.\n"
+                            "Crew: PRIVATE-CREW\nHotel: PRIVATE-HOTEL\nPhone: 555-123-4567")]}
+        return self.api(client, path, parameters)
+
+    def test_optional_leave_time_notes_match_exact_report_and_disable_immediately(self):
+        self.config["brief_leave_times_enabled"] = True
+        self.config["brief_leave_policy"] = "report_safe"
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=self.brief_api):
+            self.manager.sync()
+        flight = self.manager.status()["flight_snapshot"]["flights"][1]
+        self.assertEqual(flight["leave_at"], "2026-10-23T11:20:00+00:00")
+        self.assertTrue(flight["leave_conflict"])
+        self.assertEqual(flight["report"], "2026-10-23T13:00:00+00:00")
+        self.assertNotIn("PRIVATE-", self.manager.path.read_text())
+        self.assertNotIn("description", self.manager.path.read_text())
+        self.assertNotIn("555", self.manager.path.read_text())
+        for _profile, path, parameters in self.calls:
+            if "/events" in path:
+                self.assertEqual("description" in parameters["fields"], "flight-secondary" in path)
+        self.config["brief_leave_policy"] = "conflict"
+        flight = self.manager.status()["flight_snapshot"]["flights"][1]
+        self.assertNotIn("leave_at", flight)
+        self.assertTrue(flight["leave_conflict"])
+        self.config["brief_leave_policy"] = "recommended"
+        self.assertEqual(self.manager.status()["flight_snapshot"]["flights"][1]["leave_at"], "2026-10-23T11:30:00+00:00")
+        self.config["brief_leave_times_enabled"] = False
+        flight = self.manager.status()["flight_snapshot"]["flights"][1]
+        self.assertNotIn("leave_at", flight)
+        self.assertNotIn("leave_conflict", flight)
+        self.config["brief_leave_times_enabled"] = True
+        self.config["secondary_calendar_id"] = "different-secondary"
+        self.assertNotIn("leave_at", self.manager.status()["flight_snapshot"]["flights"][1])
+
+    def test_invalid_leave_cache_field_does_not_discard_the_flight_schedule(self):
+        self.config["brief_leave_times_enabled"] = True
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=self.brief_api):
+            self.manager.sync()
+        stored = json.loads(self.manager.path.read_text())
+        for leave in (None, 6, "2026-10-23T11:30:00", "2026-10-23T13:01:00Z", "2026-10-22T22:00:00Z"):
+            with self.subTest(leave=leave):
+                stored["flight_roles"]["secondary"]["snapshot"]["brief_leaves"][0]["recommended_at"] = leave
+                private_json(self.manager.path, stored)
+                snapshot = self.manager.status()["flight_snapshot"]
+                self.assertEqual(len(snapshot["flights"]), 2)
+                self.assertNotIn("leave_at", snapshot["flights"][1])
+
 
 class LabelledHotelTests(unittest.TestCase):
     def test_only_explicit_timed_hotel_events_supply_safe_hotel_metadata(self):

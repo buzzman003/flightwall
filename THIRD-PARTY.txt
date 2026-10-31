@@ -31,3 +31,9 @@ source distribution and older-glibc Docker build instructions are provided
 so recipients can rebuild the program and replace/relink bundled libraries.
 SDL, graphics-driver and Linux system libraries supplied by Batocera remain
 part of Batocera and retain Batocera's upstream license obligations.
+
+The bundled Fort Walton Beach/Destin vector database is adapted from
+OpenStreetMap and is distributed under Open Database License1.0, separately
+from the MIT application code. Attribution: OpenStreetMap contributors.
+See assets/maps/README.txt and assets/maps/fort-walton-destin.json for the
+public source bounds, preparation script, source snapshot and license links.

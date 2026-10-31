@@ -1,5 +1,38 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.3 SOURCE CANDIDATE - OCTOBER 31, 2026
+
+Local Windows suite:626 tests and374 subtests passed,49 expected dependency/
+platform skips. Additional final map/Brief/presentation tests passed22 tests
+and24 subtests, with one expected actual-OpenGL skip. Map extraction used its
+separate build-only Shapely tools; no new runtime requirement was introduced.
+The Linux workflow must independently run the complete latest inventory with
+zero skips, actual offscreen OpenGL/frozen rendering and both native upgrade
+paths before publication. No0.4.3 executable is installed by these source edits.
+
+Checked: route-label removal with retained legend; dinner before/exactlyat17:00
+on both DST transition dates, cached-state changes and end-exclusive expiry;
+Brief strict labeled extraction, malformed/conflicting/DST cases, exact
+inbound/report/outbound association, cache allowlist and disabled-feature hiding;
+next-day VPS departure and leave timestamps as separate labels; warning pixels
+preserving the existing schedule typography. Fictional previews were inspected.
+
+The nearby map uses actual public OSM source snapshot2026-10-31T21:58:46Z,
+retrieved by normal verified HTTPS for a fixed city-region bbox (not a home
+point). Tests cover known Gulf/bay/land geometry, required road/runway/US98
+layers, corrupt/missing/outside-coverage fallback, genuine high-resolution
+geometry, current aircraft120-second expiry/dedup/radius and strict opt-out.
+Software map presentation passed; actual OpenGL asymmetric/odd-RGB-row test
+is included in the Linux release gate. Physical-TV high-resolution map and
+new dinner/leave-card acceptance remain unperformed.
+
+The owner explicitly chose the report-time calculation for the conflicting
+Buzz note. That private choice is a local setting, not a hardcoded household
+clock in the source. No original note, private calendar ID or contact ships.
+Alexa model adds dinner samples; no live model deployment or physical Echo
+routing success is established by this candidate. Shopping delivery remainsoff.
+See RELEASE-0.4.3.txt and INTEGRATION-OPTIONS.txt.
+
 Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.

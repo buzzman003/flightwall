@@ -4,6 +4,17 @@ Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame +
 
 Shared data conventions (plain JSON dictionaries):
 
+0.4.3 source candidate: the logical board remains512x256. Only nearby
+geographic pixels may be presented at TV resolution after the LED pass,
+following the same timer/ticker content bounds and brightness in both paths.
+The native GUI reads its own saved point locally; never add that point to
+display/status/MCP JSON. Bundled regional OSM data is public and ODbL-licensed.
+Optional Buzz leave-note parsing retains only timestamp anchors/options from
+the explicitly selected secondary source. An exact VPS inbound/report/outbound
+match is mandatory. A chosen leave time is separate from scheduled departure;
+conflicting notes retain a warning. Dinner's per-frame snack cutoff is17:00
+in the configured household zone, within its existing end-exclusive window.
+
 - config keys: `calendar_name` (FC View), `calendar_id` (empty), `airline` (empty until selected), `demo` (true until Google setup), `timezone` (UTC), `rotation_seconds` (15), `logical_width` (512), `logical_height` (256), `brightness` (0.7), `glow` (0.25), `dot_gap` (0.22), `led_effect` (true), `show_deadheads` (true), `takeover_hours` (18), `sleep_start` (23:00), `sleep_end` (06:00), `sleep_enabled` (false), `nearby_enabled` (false), `flightaware_enabled` (false), `flightaware_poll_seconds` (120), `updates_enabled` (false), `update_manifest_url` (empty), `update_public_key` (empty), `update_interval_minutes` (15), `public_url` (empty), `control_port` (8765).
 - Each flight: `id`, `number` (string, may have airline prefix), `origin` and `destination` (IATA codes), `start` and `end` (RFC3339 with offset), `deadhead` (bool), optional `report` RFC3339, `source` calendar name. Do not pass crew/raw private descriptions to renderer or public logs.
 - Snapshot: `flights` list, `last_sync` RFC3339 or null, `error` sanitized string or null, `source` string, `demo` bool. All dates timezone-aware.

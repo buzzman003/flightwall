@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageEnhance
 
-from .render import compose_display_overlays, render_frame, shopping_ticker_names, visible_timers
+from .render import compose_display_overlays, display_content_bounds, render_frame, shopping_ticker_names, visible_timers
 from .feeds import parse_time
 from .household_policy import build_rotation, card_visible, filter_personal_items, household_context
 
@@ -261,6 +261,19 @@ class BackendConnection:
     def settings(self, patch):
         return self.request("settings", patch)
 
+    def local_map_config(self):
+        """Read only the native GUI's own private map point, never a web payload.
+
+        Do not add the home pin to display/status/MCP JSON. Rendered map pixels
+        are local presentation data and are not written back to disk.
+        """
+        from .config import validate
+        try:
+            saved = json.loads((self.data_dir / "config.json").read_text())
+            return {key: validate(key, saved.get(key)) for key in ("home_latitude", "home_longitude")}
+        except (OSError, ValueError, TypeError, AttributeError):
+            return {}
+
 
 def display_viewport(screen_size, frame_size=(512, 256), mode="fit"):
     """Center a complete canvas with the same aspect ratio in both renderers.
@@ -297,6 +310,53 @@ class TimerStripTransition:
         if target != self.target:
             self.origin, self.target, self.started_at = current, target, now
         return current
+
+
+def attach_nearby_map(frame, state, config, connection, screen_size, now,
+                      timer_progress=None, ticker_progress=None):
+    """Attach a bounded presentation layer while keeping the board at 512x256.
+
+    The map is drawn after the LED pass, in the same animated content inset.
+    Private coordinates are read locally and never attached to frame metadata.
+    """
+    if (state.get("view") != "nearby" or state.get("demo", config.get("demo", False))
+            or config.get("nearby_enabled") is not True or config.get("nearby_detailed_map", True) is not True):
+        return frame
+    try:
+        point = connection.local_map_config()
+        from .nearby_map import render_map
+        left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+        box = (left + 14 * width / 512, top + 56 * height / 256,
+               297 * width / 512, 149 * height / 256)
+        _, _, dest_w, dest_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+        size = (max(1, min(2048, round(box[2] * dest_w / 512))),
+                max(1, min(1024, round(box[3] * dest_h / 256))))
+        image = render_map({**config, **point}, size, rows=state.get("nearby", []), now=now)
+        if isinstance(image, Image.Image):
+            frame.info["geographic_patch"] = (box, image)
+    except (OSError, ValueError, TypeError, AttributeError, ImportError):
+        # A missing regional asset or private point retains the position plot.
+        pass
+    return frame
+
+
+def geographic_patch(frame, viewport):
+    """Translate a trusted local image patch into display pixels, with bounds."""
+    try:
+        box, image = frame.info["geographic_patch"]
+        left, top, width, height = box
+        if (not isinstance(image, Image.Image) or image.mode != "RGB"
+                or not 1 <= image.width <= 2048 or not 1 <= image.height <= 1024
+                or not all(isinstance(v, (float, int)) and math.isfinite(v) for v in box)
+                or left < 0 or top < 0 or width <= 0 or height <= 0
+                or left + width > frame.width or top + height > frame.height):
+            return None
+        vx, vy, vw, vh = viewport
+        x1, y1 = round(vx + left / frame.width * vw), round(vy + top / frame.height * vh)
+        x2, y2 = round(vx + (left + width) / frame.width * vw), round(vy + (top + height) / frame.height * vh)
+        return (image, (x1, y1, x2 - x1, y2 - y1)) if x2 > x1 and y2 > y1 else None
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return None
 
 
 class ShaderScreen:
@@ -354,6 +414,7 @@ class ShaderScreen:
         pygame = self.pygame
         width, height = self.screen.get_size()
         x, y, dest_w, dest_h = display_viewport((width, height), frame.size, config.get("display_scale_mode", "fit"))
+        patch = geographic_patch(frame, (x, y, dest_w, dest_h))
         if not dest_w or not dest_h:
             if self.gl:
                 self.gl.glClearColor(0, 0, 0, 1)
@@ -370,6 +431,8 @@ class ShaderScreen:
             GL.glViewport(x, y, dest_w, dest_h)
             GL.glUseProgram(self.program)
             GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
+            # RGB map rows may have any width; do not assume four-byte padding.
+            GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
             GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, frame.width, frame.height, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame.tobytes())
             GL.glUniform1i(GL.glGetUniformLocation(self.program, "board"), 0)
             GL.glUniform2f(GL.glGetUniformLocation(self.program, "grid"), frame.width, frame.height)
@@ -380,6 +443,18 @@ class ShaderScreen:
                 GL.glTexCoord2f(*uv)
                 GL.glVertex2f(*point)
             GL.glEnd()
+            if patch:
+                image, (px, py, pw, ph) = patch
+                GL.glViewport(px, height - py - ph, pw, ph)
+                GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, image.width, image.height, 0,
+                                GL.GL_RGB, GL.GL_UNSIGNED_BYTE, image.tobytes())
+                GL.glUniform2f(GL.glGetUniformLocation(self.program, "grid"), image.width, image.height)
+                GL.glUniform1f(GL.glGetUniformLocation(self.program, "enabled"), 0)
+                GL.glBegin(GL.GL_QUADS)
+                for uv, point in (((0, 1), (-1, -1)), ((1, 1), (1, -1)), ((1, 0), (1, 1)), ((0, 0), (-1, 1))):
+                    GL.glTexCoord2f(*uv)
+                    GL.glVertex2f(*point)
+                GL.glEnd()
             GL.glUseProgram(0)
         else:
             self.screen.fill((0, 0, 0))
@@ -389,6 +464,13 @@ class ShaderScreen:
             if surface.get_size() != (dest_w, dest_h):
                 surface = pygame.transform.smoothscale(surface, (dest_w, dest_h))
             self.screen.blit(surface, (x, y))
+            if patch:
+                image, (px, py, pw, ph) = patch
+                image = ImageEnhance.Brightness(image).enhance(config.get("brightness", .7))
+                surface = pygame.image.frombytes(image.tobytes(), image.size, "RGB")
+                if surface.get_size() != (pw, ph):
+                    surface = pygame.transform.smoothscale(surface, (pw, ph))
+                self.screen.blit(surface, (px, py))
         pygame.display.flip()
 
 
@@ -561,6 +643,11 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             ticker_progress = ticker_transition.value(now, ticker_active)
             state["shopping_ticker_offset"] = max(0, now - ticker_started_at) * 12
             frame = compose_display_overlays(frame, state, wall_now, timer_progress, ticker_progress)
+            if not settings_open and not help_open and not is_sleeping(config):
+                display_surface = getattr(screen, "screen", None)
+                if display_surface is not None:
+                    attach_nearby_map(frame, state, config, connection, display_surface.get_size(),
+                                      wall_now, timer_progress, ticker_progress)
             screen.draw(frame, config)
             if frames == 0 and on_healthy:
                 on_healthy()

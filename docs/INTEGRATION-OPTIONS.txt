@@ -1,0 +1,70 @@
+FLIGHT WALL INTEGRATION OPTIONS - REVIEWED OCTOBER31,2026
+
+AIRCRAFT ORIGIN / DESTINATION
+
+Nearby positions currently come from ADSB.lol. FlightAware is disabled. The
+position response provides tail/type/callsign when available, not verified
+origin/destination. ADSB.lol offers plausible route enrichment, which would
+need an explicit inferred label and can be absent/wrong; it is not a filed
+route or confirmed actual trip. This release does not add that enrichment.
+
+FlightAware's relevant product for programmatic lookup is AeroAPI, separate
+from its website subscriptions. Current Personal tier has no monthly minimum
+and up to$5 usage free per month ($10 for eligible ADS-B feeders). Additional
+usage is billed per endpoint/result set; a query can return multiple pages.
+Annual/extended subscriptions are described for Premium through Sales. Do not
+buy a website subscription expecting it to provision this application API.
+
+A future integration should look up only newly seen commercial callsigns,
+date/position-match a unique provider flight, retain Unknown when ambiguous,
+cache bounded results, and enforce a dedicated usage budget. Review the
+selected tier's data-use terms before combining provider feeds. No purchase,
+account connection, paid query or billable service has been enabled here.
+
+Sources:
+https://www.flightaware.com/commercial/aeroapi/
+https://support.flightaware.com/hc/en-us/articles/33213921155351-Where-Can-I-Request-A-Quote-For-AeroAPI
+https://github.com/adsblol/api
+
+SHOPPING AND LISA'S IPHONE
+
+Amazon stopped supporting List skills/List Management REST API on July1,2024.
+We have no supported automatic reader for Alexa's built-in shopping list.
+The existing independent Flight Wall list/ticker and its Alexa commands are
+the application-controlled option. A built-in Alexa list update is not
+automatically a Flight Wall list update. Email/IFTTT/hidden-calendar export
+has not been demonstrated and is not configured.
+
+Lisa's confirmed phone platform is iPhone. The app is OwnTracks. Existing
+one-time onboarding invitations let Lisa consent to her own pairing without
+receiving the administrator control token. HTTP and Significant Changes are
+the battery-oriented starting point, followed by an actual locked-phone
+arrival/departure test. iOS Significant Changes is roughly500m, not a promise
+of precise50m storefront detection. Regions can help, but require testing;
+do not copy Android timing settings as an iOS reliability guarantee.
+
+Store-arrival delivery remains off. It requires Lisa's explicit opt-in, a real
+fresh paired report, verified store fences, chosen delivery method and a
+configured sending service. The existing daily reservation allows at most one
+attempt per Central day across stores. No SMS/email has been sent or sending
+account purchased. Credentials, recipients and coordinates stay private.
+
+Sources:
+https://developer.amazon.com/en-US/docs/alexa/ask-overviews/deprecated-features.html
+https://owntracks.org/booklet/features/ios/
+https://owntracks.org/booklet/faq/
+
+ALEXA DINNER
+
+Existing handlers support free-text meals and today/tomorrow, brief saves,
+missing-value questions and same-date replacement. For example, after the
+skill welcome: add teriyaki chicken with rice for dinner today. A side dish
+need not become a mandatory follow-up. A failed 'cannot find skill' happens
+before a dinner card can be created; repeated app updates/re-enabling do not
+establish that discovery has been fixed.
+
+A private support-case draft with known SkillID and sanitized simulator/log
+evidence is prepared locally outside releases. It has not been sent. The next
+diagnostic step is Amazon's development-skill visibility/routing investigation
+with the registered Echo account and regional language, ideally accompanied
+by one precisely timed physical failure. No unrelated voice history is needed.

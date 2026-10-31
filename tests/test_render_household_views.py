@@ -345,7 +345,7 @@ class TripAndHomeRenderTests(unittest.TestCase):
         self.assertEqual(rows[0]["_trip_color"], rows[2]["_trip_color"])
         self.assertNotEqual(rows[2]["_trip_color"], rows[3]["_trip_color"])
 
-    def test_trip_map_has_airport_labels_without_number_plates(self):
+    def test_trip_map_keeps_airport_codes_and_number_plates_off_the_geography(self):
         calls = []
         original = render._text
         def capture(draw, xy, value, *args, **kwargs):
@@ -355,7 +355,8 @@ class TripAndHomeRenderTests(unittest.TestCase):
             image = render.render_frame(self.state | {"view": "trip_map"}, {"timezone": "America/Chicago"})
         map_labels = [value for (x, y), value in calls if 15 <= x <= 324 and 59 <= y <= 201]
         self.assertFalse(any(value.isdigit() for value in map_labels))
-        self.assertIn("ATL", map_labels)
+        self.assertFalse(any(value in {"ATL", "MEM", "VPS", "LAX"} for value in map_labels))
+        self.assertIn("ATL > MEM", [value for (x, y), value in calls if x >= 339])
         self.assertEqual(image.size, (512, 256))
 
     def test_many_legs_are_honestly_paged_and_unknown_airport_is_explicit(self):

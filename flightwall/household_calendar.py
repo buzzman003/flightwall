@@ -13,6 +13,7 @@ import threading
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .calendar_client import CalendarClient, CalendarError, parse_events, _event_time
+from .brief import attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes
 from .config import private_json
 from .outlook import custody_outlook
 
@@ -313,6 +314,7 @@ class HouseholdCalendars:
                         _stamp(item["end"])
                         clean_layovers.append(item)
                     snapshot["layovers"] = clean_layovers
+                    snapshot["brief_leaves"] = clean_brief_leaves(snapshot.get("brief_leaves")) if role == "secondary" else []
                     if valid:
                         roles[role] = cached
                 value["flight_roles"] = roles
@@ -413,11 +415,13 @@ class HouseholdCalendars:
                 verified = False
             profiles[profile] = {"credentials_present": authorized, "authorized": bool(verified), "connected": bool(verified), "verified": bool(verified),
                                  "verified_at": record.get("verified_at"), "error": record.get("error")}
-        matching = []
+        matching, brief_notes = [], []
         for role, calendar_id, name in self._roles(config):
             cached = state["flight_roles"].get(role, {})
             if cached.get("binding") == _binding("chris", calendar_id, name):
                 matching.append(cached["snapshot"])
+                if role == "secondary":
+                    brief_notes.extend(cached["snapshot"].get("brief_leaves", []))
         if matching:
             dates = [item.get("last_sync") for item in matching if item.get("last_sync")]
             errors = list(dict.fromkeys(item["error"] for item in matching if item.get("error")))
@@ -427,6 +431,9 @@ class HouseholdCalendars:
             flights = CalendarClient(self.data_dir, config).snapshot()
             if config.get("secondary_calendar_id"):
                 flights = _empty_flights(config)
+        attach_brief_leaves(flights.get("flights", []),
+                            brief_notes if config.get("brief_leave_times_enabled", False) else [],
+                            config.get("brief_leave_policy", "conflict"))
         flights["layovers"] = []
         if config.get("hotel_details_enabled", False):
             seen_layovers = set()
@@ -482,10 +489,12 @@ class HouseholdCalendars:
                 if "chris" in errors:
                     raise CalendarError(errors["chris"])
                 include_hotels = bool(config.get("hotel_details_enabled", False))
-                result = self.client_for("chris").get_events(calendar_id, include_descriptions=include_hotels)
+                include_leaves = bool(config.get("brief_leave_times_enabled", False) and role == "secondary")
+                result = self.client_for("chris").get_events(calendar_id, include_descriptions=include_hotels or include_leaves)
                 snapshot = {"flights": parse_events(result["items"], source), "last_sync": _iso(now),
                             "error": None, "source": source, "demo": False,
-                            "layovers": parse_labelled_layovers(result["items"], source) if include_hotels else []}
+                            "layovers": parse_labelled_layovers(result["items"], source) if include_hotels else [],
+                            "brief_leaves": parse_brief_leave_notes(result["items"], config.get("timezone")) if include_leaves else []}
             except CalendarError as error:
                 snapshot["error"] = str(error)
             role_cache[role] = {"binding": signature, "snapshot": snapshot}

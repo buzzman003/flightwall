@@ -298,8 +298,14 @@ def _details(draw, state, config, now, flight, flights, tz):
     _text(draw, (239, 175), local_start.strftime("%d %b"), MUTED, align="right")
     _text(draw, (484, 175), local_end.strftime("%d %b"), MUTED, align="right")
     report = _dt(flight.get("report"))
+    leave = _dt(flight.get("leave_at")) if config.get("brief_leave_times_enabled") is True else None
+    leave_conflict = flight.get("leave_conflict") is True and config.get("brief_leave_times_enabled") is True
     if past:
         text = "SCHEDULED LEG ENDED"
+    elif leave:
+        text = "BRIEF LEAVE " + leave.astimezone(tz).strftime("%d %b %H:%M %Z")
+    elif leave_conflict:
+        text = "BRIEF CONFLICT / CHECK LEAVE TIME"
     elif report:
         text = "REPORT " + report.astimezone(tz).strftime("%H:%M %Z")
     elif active:
@@ -309,7 +315,7 @@ def _details(draw, state, config, now, flight, flights, tz):
         text = f"DEPARTS IN {minutes // 60}H {minutes % 60:02d}M"
     _text(draw, (16, 208), text, WHITE, max_width=300)
     remaining = sum(1 for f in flights if _dt(f.get("start")) and _dt(f["start"]) > start)
-    _text(draw, (496, 208), f"+{remaining} UPCOMING" if remaining else "FINAL SCHEDULED LEG", MUTED, align="right", max_width=170)
+    _text(draw, (496, 208), "VERIFY REPORT" if leave_conflict else f"+{remaining} UPCOMING" if remaining else "FINAL SCHEDULED LEG", AMBER if leave_conflict else MUTED, align="right", max_width=170)
 
 
 def great_circle(origin, destination, points=81):
@@ -367,7 +373,7 @@ def _map(draw, image, state, config, now, flight, tz, page="ROUTE MAP / GREAT CI
 
     xx = [wrap(lon) * coslat for lon, lat in route]
     yy = [lat - center_lat for lon, lat in route]
-    # Room for endpoint labels. Regional routes retain geographic context.
+    # Regional routes retain geographic context; city pairs stay in the header.
     span_x, span_y = max(4.8, max(xx) - min(xx)), max(2.4, max(yy) - min(yy))
     zoom = min(348 / (span_x * 1.35), 118 / (span_y * 1.5))
     cx, cy = 255, 133
@@ -406,16 +412,10 @@ def _map(draw, image, state, config, now, flight, tz, page="ROUTE MAP / GREAT CI
     route_pixels = [project(p) for p in route]
     md.line(route_pixels, fill=(68, 53, 30), width=5)
     md.line(route_pixels, fill=AMBER, width=2)
-    for p, code in ((route_pixels[0], origin_code), (route_pixels[-1], dest_code)):
+    for p in (route_pixels[0], route_pixels[-1]):
         x, y = p
         md.ellipse((x - 4, y - 4, x + 4, y + 4), fill=BG, outline=AMBER)
         md.rectangle((x - 1, y - 1, x + 1, y + 1), fill=WHITE)
-        # Labels sit away from the route's center, leaving the amber arc clear.
-        label_y = max(63, min(180, y - 22 if y <= cy else y + 12))
-        label_width = _width(code, 2)
-        label_x = max(24, min(487 - label_width, x - label_width // 2))
-        md.rectangle((label_x - 4, label_y - 3, label_x + label_width + 3, label_y + 16), fill=BG)
-        _text(md, (label_x, label_y), code, WHITE, 2)
     live_pos = _live_position(state)
     if live_pos:
         x, y = project(live_pos)
@@ -557,8 +557,15 @@ def _personal(draw, state, config, now, item):
         draw.line((454, 63, 454, 81), fill=CYAN)
         draw.line((451, 62, 451, 68, 457, 68, 457, 62), fill=CYAN)
         draw.line((489, 62, 489, 81), fill=AMBER)
-        _draw_title(draw, item["title"], (25, 96), 464, 83)
-        draw.line((25, 191, 486, 191), fill=LINE)
+        _draw_title(draw, item["title"], (25, 96), 464, 62)
+        # Compute on every frame, even when the backend card is cached/paused.
+        # The TV's household zone governs the rule, not a stored card's zone.
+        snacks_closed = local_now.hour >= 17
+        snack_color = (244, 92, 92) if snacks_closed else GREEN
+        snack_fill = (43, 11, 16) if snacks_closed else (8, 28, 21)
+        draw.rectangle((25, 171, 486, 196), fill=snack_fill, outline=snack_color, width=2)
+        _text(draw, (256, 177), "NO MORE SNACKS" if snacks_closed else "SNACKS OK",
+              snack_color, 2, align="center", max_width=440)
         until = _dt(item.get("display_end")) or end
         if until:
             _text(draw, (25, 209), "CLEARS AT " + until.astimezone(tz).strftime("%I:%M %p %Z").lstrip("0"), MUTED, max_width=300)
@@ -751,7 +758,7 @@ def _local_visit(draw, state, config, now):
     zone = _tz({"timezone": config.get("timezone") or card.get("timezone") or "UTC"})
     arrival, departure = _dt(card.get("arrival")), _dt(card.get("departure"))
     draw.rectangle((15, 111, 496, 222), fill=PANEL)
-    draw.line((261, 121, 261, 210), fill=LINE)
+    draw.line((261, 121, 261, 197), fill=LINE)
     _text(draw, (26, 122), "SCHEDULED ARRIVAL", CYAN)
     if arrival:
         local = arrival.astimezone(zone)
@@ -768,7 +775,17 @@ def _local_visit(draw, state, config, now):
         _text(draw, (279, 146), "UNKNOWN", AMBER, 2, max_width=206)
         _text(draw, (279, 177), "NO MATCHING OUTBOUND", MUTED, max_width=206)
     minutes = card.get("duration_minutes")
-    if departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
+    leave = _dt(card.get("leave_at")) if config.get("brief_leave_times_enabled") is True else None
+    conflict = card.get("leave_conflict") is True and config.get("brief_leave_times_enabled") is True
+    if leave:
+        if departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
+            _text(draw, (26, 192), f"STAY / {minutes // 60}H {minutes % 60:02d}M", MUTED, max_width=224)
+        _text(draw, (26, 204), "BRIEF LEAVE / " + leave.astimezone(zone).strftime("%a %d %b %H:%M %Z"), AMBER, max_width=354)
+        if conflict:
+            _text(draw, (484, 204), "VERIFY", AMBER, align="right")
+    elif conflict:
+        _text(draw, (26, 204), "BRIEF CONFLICT / CHECK LEAVE TIME AND REPORT", AMBER, max_width=454)
+    elif departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
         _text(draw, (26, 204), f"PLANNED STAY / {minutes // 60}H {minutes % 60:02d}M", AMBER, max_width=454)
     else:
         _text(draw, (26, 204), "SCHEDULE ONLY / LOCATION NOT CONFIRMED", MUTED, max_width=454)
@@ -894,6 +911,22 @@ def _trip_summary(draw, state, config, now):
             if isinstance(minutes, int) and minutes >= 0:
                 label += f" / {minutes // 60}H{minutes % 60:02d}M STAY"
             _text(draw, (333, y + 28), label, MUTED, max_width=154)
+        departure = _dt(visit.get("departure")) if visit else None
+        if departure:
+            # The visit may end on a different day. Keep its full departure
+            # date beside the inbound leg rather than only a stay duration.
+            draw.rectangle((137, y + 22, 328, y + 42), fill=PANEL)
+            _text(draw, (139, y + 23), "DEP " + departure.astimezone(zone).strftime("%m/%d %H:%M %Z"), CYAN, max_width=188)
+            if config.get("brief_leave_times_enabled") is True:
+                leave = _dt(visit.get("leave_at"))
+                conflict = visit.get("leave_conflict") is True
+                if leave:
+                    _text(draw, (139, y + 34), "LEAVE " + leave.astimezone(zone).strftime("%m/%d %H:%M %Z"), AMBER, max_width=188)
+                elif conflict:
+                    _text(draw, (139, y + 34), "LEAVE TIME CONFLICT", AMBER, max_width=188)
+                if conflict:
+                    draw.rectangle((331, y + 35, 492, y + 42), fill=PANEL)
+                    _text(draw, (333, y + 36), "BRIEF / VERIFY REPORT", AMBER, max_width=154)
     _text(draw, (16, 211), _trip_range(preview), CYAN)
     first, last = page * TRIP_PAGE_SIZE + 1, min((page + 1) * TRIP_PAGE_SIZE, len(legs))
     _text(draw, (497, 211), f"LEGS {first}-{last} OF {len(legs)}", MUTED, align="right")
@@ -943,7 +976,6 @@ def _trip_map(draw, image, state, config, now):
                     md.line((a, b), fill=(29, 60, 68))
         # Dim context routes first, then the current legend page's routes.
         routes.sort(key=lambda row: row[0] in selected_indexes)
-        airports = {}
         for index, leg, route in routes:
             selected = index in selected_indexes
             color = leg["_trip_color"] if selected else tuple(round(c * .38) for c in leg["_trip_color"])
@@ -952,24 +984,8 @@ def _trip_map(draw, image, state, config, now):
             for point in (pixels[0], pixels[-1]):
                 x, y = point
                 md.ellipse((x - 2, y - 2, x + 2, y + 2), fill=BG, outline=color)
-            airports[str(leg.get("origin", ""))] = pixels[0]
-            airports[str(leg.get("destination", ""))] = pixels[-1]
-        # Airport names identify the map without number plates or connector
-        # strokes obscuring the routes. Dates and city pairs live in the legend.
-        occupied = []
-        for code, (px, py) in airports.items():
-            width = _width(code, tracking=1)
-            candidates = [(px + 6, py - 12), (px + 6, py + 5),
-                          (px - width - 6, py - 12), (px - width - 6, py + 5)]
-            for left, top in candidates:
-                left, top = max(18, min(321 - width, left)), max(62, min(190, top))
-                box = (left - 2, top - 2, left + width + 1, top + 8)
-                if all(box[2] < old[0] or box[0] > old[2] or box[3] < old[1] or box[1] > old[3]
-                       for old in occupied):
-                    occupied.append(box)
-                    md.rectangle(box, fill=BG)
-                    _text(md, (left, top), code, WHITE, tracking=1)
-                    break
+        # Keep the geographic layer clear. Dates and city pairs identify
+        # routes in the legend instead of placing text over the route lines.
     else:
         _text(md, (170, 119), "MAP COORDINATES", MUTED, align="center")
         _text(md, (170, 133), "UNAVAILABLE", MUTED, align="center")
@@ -1139,6 +1155,15 @@ def _shopping_ticker(names, offset):
     return ticker
 
 
+def display_content_bounds(state, now, timer_progress=None, ticker_progress=None):
+    """Logical rectangle occupied by the board during strip transitions."""
+    top = round(TIMER_STRIP_HEIGHT * _overlay_progress(timer_progress, visible_timers(state, now)))
+    bottom = round(SHOPPING_TICKER_HEIGHT * _overlay_progress(ticker_progress, shopping_ticker_names(state)))
+    height = BASE_SIZE[1] - top - bottom
+    width = height * 2
+    return ((BASE_SIZE[0] - width) // 2, top, width, height)
+
+
 def compose_display_overlays(image, state, now, timer_progress=None, ticker_progress=None):
     """Fit the entire 2:1 content between the timer strip and shopping ticker.
 
@@ -1147,17 +1172,15 @@ def compose_display_overlays(image, state, now, timer_progress=None, ticker_prog
     """
     timers = visible_timers(state, now)
     names = shopping_ticker_names(state)
-    top = round(TIMER_STRIP_HEIGHT * _overlay_progress(timer_progress, timers))
-    bottom = round(SHOPPING_TICKER_HEIGHT * _overlay_progress(ticker_progress, names))
+    left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+    bottom = BASE_SIZE[1] - top - height
     if not top and not bottom:
         return image
     output = Image.new("RGB", BASE_SIZE, BG)
-    height = BASE_SIZE[1] - top - bottom
-    width = height * 2
     # Preserve thin font strokes while reducing the board. Nearest-neighbour
     # drops entire one-pixel strokes at this fractional scale.
     content = image.resize((width, height), Image.Resampling.LANCZOS)
-    output.paste(content, ((BASE_SIZE[0] - width) // 2, top))
+    output.paste(content, (left, top))
     if timers and top:
         strip = Image.new("RGB", (BASE_SIZE[0], TIMER_STRIP_HEIGHT), BG)
         draw = ImageDraw.Draw(strip)

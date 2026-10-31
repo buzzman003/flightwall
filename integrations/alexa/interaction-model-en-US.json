@@ -15,6 +15,7 @@
             "we will have {Meal} for dinner",
             "dinner is {Meal}",
             "set dinner to {Meal}",
+            "add {Meal} for dinner",
             "put {Meal} on the dinner board",
             "set dinner for {Date}",
             "dinner is on {Date}"
@@ -25,6 +26,8 @@
           "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
           "samples": [
             "set dinner today to {Meal}",
+            "add {Meal} for dinner today",
+            "add {Meal} as the menu item today",
             "dinner today is {Meal}",
             "today dinner is {Meal}",
             "for dinner today we are having {Meal}",
@@ -39,6 +42,8 @@
           "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
           "samples": [
             "set dinner tomorrow to {Meal}",
+            "add {Meal} for dinner tomorrow",
+            "add {Meal} as the menu item tomorrow",
             "dinner tomorrow is {Meal}",
             "tomorrow dinner is {Meal}",
             "for dinner tomorrow we are having {Meal}",
