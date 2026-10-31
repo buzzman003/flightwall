@@ -56,7 +56,7 @@ def _source_files(source: Path, private_key: Path):
                        ".env", "flightwall-signing-private.pem", "flightwall-token.json",
                        "google-client.json", "google-token.json", "gmail-client.json", "gmail-token.json",
                        "household-calendars.json", "personal.json", "content.json", "layovers.json",
-                       "timers.json", "flight-watches.json", "remote-oauth.json",
+                       "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json",
                        "consents.json", "setup-consents.json", "setup-complete.json",
                        "openai-usage.json", "flightaware-usage.json",
                        "sms.json", "flightwall-list.json", "list.json", "lisa.json",

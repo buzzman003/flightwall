@@ -35,6 +35,7 @@ WIZARD_SETTINGS = frozenset({
     "hotel_details_enabled",
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
     "local_visits_enabled", "shopping_ticker_enabled", "shopping_ticker_visible",
+    "weather_enabled", "nearby_radius_miles",
 })
 SCOPES = {
     "calendar": ("https://www.googleapis.com/auth/calendar.events.readonly",

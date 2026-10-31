@@ -20,7 +20,8 @@ DEFAULTS = {
     "show_deadheads": True, "takeover_hours": 18,
     "sleep_start": "23:00", "sleep_end": "06:00", "sleep_enabled": False,
     "nearby_enabled": False, "home_latitude": None, "home_longitude": None,
-    "nearby_radius_nm": 50, "flightaware_enabled": False,
+    "nearby_radius_nm": 50, "nearby_radius_miles": None, "flightaware_enabled": False,
+    "weather_enabled": False, "weather_latitude": None, "weather_longitude": None,
     "flightaware_poll_seconds": 120, "flightaware_daily_limit": 240,
     "updates_enabled": False, "update_manifest_url": "", "update_public_key": "",
     "update_interval_minutes": 15, "public_url": "", "control_port": 8765,
@@ -52,7 +53,8 @@ DEFAULTS = {
 REMOTE_SETTINGS = frozenset({
     "airline", "timezone", "rotation_seconds", "brightness", "glow", "dot_gap",
     "led_effect", "show_deadheads", "takeover_hours", "sleep_start", "sleep_end",
-    "sleep_enabled", "nearby_enabled", "home_latitude", "home_longitude", "nearby_radius_nm",
+    "sleep_enabled", "nearby_enabled", "home_latitude", "home_longitude", "nearby_radius_nm", "nearby_radius_miles",
+    "weather_enabled",
     "personal_enabled", "appointment_duration_minutes", "dinner_start", "dinner_end",
     "guest_mode", "flight_focus_seconds", "flight_window_before_minutes", "flight_window_after_minutes",
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
@@ -93,12 +95,17 @@ def validate(key, value):
     if isinstance(original, bool):
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be true or false")
-    elif key in {"home_latitude", "home_longitude"}:
+    elif key in {"home_latitude", "home_longitude", "weather_latitude", "weather_longitude"}:
         if value is None:
             return value
-        limit = 90 if key == "home_latitude" else 180
+        limit = 90 if key.endswith("latitude") else 180
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not -limit <= value <= limit:
             raise ValueError(f"{key} must be between {-limit} and {limit}, or null")
+    elif key == "nearby_radius_miles":
+        if value is None:
+            return value
+        if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0.1 <= value <= 250:
+            raise ValueError("nearby_radius_miles must be between 0.1 and 250, or null")
     elif isinstance(original, (int, float)):
         limits = {
             "rotation_seconds": (3, 300), "logical_width": (512, 512), "logical_height": (256, 256),

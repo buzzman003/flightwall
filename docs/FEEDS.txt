@@ -1,5 +1,9 @@
-OPTIONAL LIVE FLIGHTS AND NEARBY TRAFFIC
-Flight Wall 0.1.0
+OPTIONAL LIVE FLIGHTS, NEARBY TRAFFIC AND WEATHER
+Flight Wall 0.4.2 source candidate - October 31, 2026
+
+The weather card and nearby-map changes below require the next signed 0.4.2
+Linux release. They are not installed on the owner's current 0.4.1 board.
+Normal first launch remains offline DEMO; optional feeds are disabled.
 
 Start with the calendar and demo display. Both work without paid flight data.
 The route on the map is a planned great-circle route, not an aircraft track.
@@ -54,23 +58,96 @@ No real account or paid live endpoint was exercised during the included tests.
 
 OFF-DUTY NEARBY TRAFFIC: ADSB.LOL (OPTIONAL COMMUNITY FEED)
 
-This uses https://api.adsb.lol/ with no bundled key. Availability, coverage and
-terms can change. It is a volunteer receiver network, not guaranteed global
-coverage. The app requests a local circle once per minute only while off duty;
-your own roster flights take priority during the configured takeover window.
+This uses https://api.adsb.lol/ without a paid FlightAware subscription. The
+community provider describes free ad-hoc/feeder access and optional sponsorship
+for more quota. Availability, access rules and coverage can change; continuous
+unlimited access is not promised. The app currently makes unauthenticated local
+circle requests at most once per minute while off duty. Your roster flights
+retain priority. No paid fallback or subscription is enabled automatically.
 
-Set your own display location in one command. The following is an ATL example;
-replace its coordinates if your display is elsewhere:
+First save your own home/display pin privately through setup. Enabling nearby
+traffic sends that pin to ADSB.lol as query coordinates; it does not send your
+calendar. Do not paste the pin into chat or commit it. After installing 0.4.2,
+use the existing pin with a five-statute-mile radius:
 
-   /userdata/roms/ports/.data/flightwall/flightwall config --set home_latitude 33.64 --set home_longitude -84.43 --set nearby_radius_nm 50 --set nearby_enabled true
+   /userdata/roms/ports/.data/flightwall/flightwall config --set nearby_radius_miles 5 --set nearby_enabled true
 
-Coordinates are shared with that feed as part of the query. Radius is in
-nautical miles, with a supported maximum of 250. Old or invalid positions are
-discarded. An unavailable feed clears aircraft rather than showing stale traffic.
+This is a horizontal radius, not a height/altitude limit or a promise that a
+plane is directly overhead. The app requests a containing provider circle and
+then filters the actual distance precisely. The override accepts 0.1-250 miles.
+Set nearby_radius_miles to null to preserve the legacy nearby_radius_nm setting;
+upgrading never silently reinterprets old nautical-mile values as statute miles.
+
+The north-up map shows received positions around a home marker, with details
+for the three nearest aircraft and at most forty nearest points. Callsign,
+registration/tail and type appear only when the provider supplies valid values.
+Origin and destination are unavailable from this position feed and are not
+guessed. There is no moving estimate between observations or road-map imagery.
+
+Only positions with a provider-derived age of 0-120 seconds appear. Explicit
+ground reports are excluded; an unknown altitude remains labeled unknown.
+Age comes from the provider snapshot time minus position age, not download
+receipt time. Invalid, future, ground and stale fixes are discarded; every TV
+frame rechecks age even if the backend stops. Failed feeds clear traffic.
+Changing the pin/radius hides a response from the old query immediately.
+"No fresh aircraft" can mean no coverage, no nearby aircraft or unavailable
+data; it is not proof that the sky is empty.
+
+The admin TV route receives aircraft coordinates and home-relative offsets.
+Maintenance status removes absolute aircraft coordinates when offsets are
+present, so the response does not directly reconstruct the private home pin.
 
 Disable it with:
 
    /userdata/roms/ports/.data/flightwall/flightwall config --set nearby_enabled false
+
+LOCAL WEATHER: NATIONAL WEATHER SERVICE (OPTIONAL, NO API FEE)
+
+The NWS API supplies public U.S. forecast data without an API usage fee. No
+FlightAware subscription or weather API key is needed. Rate limits, outages and
+geographic coverage still apply. This feature is a forecast reminder, not an
+aviation/weather safety service or a guarantee that cushions will stay dry.
+
+Choose a coarse forecast point appropriate for your area. It is separate from
+the phone/home geofence and is not copied from that pin automatically. On the
+local SSH terminal, replace LATITUDE and LONGITUDE below with your chosen
+numeric values before running the command; these words are placeholders:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set weather_latitude LATITUDE --set weather_longitude LONGITUDE --set weather_enabled true
+
+NWS receives the configured query coordinates. The app does not automatically
+coarsen a precise value, so enter the coarse point you intend to disclose.
+Weather coordinates stay in private config and cannot be set through remote
+tools or read from public configuration/status. The weather cache stores only
+normalized forecast fields and a location identity hash, not raw provider
+payloads or coordinates. Enabling weather without a valid point shows an
+unavailable/unconfigured state rather than guessing your location.
+
+The card shows today's and tomorrow's daytime high/nighttime low in Fahrenheit,
+with dates and an overnight rain reminder. All boundaries use the board's
+configured time zone. Before 08:00, the reminder covers the remaining current
+night until 08:00. From 08:00 it targets the coming 18:00-08:00 period; after
+18:00 it covers the remaining hours. DST changes are included. The TV labels
+the window as NOW-08:00 LOCAL or 18:00-08:00 LOCAL.
+
+A fresh hourly rain mention or peak hourly precipitation chance of at least
+20% gives RAIN POSSIBLE / PUT CUSHIONS IN. That percentage is the highest hourly
+chance in the covered window, not a probability calculated for the whole night.
+Incomplete data may still establish rain possible and is labeled PARTIAL DATA.
+Low chance requires complete, fresh probability coverage for all remaining
+hours and no rain mention. Missing/null/overlapping hours never establish low
+risk. Unknown or stale coverage says to check an updated forecast. Missing
+daytime data does not suppress a valid hourly rain warning.
+
+Forecast requests run separately from calendar/control work, at most every
+30 minutes; point-to-grid mapping refreshes every 24 hours. A two-hour-old fetch
+or twelve-hour-old forecast issuance is stale. Dates, windows and freshness are
+also checked each frame; cached data is not relabeled as newly observed.
+The TV identifies NWS and its forecast time. See weather.gov for full forecasts.
+
+To disable weather:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set weather_enabled false
 
 REFERENCE DOCUMENTATION
 
@@ -78,6 +155,9 @@ FlightAware developer portal: https://www.flightaware.com/aeroapi/portal/documen
 FlightAware v4 endpoints: GET /flights/{ident}; GET /flights/{id}/position
 ADSB.lol interactive documentation: https://api.adsb.lol/docs
 ADSB.lol OpenAPI schema: https://api.adsb.lol/api/openapi.json
+ADSB.lol access: https://www.adsb.lol/docs/open-data/api
+ADSB.lol free access/optional sponsorship: https://www.adsb.lol/sponsor
+NWS API, pricing and forecast endpoints: https://www.weather.gov/documentation/services-web-api
 
 The installed app, authentication guide and remote setup are described in
 INSTALL.txt, CALENDAR.txt and REMOTE.txt beside this file.

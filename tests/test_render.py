@@ -111,7 +111,12 @@ class RenderTests(unittest.TestCase):
 
     def test_nearby_uses_real_feed_flight_and_source_fields(self):
         self.state["view"] = "nearby"
-        self.state["nearby"] = [{"flight": "DAL123", "source": "ADSB.lol", "altitude": 32000}]
+        self.state["demo"] = False
+        self.config.update(nearby_enabled=True, nearby_radius_miles=5)
+        self.state["nearby"] = [{"flight": "DAL123", "source": "ADSB.lol", "altitude": 32000,
+                                  "latitude": 33.6, "longitude": -84.4, "hex": "abc123",
+                                  "east_miles": .5, "north_miles": .2,
+                                  "observed_at": self.state["now"]}]
         labels = []
         original = render._text
 
@@ -121,9 +126,9 @@ class RenderTests(unittest.TestCase):
 
         with patch.object(render, "_text", side_effect=capture):
             render.render_frame(self.state, self.config)
-        self.assertIn("DAL123", labels)
-        self.assertIn("NEARBY TRAFFIC / ADSB.lol", labels)
-        self.assertNotIn("UNKNOWN", labels)
+        self.assertTrue(any("DAL123" in label for label in labels))
+        self.assertIn("NEARBY AIRCRAFT / ADSB.LOL", labels)
+        self.assertIn("ORIGIN / DESTINATION UNAVAILABLE", labels)
 
 
 class PersonalRenderTests(unittest.TestCase):

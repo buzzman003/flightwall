@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from PIL import Image, ImageDraw
 
+from .timers import COMPLETED_RETENTION
+
 BASE_SIZE = (512, 256)
 TIMER_STRIP_HEIGHT = 36
 SHOPPING_TICKER_HEIGHT = 18
@@ -89,6 +91,7 @@ _GLYPHS = {
     "=":"00000/00000/11111/00000/11111/00000/00000",
     "&":"01100/10010/10100/01000/10101/10010/01101",
     "@":"01110/10001/10111/10101/10111/10000/01111",
+    "%":"11001/11010/00010/00100/01000/10110/00110",
 }
 
 
@@ -97,20 +100,20 @@ def _clean(value):
     return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
 
 
-def _width(value, scale=1):
-    return max(0, len(_clean(value)) * 6 * scale - scale)
+def _width(value, scale=1, tracking=0):
+    return max(0, len(_clean(value)) * (6 * scale + tracking) - scale - tracking)
 
 
-def _text(draw, xy, value, color=WHITE, scale=1, max_width=None, align="left"):
+def _text(draw, xy, value, color=WHITE, scale=1, max_width=None, align="left", tracking=0):
     value = _clean(value)
-    if max_width is not None and _width(value, scale) > max_width:
-        count = max(0, (max_width + scale) // (6 * scale) - 2)
+    if max_width is not None and _width(value, scale, tracking) > max_width:
+        count = max(0, (max_width + scale + tracking) // (6 * scale + tracking) - 2)
         value = value[:count] + ".." if count else ""
     x, y = xy
     if align == "right":
-        x -= _width(value, scale)
+        x -= _width(value, scale, tracking)
     elif align == "center":
-        x -= _width(value, scale) // 2
+        x -= _width(value, scale, tracking) // 2
     for char in value:
         rows = _GLYPHS.get(char, _GLYPHS["?"]).split("/")
         for dy, row in enumerate(rows):
@@ -118,7 +121,7 @@ def _text(draw, xy, value, color=WHITE, scale=1, max_width=None, align="left"):
                 if bit == "1":
                     xx, yy = int(x + dx * scale), int(y + dy * scale)
                     draw.rectangle((xx, yy, xx + scale - 1, yy + scale - 1), fill=color)
-        x += 6 * scale
+        x += 6 * scale + tracking
 
 
 def _dt(value, default=None):
@@ -192,14 +195,14 @@ def _clock(draw, state, now):
         _text(draw, (353, 12), "DEMO", AMBER)
 
 
-def _header(draw, state, now, page):
+def _header(draw, state, now, page, *, page_scale=1, page_tracking=0):
     for row in range(3):
         for col in range(3):
             draw.rectangle((15 + col * 4, 10 + row * 4, 16 + col * 4, 11 + row * 4), fill=AMBER if row + col == 2 else CYAN)
     _text(draw, (35, 10), "FLIGHTWALL", WHITE, 2)
     _clock(draw, state, now)
     draw.line((14, 31, 497, 31), fill=LINE)
-    _text(draw, (15, 40), page, CYAN)
+    _text(draw, (15, 40), page, CYAN, page_scale, tracking=page_tracking)
 
 
 def _footer(draw, state, view, now, tz, personal_item=None):
@@ -940,7 +943,7 @@ def _trip_map(draw, image, state, config, now):
                     md.line((a, b), fill=(29, 60, 68))
         # Dim context routes first, then the current legend page's routes.
         routes.sort(key=lambda row: row[0] in selected_indexes)
-        used_labels, markers = [], []
+        airports = {}
         for index, leg, route in routes:
             selected = index in selected_indexes
             color = leg["_trip_color"] if selected else tuple(round(c * .38) for c in leg["_trip_color"])
@@ -949,29 +952,31 @@ def _trip_map(draw, image, state, config, now):
             for point in (pixels[0], pixels[-1]):
                 x, y = point
                 md.ellipse((x - 2, y - 2, x + 2, y + 2), fill=BG, outline=color)
-            px, py = pixels[len(pixels) // 2]
-            x, y = max(28, min(310, px)), max(69, min(190, py))
-            for offset in (0, -13, 13, -26, 26, -39, 39):
-                candidate = max(69, min(190, y + offset))
-                if all(abs(x - old_x) >= 16 or abs(candidate - old_y) >= 12 for old_x, old_y in used_labels):
-                    y = candidate
+            airports[str(leg.get("origin", ""))] = pixels[0]
+            airports[str(leg.get("destination", ""))] = pixels[-1]
+        # Airport names identify the map without number plates or connector
+        # strokes obscuring the routes. Dates and city pairs live in the legend.
+        occupied = []
+        for code, (px, py) in airports.items():
+            width = _width(code, tracking=1)
+            candidates = [(px + 6, py - 12), (px + 6, py + 5),
+                          (px - width - 6, py - 12), (px - width - 6, py + 5)]
+            for left, top in candidates:
+                left, top = max(18, min(321 - width, left)), max(62, min(190, top))
+                box = (left - 2, top - 2, left + width + 1, top + 8)
+                if all(box[2] < old[0] or box[0] > old[2] or box[3] < old[1] or box[1] > old[3]
+                       for old in occupied):
+                    occupied.append(box)
+                    md.rectangle(box, fill=BG)
+                    _text(md, (left, top), code, WHITE, tracking=1)
                     break
-            used_labels.append((x, y))
-            markers.append((px, py, x, y, leg["_leg_number"], color))
-        # All route strokes precede number plates, including return legs on
-        # the same route; a later route must not erase an earlier leg number.
-        for px, py, x, y, number, color in markers:
-            md.line((px, py, x, y), fill=color)
-        for px, py, x, y, number, color in markers:
-            md.rectangle((x - 8, y - 6, x + 8, y + 6), fill=BG, outline=color)
-            _text(md, (x, y - 3), number, color, align="center", max_width=14)
     else:
         _text(md, (170, 119), "MAP COORDINATES", MUTED, align="center")
         _text(md, (170, 133), "UNAVAILABLE", MUTED, align="center")
     image.paste(layer.crop((15, 59, 325, 202)), (15, 59))
     for index, leg in enumerate(legs[page * TRIP_PAGE_SIZE:(page + 1) * TRIP_PAGE_SIZE]):
         y, color = 62 + index * 48, leg["_trip_color"]
-        _text(draw, (339, y), str(leg["_leg_number"]) + " / " + _trip_date(leg["_trip_date"]), color, max_width=158)
+        _text(draw, (339, y), _trip_date(leg["_trip_date"]), color, max_width=158, tracking=1)
         origin, destination = leg.get("origin", "---"), leg.get("destination", "---")
         _text(draw, (339, y + 13), f"{origin} > {destination}", WHITE, 2, max_width=158)
         detail = ("DH / " if leg.get("deadhead") else "") + f"{_city(origin)} > {_city(destination)}"
@@ -979,7 +984,7 @@ def _trip_map(draw, image, state, config, now):
             detail = "MAP COORDS UNAVAILABLE"
         _text(draw, (339, y + 32), detail, MUTED, max_width=158)
     first, last = page * TRIP_PAGE_SIZE + 1, min((page + 1) * TRIP_PAGE_SIZE, len(legs))
-    _text(draw, (16, 213), "PAGE ROUTES" if page_only else "ALL ROUTES / DATE COLORS", CYAN)
+    _text(draw, (16, 213), "PAGE ROUTES" if page_only else "ALL ROUTES / DATE COLORS", CYAN, tracking=1)
     _text(draw, (497, 213), f"LEGEND {first if legs else 0}-{last} OF {len(legs)}", MUTED, align="right")
 
 
@@ -1013,7 +1018,7 @@ def _home(draw, state, config, now):
 
 def _custody_outlook(draw, state, config, now):
     """Display only derived daily intervals; never guess a missing day's house."""
-    _header(draw, state, now, "FAMILY / NEXT 10 DAYS")
+    _header(draw, state, now, "FAMILY / NEXT 10 DAYS", page_scale=2)
     outlook = state.get("custody_outlook")
     outlook = outlook if isinstance(outlook, dict) else {}
     zone = _tz({"timezone": config.get("timezone") or outlook.get("timezone") or "UTC"})
@@ -1034,7 +1039,7 @@ def _custody_outlook(draw, state, config, now):
         _text(draw, (x + 6, y + 7), "TODAY" if index == 0 else date.strftime("%a"), WHITE)
         _text(draw, (x + 83, y + 7), date.strftime("%m/%d"), MUTED, align="right")
         if kind != "mixed":
-            _text(draw, (x + 45, y + 30), names[kind], colors[kind], align="center", max_width=82)
+            _text(draw, (x + 45, y + 30), names[kind], colors[kind], align="center", max_width=82, tracking=1)
             _text(draw, (x + 45, y + 47), "ALL DAY" if kind != "unknown" else "NO ASSUMPTION", MUTED, align="center", max_width=82)
         else:
             _text(draw, (x + 45, y + 22), "CHANGE DAY", WHITE, align="center")
@@ -1063,7 +1068,7 @@ def visible_timers(state, now):
         if not isinstance(row, dict) or row.get("status") == "cancelled":
             continue
         end = _dt(row.get("ends_at"))
-        if end is None:
+        if end is None or now - end >= COMPLETED_RETENTION:
             continue
         remaining = max(0, math.ceil((end - now).total_seconds()))
         result.append({"label": str(row.get("label") or "TIMER"), "remaining_seconds": remaining})
@@ -1201,7 +1206,11 @@ def render_frame(state, config, size=BASE_SIZE):
     elif view == "schedule":
         _schedule(draw, state, config, now, flights, tz)
     elif view == "nearby":
-        _nearby(draw, state, config, now, flights, tz)
+        from .extra_views import render_nearby
+        render_nearby(draw, image, state, config, now)
+    elif view == "weather":
+        from .extra_views import render_weather
+        render_weather(draw, image, state, config, now)
     elif view == "personal":
         personal_item = _selected_personal(state, now)
         if personal_item and personal_item.get("kind") == "dinner" and config.get("kids_filter_enabled") is True:
@@ -1238,7 +1247,8 @@ def render_frame(state, config, size=BASE_SIZE):
             _layover(draw, state, config, now, card)
     else:
         _details(draw, state, config, now, flight, flights, tz)
-    _footer(draw, state, view, now, tz, personal_item)
+    if view not in {"weather", "nearby"}:
+        _footer(draw, state, view, now, tz, personal_item)
     if not state.get("defer_display_overlays") and not state.get("defer_timer_overlay"):
         image = compose_display_overlays(image, state, now, state.get("timer_strip_progress"), state.get("shopping_ticker_progress"))
     if tuple(size) != BASE_SIZE:

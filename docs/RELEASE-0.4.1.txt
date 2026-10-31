@@ -1,5 +1,9 @@
 FLIGHT WALL 0.4.1: SHORT DINNER COMMANDS
 
+This is the 0.4.1 release-time record. Later owner TV confirmation and Alexa
+log/Routine observations are recorded in VALIDATION.txt. The 0.4.2 source
+candidate is described separately; published 0.4.1 remains active on the TV.
+
 Published signed Linux release:
 https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
 Linux validation passed 562 tests and 314 subtests without skips or failures,

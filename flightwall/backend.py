@@ -24,6 +24,7 @@ from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
+from .weather import WeatherFeed
 
 
 def choose_flight(snapshot, config, now=None):
@@ -65,6 +66,7 @@ class Runtime:
         self._snapshot_cache_stamp = None
         self._demo_snapshot = demo_snapshot(datetime.now(timezone.utc))
         self.feeds = FlightFeeds(data_dir)
+        self.weather = WeatherFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
@@ -84,6 +86,7 @@ class Runtime:
         self._content_lock = threading.Lock()
         self._mail_worker = None
         self._content_worker = None
+        self._weather_worker = None
         self._mail_refresh = threading.Event()
         self._content_refresh = threading.Event()
 
@@ -138,7 +141,7 @@ class Runtime:
                 live = None
             status = {"version": __version__, "snapshot": snapshot, "config": self.config.public(),
                     "selected_flight": flight, "on_duty": is_on_duty(flight, config, now),
-                    "live": copy.deepcopy(live), "nearby": copy.deepcopy(self.feeds.nearby),
+                    "live": copy.deepcopy(live), "nearby": self.feeds.nearby_for_config(config, now),
                     "updater": copy.deepcopy(self.updater_status), "last_live_error": self.feeds.error,
                     "last_error": self.last_error,
                     "personal_items": personal_items, "personal_error": personal_error}
@@ -147,6 +150,11 @@ class Runtime:
         status["custody_outlook"] = household.get("custody_outlook", {}) if config["family_calendar_id"] else {}
         status["local_visits"] = local_visits(snapshot, now) if config["local_visits_enabled"] else []
         status["trip_preview"] = trip_preview(snapshot, config, now)
+        try:
+            status["weather"] = self.weather.status(now)
+        except Exception:
+            status["weather"] = {"status": "unavailable", "source": "National Weather Service",
+                                 "error": "Weather status is unavailable."}
         try:
             results = copy.deepcopy(self.feeds.watch_results)
             available = tracking_available(self.data_dir, config)
@@ -195,6 +203,13 @@ class Runtime:
         status = self.display_status(now)
         status["messages"]["lisa"] = []
         status["health"] = []
+        # Absolute aircraft positions plus home-relative offsets would reveal
+        # the private home pin. Maintenance needs only the relative local view;
+        # the separate admin TV route retains validated provider coordinates.
+        status["nearby"] = [{key: value for key, value in row.items()
+                             if key not in {"latitude", "longitude", "lat", "lon"}}
+                            if "east_miles" in row or "north_miles" in row else row
+                            for row in status["nearby"]]
         shopping = status.get("shopping_list", {})
         status["shopping_list"] = {"enabled": shopping.get("enabled", False),
                                    "visible": shopping.get("visible", False),
@@ -400,6 +415,16 @@ class Runtime:
         finally:
             self._mail_lock.release()
 
+    def _run_weather(self):
+        # Weather has its own bounded network poller and provider cadence.
+        # A slow forecast cannot delay calendar refresh, controls, or rendering.
+        while not self.stop_event.is_set():
+            try:
+                self.weather.poll()
+            except Exception:
+                pass  # Provider/cache errors remain sanitized in weather status.
+            self.stop_event.wait(2)
+
     def _sync_content(self):
         if not self._content_lock.acquire(blocking=False):
             return
@@ -442,6 +467,8 @@ class Runtime:
         self.remote.start()
         self.worker = threading.Thread(target=self._run, name="flightwall-sync", daemon=True)
         self.worker.start()
+        self._weather_worker = threading.Thread(target=self._run_weather, name="flightwall-weather", daemon=True)
+        self._weather_worker.start()
         return self
 
     def stop(self):
@@ -450,3 +477,5 @@ class Runtime:
             self.remote.stop()
         if self.worker:
             self.worker.join(timeout=2)
+        if self._weather_worker:
+            self._weather_worker.join(timeout=2)

@@ -1,13 +1,12 @@
-FLIGHT WALL 0.4.1
+FLIGHT WALL 0.4.2 SOURCE CANDIDATE
 
-This source checkout accompanies the published, signed 0.4.1 Linux release.
-The Linux build and native upgrade checks passed; deployment status and
-remaining physical/Alexa checks are recorded in docs/VALIDATION.txt.
-The owner's Batocera installation has activated 0.4.1; authenticated SSH
-verified its running GUI and healthy startup. Owner visual confirmation on
-the TV and reliable physical Echo invocation remain pending. Real flights
-and the larger display fit were previously confirmed on the TV with 0.4.0.
-Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
+This checkout contains the 0.4.2 candidate. It has not been built, signed,
+published or installed as a Linux release. The owner's TV still runs the
+published 0.4.1 executable. The owner has now confirmed its upcoming-trip
+schedule is readable; reliable physical Echo invocation remains unresolved.
+See docs/RELEASE-0.4.2.txt for candidate changes and docs/VALIDATION.txt for
+the separate source, release and actual-device evidence.
+Current published release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
 
 Your calendar-driven flight board and household display, delivered as a
 Batocera Port. Initial platform: x86_64 Batocera 42 on an HP Ryzen mini PC
@@ -25,7 +24,7 @@ Presence: docs/PRESENCE.txt. Optional previews: docs/MESSAGES.txt
 ChatGPT/Codex connection: docs/REMOTE.txt
 Signed releases: docs/UPDATES.txt and docs/UPDATE-CHANNEL.txt
 Alexa appointments and dinner: docs/ALEXA-SETUP.txt
-Optional live/nearby traffic: docs/FEEDS.txt
+Optional live/nearby traffic and local weather: docs/FEEDS.txt
 Tested behavior and account/device limitations: docs/VALIDATION.txt
 
 The TV draws 512 x 256 logical pixels with an OpenGL LED effect and a
@@ -45,18 +44,33 @@ does not prove anyone's physical location. Nearby traffic stays secondary.
 Actual live positions require a separately configured provider; scheduled
 flights and maps work without a paid flight-data account.
 
-Version 0.4.0 uses a five-day lead-in for trip previews. Longer breaks show
-household views instead of distant flight detail. Upcoming trip cards and
-maps show a dated range, with colors per day, numbered legs and a paged
-legend. A dated range is not a guessed roster rotation. The display uses
+Trip previews use an adjustable lead-in (flight_preview_days, default five
+elapsed days; the owner's current setting is seven). Once eligible, the
+preview shows the next five local calendar days starting with the next leg.
+Longer breaks show household views instead of distant flight detail. Trip
+cards and maps show a dated range with colors per day and a paged legend.
+The 0.4.2 candidate removes route-number plates from the map, keeping airport
+codes and a date/city-pair legend. It also enlarges the custody heading.
+A dated range is not a guessed roster rotation. The display uses
 the configured household time zone, including its daylight-saving changes.
 Default aspect-fit scaling makes the LED dots larger while preserving the
 512x256 canvas. Integer scaling remains available in settings.
 
 Labeled TV timers can appear above the normal view; the Flight Wall shopping
-list scrolls below it. Alexa commands for these new features require the
-matching 0.4.0 board and updated skill/Lambda. Ordinary Alexa timers and its
+list scrolls below it. In 0.4.2, completed timers disappear five minutes after
+their deadline, even if the display is using cached state; running timers
+are unchanged. Alexa commands require a matching board and skill/Lambda.
+Ordinary Alexa timers and its
 built-in shopping list do not automatically synchronize with Flight Wall.
+
+The 0.4.2 candidate adds an optional NWS today/tomorrow forecast and overnight
+rain reminder for outdoor cushions. Missing or stale data stays unknown or
+stale, never a promise of dry weather. Optional ADSB.lol nearby traffic uses a
+local position map with a configurable statute-mile radius, fresh positions with ground reports filtered out, and
+tail/type when supplied. These public feeds need no FlightAware
+subscription. Enabling them discloses their configured query location to the
+provider; weather can use a separate coarse point kept in private settings.
+Neither feature is enabled by a normal offline DEMO launch. See docs/FEEDS.txt.
 
 HOUSEHOLD SETUP
 

@@ -19,6 +19,7 @@ MAX_DURATION_SECONDS = 24 * 60 * 60
 MAX_LABEL = 80
 MAX_REQUESTS = 2000
 REQUEST_TTL = timedelta(days=30)
+COMPLETED_RETENTION = timedelta(minutes=5)
 _FIELDS = {"id", "label", "started_at", "ends_at", "duration_seconds", "source", "cancelled"}
 
 
@@ -144,6 +145,12 @@ class TimerStore:
                       status="cancelled" if timer["cancelled"] else "running" if remaining else "expired")
         return result
 
+    @staticmethod
+    def _visible(timer, now):
+        # Reads do not rewrite the store. Keep the original deadline and retry
+        # snapshot even after DONE leaves the display; a retry cannot restart it.
+        return not timer["cancelled"] and now - _stamp(timer["ends_at"]) < COMPLETED_RETENTION
+
     def start(self, payload):
         if not isinstance(payload, dict) or set(payload) - {"label", "duration_seconds", "source", "request_id"}:
             raise TimerError("Use only label, duration_seconds, source and request_id for a timer.")
@@ -169,7 +176,7 @@ class TimerStore:
                 return {"created": False, "timer": self._project(record["timer"], now), "replaced": []}
             if key is not None and len(state["requests"]) >= MAX_REQUESTS:
                 raise TimerError("The timer request history is full. Retry after older requests expire; no timer was added.")
-            state["timers"] = [timer for timer in state["timers"] if not timer["cancelled"]]
+            state["timers"] = [timer for timer in state["timers"] if self._visible(timer, now)]
             replaced = []
             if len(state["timers"]) == MAX_TIMERS:
                 expired = [timer for timer in state["timers"] if _stamp(timer["ends_at"]) <= now]
@@ -194,7 +201,7 @@ class TimerStore:
         now = _aware(now)
         with self._locked():
             state = self._read()
-        return [self._project(timer, now) for timer in state["timers"] if not timer["cancelled"]]
+        return [self._project(timer, now) for timer in state["timers"] if self._visible(timer, now)]
 
     def cancel(self, item_id):
         if not isinstance(item_id, str) or not re.fullmatch(r"[a-f0-9]{24}", item_id):

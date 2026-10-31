@@ -30,7 +30,7 @@ class ReleasePrivacyTests(unittest.TestCase):
         names = ("config.json", "state.json", "google-client.json", "google-token.json", "gmail-token.json",
                  "calendar-cache.json", "household-cache.json", "household-calendars.json", "messages-cache.json",
                  "research-cache.json", "inspiration-cache.json", "personal.json", "content.json", "layovers.json",
-                 "timers.json", "flight-watches.json", "remote-oauth.json", "setup-consents.json", "setup-complete.json",
+                 "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json", "setup-consents.json", "setup-complete.json",
                  "openai-usage.json", "flightaware-usage.json", "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                  "control-token.txt", "alexa-token.txt", "notification-token.txt", "customtoken.txt", "lisa.token",
                  "openai.key", "flightaware.key", "personal.lock", "timers.lock", "flight-watches.lock",

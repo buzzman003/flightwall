@@ -55,6 +55,19 @@ class TimerRenderTests(unittest.TestCase):
         self.assertEqual(image.getpixel((11, 1)), render.LINE)
         self.assertEqual(image.getpixel((500, 1)), render.LINE)
 
+    def test_cached_finished_timer_disappears_after_five_minutes(self):
+        timer = self.timer(0)
+        before = deepcopy(timer)
+        self.assertEqual(len(render.visible_timers({"timers": [timer]}, NOW + timedelta(seconds=299))), 1)
+        self.assertEqual(render.visible_timers({"timers": [timer]}, NOW + timedelta(seconds=300)), [])
+        self.assertEqual(render.visible_timers({"timers": [timer]}, NOW + timedelta(hours=1)), [])
+        self.assertEqual(timer, before)
+
+    def test_extreme_valid_deadline_does_not_overflow_timer_rendering(self):
+        timer = self.timer(60) | {"ends_at": "9999-12-31T23:59:59+00:00"}
+        self.assertEqual(len(render.visible_timers({"timers": [timer]}, NOW)), 1)
+        self.assertEqual(labels_for({"now": NOW.isoformat(), "timers": [timer]})[1].size, (512, 256))
+
     def test_invalid_and_cancelled_rows_do_not_reserve_space(self):
         state = {"timers": [None, {}, self.timer(60) | {"status": "cancelled"}, self.timer(60) | {"ends_at": "2026-10-31T18:01:00"}]}
         source = Image.new("RGB", (512, 256), (40, 80, 160))
@@ -323,7 +336,7 @@ class TripAndHomeRenderTests(unittest.TestCase):
         self.assertIn("ALL ROUTES / DATE COLORS", page0)
         self.assertIn("LEGEND 1-3 OF 5", page0)
         self.assertIn("LEGEND 4-5 OF 5", page1)
-        self.assertIn("1 / Sun 11/01", page1)
+        self.assertIn("Sun 11/01", page1)
         self.assertIn("ATL > LAX", page1)
         self.assertIn("PLANNED TRIP / NOT LIVE TRACKING", page1)
         self.assertFalse(any(label.startswith("LIVE POSITION") for label in page1))
@@ -331,6 +344,19 @@ class TripAndHomeRenderTests(unittest.TestCase):
         _, rows, _ = render._trip_legs(self.state, {})
         self.assertEqual(rows[0]["_trip_color"], rows[2]["_trip_color"])
         self.assertNotEqual(rows[2]["_trip_color"], rows[3]["_trip_color"])
+
+    def test_trip_map_has_airport_labels_without_number_plates(self):
+        calls = []
+        original = render._text
+        def capture(draw, xy, value, *args, **kwargs):
+            calls.append((xy, str(value)))
+            return original(draw, xy, value, *args, **kwargs)
+        with patch.object(render, "_text", side_effect=capture):
+            image = render.render_frame(self.state | {"view": "trip_map"}, {"timezone": "America/Chicago"})
+        map_labels = [value for (x, y), value in calls if 15 <= x <= 324 and 59 <= y <= 201]
+        self.assertFalse(any(value.isdigit() for value in map_labels))
+        self.assertIn("ATL", map_labels)
+        self.assertEqual(image.size, (512, 256))
 
     def test_many_legs_are_honestly_paged_and_unknown_airport_is_explicit(self):
         many = [dict(self.preview["flights"][0], id=str(i), leg_number=i + 1) for i in range(13)]

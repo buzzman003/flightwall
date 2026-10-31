@@ -11,7 +11,7 @@ Shared data conventions (plain JSON dictionaries):
 - Root owns app.py, config.py, main.py, pyproject/requirements, integration, tests and packaging finalization. No agent should modify another agent's files without messaging.
 - Default data root: `/userdata/system/configs/flightwall` on Batocera, override `FLIGHTWALL_DATA_DIR`. Install root `/userdata/roms/ports/.data/flightwall`; versioned releases under `releases/<version>`, root `current` symlink, updater stages `pending` for next safe launch. Stable launcher/config kept outside releases.
 - Remote endpoint on 127.0.0.1:8765, MCP + OAuth protected endpoints; network exposure only explicitly configured via HTTPS proxy such as Tailscale Serve/Funnel. No arbitrary shell/exec tool. Remote operations via callbacks from main app: status, validated settings updates, calendar refresh, update check. Service may run outside GUI for schedule caching/updater.
-- VERSION 0.4.1 is published as a signed Linux release and activated on the owner's Batocera installation, with running GUI and startup health verified over authenticated SSH. Owner TV confirmation and reliable physical Echo invocation remain pending. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
+- VERSION 0.4.2 is a source candidate, not a built/published/installed Linux update. Published 0.4.1 remains active on the owner's Batocera installation; its running GUI/startup health and visible upcoming-trip schedule have been checked. Reliable physical Echo invocation remains unresolved. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
 
 Household cards (v0.2.0): PersonalStore persists appointments/dinner in a private
 JSON file outside releases, independent of read-only Google. Each card has id,
@@ -99,3 +99,39 @@ Version 0.4.1 dinner adapter:
   uncertain-write warnings, original retry IDs and same-date replacement.
 - Recognition/routing is external to the handler and must be checked on real
   devices. Do not claim that model changes fix Alexa's native-announcement route.
+
+Version 0.4.2 candidate:
+- Completed timers are visible only while now < ends_at + five minutes. Running
+  deadlines are unchanged. TimerStore reads and renderer frames both enforce the
+  cutoff, including backend outages; retry snapshots never recreate old timers.
+- Trip map removes route-number plates/connector strokes. Date colors, airport
+  codes, paged date/city-pair legends and honest overflow remain. Trip eligibility
+  and scheduled-versus-live claims do not change. flight_preview_days controls
+  the elapsed-day lead-in, not the five-calendar-day preview span. Custody keeps
+  ten local days and conservative Unknown/mixed-day rules with a larger heading.
+- Optional weather_enabled defaults false. Separate weather_latitude/longitude
+  default null and are local-only: no remote setter/schema or public config.
+  A coarse point may be chosen; the query point is disclosed to NWS. WeatherFeed
+  polls independently of calendar/control work, never during DEMO. status is
+  coordinate-free and non-networking; weather.json stays in private DATA.
+- One weather card joins the normal rotation without weakening flight priority.
+  Today/tomorrow use config.timezone. Before 08:00, overnight means the remaining
+  current night; otherwise it means the coming 18:00-08:00 window, shortened to
+  the remaining hours after 18:00. Boundaries honor DST. A fresh rain mention or
+  peak hourly precipitation chance >=20% means rain possible. Only complete,
+  fresh coverage can mean low chance; gaps/nulls/overlap/stale data never imply
+  dry weather. Recheck forecast age/window/date every frame.
+- nearby_radius_miles defaults null, preserving nearby_radius_nm. A non-null
+  0.1-250 statute-mile value overrides that legacy radius. ADSB.lol receives the
+  private home query point. Exact horizontal-radius filtering retains at most
+  forty nearest positions excluding explicit ground reports, aged 0-120 seconds from provider snapshot
+  time minus seen_pos. No extrapolation, guessed routes or inferred airports.
+  Optional tail/type are only reported values. Recheck freshness each frame.
+- A completed nearby query must match current enablement, pin and radius before
+  display. Admin TV state retains aircraft positions and home-relative vectors;
+  maintenance status removes absolute aircraft coordinates when those vectors
+  are present. Raw home/weather pins never appear in public status or releases.
+- The next native release gate must test original 0.3.0 -> candidate and original
+  0.3.0 -> published 0.4.1 -> candidate, including failed-start rollback to 0.4.1.
+  Keep the original pinned 0.3.0 helper, trusted key, version floor, all private
+  fixtures and the full tested-source/frozen-bundle/signature binding intact.

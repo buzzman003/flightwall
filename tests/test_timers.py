@@ -42,7 +42,7 @@ class TimerTests(unittest.TestCase):
         self.assertEqual(TimerStore(self.root).list_timers()[0]["status"], "expired")
         self.assertEqual(TimerStore(self.root).list_timers()[0]["remaining_seconds"], 0)
 
-    def test_expired_stays_done_until_dismissed(self):
+    def test_finished_timer_can_be_dismissed_before_automatic_expiry(self):
         timer = self.start(duration=1)["timer"]
         self.now += timedelta(seconds=1)
         self.assertEqual(self.store.list_timers()[0]["status"], "expired")
@@ -51,6 +51,65 @@ class TimerTests(unittest.TestCase):
         self.assertEqual(result["timer"]["status"], "cancelled")
         self.assertEqual(self.store.list_timers(), [])
         self.assertFalse(self.store.cancel(timer["id"])["cancelled"])
+
+    def test_done_disappears_exactly_five_minutes_after_deadline_without_writing(self):
+        timer = self.start(duration=1)["timer"]
+        deadline = self.now + timedelta(seconds=1)
+        before = self.store.path.read_bytes()
+        for moment, expected in ((deadline - timedelta(microseconds=1), "running"),
+                                 (deadline, "expired"),
+                                 (deadline + timedelta(minutes=5, microseconds=-1), "expired")):
+            with self.subTest(moment=moment):
+                rows = TimerStore(self.root).list_timers(moment)
+                self.assertEqual([row["id"] for row in rows], [timer["id"]])
+                self.assertEqual(rows[0]["status"], expected)
+        for moment in (deadline + timedelta(minutes=5), deadline + timedelta(days=1)):
+            with self.subTest(moment=moment):
+                self.assertEqual(TimerStore(self.root).list_timers(moment), [])
+        self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_completed_expiry_leaves_running_timer_deadline_and_countdown_unchanged(self):
+        self.start("Short", 60, "short")
+        running = self.start("Long", 3600, "long")["timer"]
+        self.now += timedelta(minutes=6)
+        rows = TimerStore(self.root).list_timers()
+        self.assertEqual([row["id"] for row in rows], [running["id"]])
+        self.assertEqual(rows[0]["ends_at"], running["ends_at"])
+        self.assertEqual(rows[0]["remaining_seconds"], 3240)
+        self.assertEqual(rows[0]["status"], "running")
+
+    def test_automatic_expiry_frees_capacity_and_compaction_keeps_retry_history(self):
+        original = [self.start(str(i), i + 1, str(i))["timer"] for i in range(5)]
+        self.now += timedelta(seconds=305)
+        self.assertEqual(self.store.list_timers(), [])
+        added = self.start("New", 60, "new")
+        self.assertEqual(added["replaced"], [])
+        state = json.loads(self.store.path.read_text())
+        self.assertEqual([row["id"] for row in state["timers"]], [added["timer"]["id"]])
+        self.assertEqual(len(state["requests"]), 6)
+        before = self.store.path.read_bytes()
+        replay = TimerStore(self.root).start({"label": "0", "duration_seconds": 1,
+                                            "source": "alexa", "request_id": "0"})
+        self.assertFalse(replay["created"])
+        self.assertEqual(replay["timer"]["id"], original[0]["id"])
+        self.assertEqual(replay["timer"]["ends_at"], original[0]["ends_at"])
+        self.assertEqual(replay["timer"]["status"], "expired")
+        self.assertEqual(self.store.path.read_bytes(), before)
+        self.assertEqual([row["id"] for row in self.store.list_timers()], [added["timer"]["id"]])
+
+    def test_retry_of_hidden_uncompacted_timer_does_not_make_it_visible(self):
+        timer = self.start()["timer"]
+        self.now += timedelta(minutes=6)
+        before = self.store.path.read_bytes()
+        replay = self.start()
+        self.assertFalse(replay["created"])
+        self.assertEqual(replay["timer"]["ends_at"], timer["ends_at"])
+        self.assertEqual(replay["timer"]["status"], "expired")
+        self.assertEqual(self.store.list_timers(), [])
+        self.assertEqual(self.store.path.read_bytes(), before)
+        with self.assertRaisesRegex(TimerError, "different timer details"):
+            self.start("Other")
+        self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_five_running_limit_and_oldest_expired_eviction(self):
         timers = [self.start(str(i), i + 1, str(i))["timer"] for i in range(5)]
@@ -170,9 +229,10 @@ class TimerTests(unittest.TestCase):
         self.assertEqual(len(self.store.list_timers()), 5)
 
     def test_two_processes_share_a_single_retry(self):
-        code = ("from flightwall.timers import TimerStore; import sys; "
-                "TimerStore(sys.argv[1]).start({'label':'Pasta','duration_seconds':60,'request_id':'process-retry'})")
-        processes = [subprocess.Popen([sys.executable, "-B", "-c", code, str(self.root)],
+        code = ("from datetime import datetime; import flightwall.timers as timers; import sys; "
+                "timers._now=lambda:datetime.fromisoformat(sys.argv[2]); "
+                "timers.TimerStore(sys.argv[1]).start({'label':'Pasta','duration_seconds':60,'request_id':'process-retry'})")
+        processes = [subprocess.Popen([sys.executable, "-B", "-c", code, str(self.root), self.now.isoformat()],
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
         for process in processes:
             output, error = process.communicate(timeout=30)

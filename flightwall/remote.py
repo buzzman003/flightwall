@@ -37,7 +37,8 @@ SETTING_TYPES = {
     "led_effect": "boolean", "show_deadheads": "boolean", "takeover_hours": "integer",
     "sleep_start": "string", "sleep_end": "string", "sleep_enabled": "boolean",
     "nearby_enabled": "boolean", "home_latitude": "nullable_number",
-    "home_longitude": "nullable_number", "nearby_radius_nm": "integer",
+    "home_longitude": "nullable_number", "nearby_radius_nm": "integer", "nearby_radius_miles": "nullable_number",
+    "weather_enabled": "boolean",
     "personal_enabled": "boolean", "appointment_duration_minutes": "integer",
     "dinner_start": "string", "dinner_end": "string",
     "guest_mode": "boolean", "flight_focus_seconds": "integer",
@@ -813,7 +814,7 @@ def _tools():
         if name == "update_settings":
             properties = {key: {"type": ["number", "null"] if value == "nullable_number" else value} for key, value in SETTING_TYPES.items()}
             limits = {"rotation_seconds": (3, 300), "brightness": (0.05, 1), "glow": (0, 1),
-                "dot_gap": (0, 0.65), "takeover_hours": (1, 96), "nearby_radius_nm": (1, 250),
+                "dot_gap": (0, 0.65), "takeover_hours": (1, 96), "nearby_radius_nm": (1, 250), "nearby_radius_miles": (0.1, 250),
                 "home_latitude": (-90, 90), "home_longitude": (-180, 180),
                 "appointment_duration_minutes": (1, 1440), "flight_focus_seconds": (15, 300),
                 "flight_window_before_minutes": (0, 240), "flight_window_after_minutes": (0, 240)}
@@ -821,6 +822,8 @@ def _tools():
                 properties[key].update(minimum=minimum, maximum=maximum)
             properties["airline"].update(pattern=r"^([A-Za-z0-9]{2,3})?$", description="Airline IATA/ICAO code; empty for no override.")
             properties["timezone"]["description"] = "IANA timezone, for example America/New_York or UTC."
+            properties["nearby_radius_miles"]["description"] = "Nearby radius in statute miles; null preserves the legacy nautical-mile setting."
+            properties["weather_enabled"]["description"] = "Show the local forecast; provision forecast coordinates through the local CLI."
             for key in ("sleep_start", "sleep_end", "dinner_start", "dinner_end"):
                 properties[key].update(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$", description="Local 24-hour time HH:MM.")
             schema = {"type": "object", "properties": {"settings": {"type": "object", "minProperties": 1,

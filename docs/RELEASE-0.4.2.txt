@@ -1,0 +1,68 @@
+FLIGHT WALL 0.4.2: DISPLAY CLARITY, TIMER EXPIRY AND LOCAL FEEDS
+Source candidate - October 31, 2026
+
+STATUS
+
+0.4.2 exists as source only at this checkpoint. It has not been built, signed,
+published or installed. Published 0.4.1 remains active on the owner's TV.
+Relevant source checks are in VALIDATION.txt; actual Linux/native acceptance
+and physical TV/provider checks must be reported separately.
+The Windows suite passed 595 tests and 367 subtests, with 48 expected platform/
+dependency skips. SDL dummy-driver checks do not establish native OpenGL.
+
+CHANGES
+
+* Completed Flight Wall timers hide five minutes after their deadline. The
+  cutoff is end-exclusive and checked by storage reads and every display frame,
+  including backend outages. Running timers and request deduplication are
+  preserved. This does not add ordinary/native Alexa timer mirroring or alarms.
+* The planned trip map removes route-number plates and their connector strokes.
+  Airport codes, date-colored routes and paged date/city-pair legends remain.
+  The ten-day custody heading is larger; Unknown/mixed-day handling is unchanged.
+  Real operating flights retain priority. Planned routes are not live tracking.
+* Optional NWS weather shows today/tomorrow and an overnight rain reminder for
+  cushions. Before 08:00 the reminder covers the rest of the current night;
+  later it targets 18:00-08:00, using only remaining hours once the night starts.
+  Local timezone/DST, source time, partial data and stale/unknown states are
+  explicit. A fresh rain mention or peak hourly precipitation chance >=20%
+  means rain possible. Low chance needs complete fresh coverage and is never
+  a dry-weather guarantee. No NWS API fee or API key is required.
+* Optional ADSB.lol nearby traffic gains a north-up local position map and a
+  statute-mile radius override; the requested household choice is five miles.
+  This is horizontal distance, not an altitude limit. Fresh positions appear
+  with explicit ground reports excluded and tail/type when known; no inferred
+  origin/destination. Unknown altitude remains unknown.
+  Every frame rejects fixes older than 120 seconds. Legacy nautical-mile
+  settings retain their meaning when the override is null. Community access
+  has availability/quota limits; no paid flight subscription is required.
+
+PRIVACY AND PRESERVATION
+
+Weather is off by default and never contacts a provider during DEMO. A separate
+coarse weather point is stored separately in private settings; there is no
+implicit fallback to the home pin or Google sign-in. NWS receives the configured
+query point. ADSB.lol
+receives the configured home/display pin when nearby traffic is enabled.
+Neither coordinate appears in public settings or release artifacts. Maintenance
+status omits absolute aircraft coordinates when home-relative offsets are present.
+See FEEDS.txt for setup, coverage, freshness and provider documentation.
+
+Credentials, calendar caches, artwork, mutable config and timer/list data stay
+outside releases. The release gate must check both original 0.3.0 -> 0.4.2 and
+0.3.0 -> published 0.4.1 -> 0.4.2, including failed-start rollback to 0.4.1 while
+retaining the original pinned 0.3.0 recovery helper and trusted public key.
+Signed updates activate only on the next safe Ports launch. Windows edits do
+not update the Linux executable.
+
+SEPARATE LIVE SETTINGS / OPEN ITEMS
+
+The owner's existing 0.4.1 settings now use a seven-day flight-preview lead-in
+and adjusted glow/dot gap. The owner confirmed a clear upcoming-trip schedule.
+Those saves do not deploy this candidate. The preview's content span remains
+five local calendar days starting at the next leg; the lead-in uses elapsed days.
+
+Physical Alexa invocation remains unreliable despite successful in-session
+simulator controls. The enabled private development skill did not appear in
+the tested Routine Skills action list. This candidate does not claim to repair
+Amazon routing. Native Alexa timer mirroring and shopping/email/IFTTT work
+remain separate; no Home Assistant bridge is connected by this release.

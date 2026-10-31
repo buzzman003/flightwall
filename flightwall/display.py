@@ -61,6 +61,14 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
         result["custody_outlook"] = dict(outlook, stale=outlook.get("stale") is not False or not fresh)
     if not backend_available:
         result["live"], result["nearby"] = None, []
+        weather = status.get("weather")
+        if isinstance(weather, dict):
+            weather = dict(weather, status="stale")
+            for key in ("today", "tomorrow", "overnight"):
+                section = weather.get(key)
+                if isinstance(section, dict):
+                    weather[key] = dict(section, stale=True)
+            result["weather"] = weather
         watches = status.get("flight_watches")
         if isinstance(watches, list):
             result["flight_watches"] = [dict(row, live=None, status="stale" if isinstance(row.get("flight"), dict) else "unavailable")
@@ -114,6 +122,7 @@ def entry_render_state(status, config, entry, now=None):
              "timers": status.get("timers", []), "custody_outlook": status.get("custody_outlook", {}),
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
+             "weather": status.get("weather", {}),
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,

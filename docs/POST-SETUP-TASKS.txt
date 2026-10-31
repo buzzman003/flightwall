@@ -18,11 +18,44 @@ the dinner feature, and none has been performed.
 
 CURRENT SCOPE
 
-The signed 0.4.0 release implements the ten-day custody outlook and the expanded
-features described in RELEASE-0.4.0.txt. Its Linux build, native acceptance and
-public download/signature checks are complete. See NEXT-VERSION-PLAN.txt for the
-design record and VALIDATION.txt for evidence. Physical board installation and
-matching Alexa deployment are now complete. Remaining device checks are below.
+Published signed 0.4.1 is active on the TV and the matching dinner Lambda/model
+is deployed. In-session simulator saves passed; physical opening is unreliable.
+The owner confirmed a readable upcoming-trip schedule after the live preview
+lead-in was changed to seven days. Glow/dot-gap settings were saved separately.
+Those settings do not deploy new code or change the five-calendar-day trip span.
+
+The authorized 0.4.2 source candidate adds five-minute DONE expiry, a cleaner
+trip map without route-number plates, a larger custody heading, optional NWS
+weather and a fresh nearby-aircraft position map with a statute-mile radius.
+See RELEASE-0.4.2.txt and FEEDS.txt. No 0.4.2 Linux executable has been built,
+signed, published or installed. The Windows source suite passed 595 tests and
+367 subtests, with 48 platform/dependency skips; mandatory Linux/native gates
+remain pending. Keep 0.4.1 running until an approved signed next-launch update.
+
+0.4.2 RELEASE / DEVICE FOLLOW-UP
+
+1. Complete the mandatory Linux source suite and offscreen OpenGL/software
+   checks. Gate original 0.3.0 -> candidate and original 0.3.0 -> published
+   0.4.1 -> candidate, with failed-start rollback, private fixtures and the
+   original pinned 0.3.0 recovery helper. Verify signing and public downloads
+   before staging. Do not reuse a published version or reset settings/logins.
+2. After an authorized installation, check the clean trip map, enlarged custody
+   heading, timer five-minute disappearance and normal service/GUI handoff on
+   the physical TV. Preserve running timers and inspect only disposable tests.
+3. Before enabling feeds, privately confirm the chosen coarse NWS query point
+   and ADSB.lol use of the existing home/display pin. Check real coverage and
+   the five-statute-mile circle, reported tail/type, source age and stale hiding.
+   Check today's/tomorrow's forecast and the explicit remaining-night reminder;
+   missing data cannot support a dry-weather conclusion. No paid API is required
+   for these two optional providers, but rate/access/coverage limits still apply.
+4. Continue timestamped Alexa routing diagnosis separately. The development
+   skill is enabled but absent from the tested Routine Skills list. The owner
+   confirmed the expected active account and an English language label; verify
+   the specific English (United States) locale next. A
+   successful simulator control and known earlier starts are visible in restored
+   Lambda logs, with no intervening START records. This supports, but does not
+   prove, pre-handler routing failure. Do not repeat re-enable/rename guesses
+   or claim the Routine workaround is available on this private skill.
 
 TEN-DAY CUSTODY OUTLOOK
 
@@ -96,7 +129,12 @@ confirmed visible on the TV. Use disposable synthetic cards/timers and remove
 only their verified IDs. These checks do not prove every spoken label or the
 quality of every animation transition.
 
-TIMER FOLLOW-UP FOR A FUTURE SIGNED RELEASE
+TIMER FOLLOW-UP
+
+* The 0.4.2 candidate hides DONE timers at end + five minutes, including paused
+  or cached display state; it does not shorten running timers. One old completed
+  live timer was separately removed by its inspected exact ID, preserving others.
+  Automatic disappearance has not yet been deployed or verified on the TV.
 
 * The tested Echo start/cancel commands and physical timer strip passed. Check
   more arbitrary spoken labels, the five-timer layout and animation quality.
@@ -123,7 +161,7 @@ TIMER FOLLOW-UP FOR A FUTURE SIGNED RELEASE
   owner-completed Amazon authentication and real device tests are still needed.
   No Home Assistant host/account was provisioned, no broader permission was
   granted, and no native-timer adapter or app update was deployed.
-* Any shipped code fix or timer integration requires a version above 0.4.0,
+* Any shipped code fix or timer integration requires a version above 0.4.1,
   relevant tests and the established signed release/next-launch workflow.
 
 HOME ASSISTANT HOST AND NATIVE SHOPPING FOLLOW-UP
@@ -150,16 +188,18 @@ a uniquely named diagnostic timer did not establish a successful physical
 readback. Its exact ID was subsequently cleared, preserving the unrelated
 household timer. The owner reports that disabling/re-enabling the development
 skill again did not resolve launch, and the latest replies differ from our
-handler. Correlate a timestamped failed physical launch with Lambda invocation
-records and a simulator control before changing code; verify the particular
-Echo account, en-US locale and duplicate enabled versions if no invocation
-arrives. Do not treat Home Assistant as a repair for custom-skill invocation.
+handler. Subsequent restored Lambda logs and a successful simulator control are
+recorded in the current follow-up above; no final routing cause is established.
+Keep timestamped physical correlation and the pending language check separate
+from board/handler health. Do not treat Home Assistant as a repair for custom-
+skill invocation.
 
 IFTTT EMAIL SNAPSHOT ALTERNATIVE
 
-The owner already uses IFTTT and reports a working Alexa-to-Lisa shopping email
-command and has now confirmed the email includes grocery items. Exact format
-and parser completeness remain unverified. IFTTT can match Gmail messages and
+The owner already uses IFTTT and earlier reported an Alexa-to-Lisa shopping email
+containing grocery items. A later attempted email did not arrive, so reliable
+delivery, exact format and parser completeness remain unverified. Work is paused.
+IFTTT can match Gmail messages and
 POST their text, but its native
 Alexa service ended in 2023. An email bridge would update a snapshot only when
 an email is sent, not automatically after every native list edit. Current Free

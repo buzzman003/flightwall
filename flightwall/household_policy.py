@@ -204,6 +204,8 @@ def build_rotation(status, config, now=None):
                 add(view, f"{view}:{page}", trip_page=page, trip_preview=preview)
     if config.get("nearby_enabled") is True and not context["trip_away"] and not context["flight_priority"] and not status.get("on_duty"):
         add("nearby")
+    if config.get("weather_enabled") is True and snapshot.get("demo") is False:
+        add("weather")
     if config.get("custody_outlook_enabled", True) and status.get("custody_outlook", {}).get("days"):
         add("custody_outlook")
     if config.get("local_visits_enabled", True):

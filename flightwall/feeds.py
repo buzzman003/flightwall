@@ -55,6 +55,114 @@ def coordinates(latitude, longitude):
     return _is_number(latitude) and _is_number(longitude) and -90 <= latitude <= 90 and -180 <= longitude <= 180
 
 
+NEARBY_MAX_AGE_SECONDS = 120
+NEARBY_MAX_ROWS = 40
+METRES_PER_MILE = 1609.344
+METRES_PER_NAUTICAL_MILE = 1852
+
+
+def nearby_distance_miles(latitude, longitude, other_latitude, other_longitude):
+    """Horizontal great-circle distance; altitude is not a home-relative height."""
+    lat1, lat2 = math.radians(latitude), math.radians(other_latitude)
+    dlat = lat2 - lat1
+    dlon = math.radians(other_longitude - longitude)
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 6_371_008.8 * 2 * math.asin(math.sqrt(min(1.0, max(0.0, a)))) / METRES_PER_MILE
+
+
+def _nearby_offset_miles(latitude, longitude, other_latitude, other_longitude, distance):
+    """North-up azimuthal offsets without copying the private center into a row."""
+    lat1, lat2 = math.radians(latitude), math.radians(other_latitude)
+    dlon = math.radians(other_longitude - longitude)
+    bearing = math.atan2(math.sin(dlon) * math.cos(lat2),
+                         math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dlon))
+    return distance * math.sin(bearing), distance * math.cos(bearing)
+
+
+def _nearby_text(value, pattern):
+    if not isinstance(value, str):
+        return None
+    value = value.strip().upper()
+    return value if re.fullmatch(pattern, value) else None
+
+
+def _nearby_number(value, low, high):
+    return value if _is_number(value) and low <= value <= high else None
+
+
+def _nearby_fresh(row, now):
+    try:
+        return 0 <= (now - parse_time(row["observed_at"])).total_seconds() <= NEARBY_MAX_AGE_SECONDS
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _nearby_radius(config):
+    radius_miles = config.get("nearby_radius_miles")
+    request_radius_nm = None
+    if radius_miles is None:
+        request_radius_nm = config.get("nearby_radius_nm")
+        radius_miles = (request_radius_nm * METRES_PER_NAUTICAL_MILE / METRES_PER_MILE
+                        if _is_number(request_radius_nm) else None)
+    if not _is_number(radius_miles) or not 0 < radius_miles <= 250 * METRES_PER_NAUTICAL_MILE / METRES_PER_MILE:
+        raise ValueError("Nearby traffic radius is invalid.")
+    if request_radius_nm is None:
+        request_radius_nm = min(250, math.ceil(radius_miles * METRES_PER_MILE / METRES_PER_NAUTICAL_MILE))
+    return radius_miles, request_radius_nm
+
+
+def _nearby_aircraft(data, latitude, longitude, radius_miles, now):
+    """Normalize one bounded v2 snapshot, without guessing flight-route metadata."""
+    if not isinstance(data, dict) or not isinstance(data.get("ac"), list) or len(data["ac"]) > 5000:
+        raise ValueError("Invalid nearby traffic response")
+    # v2 `now` is epoch milliseconds. seen_pos refers to that snapshot, not our
+    # receipt time; re-dating a cached response would make old aircraft look live.
+    stamp = data.get("now")
+    if not _is_number(stamp):
+        raise ValueError("Missing nearby traffic timestamp")
+    try:
+        observed_snapshot = datetime.fromtimestamp(stamp / 1000, timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        raise ValueError("Invalid nearby traffic timestamp") from None
+    snapshot_age = (now - observed_snapshot).total_seconds()
+    if not 0 <= snapshot_age <= NEARBY_MAX_AGE_SECONDS:
+        raise ValueError("Nearby traffic snapshot is stale")
+    aircraft = {}
+    for item in data["ac"]:
+        if not isinstance(item, dict):
+            continue
+        la, lo = item.get("lat"), item.get("lon")
+        ident = _nearby_text(item.get("hex"), r"~?[0-9A-F]{6}")
+        if not ident or not coordinates(la, lo) or item.get("alt_baro") == "ground":
+            continue
+        # `seen` only dates the latest message, which need not contain a position.
+        age = item.get("seen_pos")
+        if not _is_number(age) or not 0 <= age <= NEARBY_MAX_AGE_SECONDS - snapshot_age:
+            continue
+        distance = nearby_distance_miles(latitude, longitude, la, lo)
+        if distance > radius_miles + 1e-7:
+            continue
+        east, north = _nearby_offset_miles(latitude, longitude, la, lo, distance)
+        callsign = _nearby_text(item.get("flight"), r"[A-Z0-9][A-Z0-9 -]{0,11}")
+        registration = _nearby_text(item.get("r"), r"[A-Z0-9][A-Z0-9-]{0,15}")
+        observed = observed_snapshot - timedelta(seconds=age)
+        row = {"latitude": la, "longitude": lo, "lat": la, "lon": lo,
+               "hex": ident.lower(), "callsign": callsign, "registration": registration,
+               "aircraft_type": _nearby_text(item.get("t"), r"[A-Z0-9]{1,8}"),
+               "flight": callsign or registration or ident,
+               "altitude": _nearby_number(item.get("alt_baro"), -2000, 100000),
+               "groundspeed": _nearby_number(item.get("gs"), 0, 2000),
+               "track": _nearby_number(item.get("track"), 0, 360),
+               "source": "ADSB.lol", "observed_at": observed.isoformat(),
+               "distance_miles": distance, "east_miles": east, "north_miles": north}
+        previous = aircraft.get(ident)
+        if previous is None or (observed, -distance) > (previous[0], -previous[1]["distance_miles"]):
+            aircraft[ident] = (observed, row)
+    # Limit only after exact-radius filtering, deduplication and nearest sorting.
+    return sorted((entry[1] for entry in aircraft.values()),
+                  key=lambda row: (row["distance_miles"], row["hex"]))[:NEARBY_MAX_ROWS]
+
+
 class FlightFeeds:
     def __init__(self, data_dir):
         self.data_dir = Path(data_dir)
@@ -65,6 +173,8 @@ class FlightFeeds:
         self._watch_cache = {}
         self._watch_cursor = 0
         self._last_nearby = -math.inf
+        self._nearby_query = None
+        self._nearby_completed = (None, [])
         self._last_live = -math.inf
         self._live_id = None
         self._selected = None
@@ -100,6 +210,25 @@ class FlightFeeds:
         self._allow_paid_request(config)
         return request_json("https://aeroapi.flightaware.com/aeroapi" + path, {"x-apikey": api_key})
 
+    def nearby_for_config(self, config, now=None):
+        """Publish only a completed observation for the currently selected pin."""
+        if not isinstance(config, dict) or config.get("demo") or not config.get("nearby_enabled"):
+            return []
+        lat, lon = config.get("home_latitude"), config.get("home_longitude")
+        if not coordinates(lat, lon):
+            return []
+        try:
+            radius_miles, _ = _nearby_radius(config)
+        except ValueError:
+            return []
+        # One tuple assignment pairs rows with their completed query. An admin
+        # may save another pin while the backend's previous HTTP call is pending.
+        query, rows = self._nearby_completed
+        if query != (lat, lon, radius_miles):
+            return []
+        now = now or utcnow()
+        return copy.deepcopy([row for row in rows if _nearby_fresh(row, now)])
+
     def poll(self, config, selected, *, on_duty=False, watches=None):
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
@@ -119,36 +248,38 @@ class FlightFeeds:
         self._poll_watches(config, watches or [], now)
         if config["demo"] or not config["nearby_enabled"] or on_duty:
             self.nearby = []
+            self._nearby_completed = (None, [])
             return
+        lat, lon = config["home_latitude"], config["home_longitude"]
+        if not coordinates(lat, lon):
+            self.nearby = []
+            self._nearby_completed = (None, [])
+            return
+        try:
+            radius_miles, request_radius_nm = _nearby_radius(config)
+        except ValueError:
+            self.nearby = []
+            self._nearby_completed = (None, [])
+            self.error = "Nearby traffic radius is invalid."
+            return
+        query = (lat, lon, radius_miles)
+        if query != self._nearby_query:
+            self.nearby = []
+            self._nearby_completed = (None, [])
+            self._nearby_query = query
+            self._last_nearby = -math.inf
+        self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
         if time.monotonic() - self._last_nearby < 60:
             return
         self._last_nearby = time.monotonic()
-        lat, lon = config["home_latitude"], config["home_longitude"]
-        if lat is None or lon is None:
-            return
         try:
             # The community ADS-B feed is optional and has no availability guarantee.
-            data = request_json(f"https://api.adsb.lol/v2/point/{lat}/{lon}/{config['nearby_radius_nm']}")
-            safe = []
-            for item in data.get("ac", [])[:500]:
-                if not isinstance(item, dict):
-                    continue
-                la, lo = item.get("lat"), item.get("lon")
-                if not coordinates(la, lo):
-                    continue
-                age = item.get("seen_pos", item.get("seen", 9999))
-                if not _is_number(age) or not 0 <= age <= 120:
-                    continue
-                altitude = item.get("alt_baro")
-                altitude = altitude if _is_number(altitude) else None
-                safe.append({"latitude": la, "longitude": lo, "lat": la, "lon": lo,
-                             "flight": str(item.get("flight", item.get("hex", "?"))).strip()[:12],
-                             "altitude": altitude, "groundspeed": item.get("gs"),
-                             "track": item.get("track"), "source": "ADSB.lol",
-                             "observed_at": (now - timedelta(seconds=age)).isoformat()})
-            self.nearby = safe
+            data = request_json(f"https://api.adsb.lol/v2/point/{lat}/{lon}/{request_radius_nm}")
+            self.nearby = _nearby_aircraft(data, lat, lon, radius_miles, utcnow())
+            self._nearby_completed = (query, copy.deepcopy(self.nearby))
         except (ValueError, OSError, urllib.error.URLError, TypeError, AttributeError):
             self.nearby = []
+            self._nearby_completed = (None, [])
             self.error = "Nearby traffic feed unavailable."
 
     @staticmethod

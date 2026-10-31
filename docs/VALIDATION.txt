@@ -4,6 +4,73 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
+0.4.2 SOURCE CANDIDATE / 0.4.1 STILL ACTIVE - OCTOBER 31, 2026
+
+Both source version files now identify 0.4.2. No 0.4.2 Linux executable has
+been built, signed, published, staged or activated at this checkpoint. Windows
+source checks and synthetic images do not establish real TV or provider results.
+See RELEASE-0.4.2.txt for the proposed release behavior.
+
+* TimerStore and the display enforce an end-exclusive five-minute DONE period
+  after each deadline, including cached state during backend outages. Focused
+  tests cover the exact boundary, unchanged running timers, restart, capacity
+  and retry snapshots that cannot recreate a removed timer.
+* The candidate trip map removes route-number plates/connector strokes while
+  retaining airport codes, date colors and paged date/city-pair legends. The
+  custody heading is larger. Upcoming-trip selection and flight priority are
+  unchanged; these visual changes have not been checked on the physical TV.
+* Optional NWS weather has synthetic tests for today/tomorrow, DST, the remaining
+  active night before 08:00, the coming 18:00-08:00 window, missing/overlapping
+  probability coverage and independent daily/hourly freshness. The source and
+  TV identify forecast age; stale/unknown never means dry. The worker cannot
+  block calendar refresh or controls. Coordinates are local-only private config,
+  separate from home/presence, and are disclosed to NWS only when enabled.
+* Optional ADSB.lol nearby traffic uses exact statute-mile filtering, source
+  timestamps, explicit-ground filtering, known tail/type and a local map. Tests
+  cover malformed/stale/future positions, unit conversion, geometry and a pin
+  or radius change while a request is in flight. The TV rechecks the 120-second
+  age limit. Maintenance removes absolute aircraft coordinates when relative
+  offsets are present. No guessed origin/destination or interpolated track.
+* The full Windows candidate suite passed 595 tests and 367 subtests, with 48
+  expected platform/dependency skips and no failures. It used SDL's dummy
+  display driver, a workspace temporary directory and permitted local loopback
+  servers. Focused rendering and weather integration checks also passed.
+  Final review added independent corrupt-cache section recovery, a private
+  weather-cache release exclusion and overflow-safe timer expiry; the affected
+  weather/view/privacy/render suite passed 71 tests and 79 subtests afterward.
+  Provider responses were synthetic. These Windows results do not replace the
+  required Linux offscreen OpenGL, frozen build, upgrade and rollback gates.
+* The candidate release workflow pins the published 0.4.1 installer, independently
+  checked against public release metadata: SHA-256
+  4cf0af313cc886bd0704f405236f733b8b235a6c63a718244214108c64bb2d86,
+  size 46979994 bytes. Native gates must cover original 0.3.0 -> candidate and
+  original 0.3.0 -> published 0.4.1 -> candidate, plus failed-start rollback.
+  Original pinned 0.3.0 recovery, private fixtures, games, trust/version floor
+  and tested-source/frozen/signature binding remain required. The current-path
+  report is native-validation-from-0.4.1.json. None of those 0.4.2 native gates
+  has run yet.
+
+LIVE 0.4.1 SETTINGS AND ALEXA FOLLOW-UP - OCTOBER 31, 2026
+
+* The owner authorized flight_preview_days changing from five to seven. The
+  actual app then exposed its upcoming-trip preview, and the owner confirmed
+  a paged UPCOMING TRIP SCHEDULE was clear on the TV. This changes the elapsed
+  lead-in threshold, not the five-calendar-day span starting at the next leg.
+  The owner reported map-number clutter, which the 0.4.2 source addresses.
+* Existing live settings changed from glow 0.25 to 0.08 and dot_gap 0.22 to
+  0.10. These are owner settings, not new package defaults or a code deployment.
+  One inspected timer already more than five minutes past its end was removed
+  by exact ID; other timers were preserved. Automatic expiry needs 0.4.2.
+* The private development skill remains enabled but was not offered in the
+  tested Alexa Routine Skills action list. Physical skill opening still failed.
+  The owner confirmed the expected active account and a language label of
+  English; the specific English (United States) locale is not yet verified.
+  Restored read-only Lambda logs included known earlier test starts
+  and a fresh successful simulator control, with no intervening START entries.
+  This is consistent with a routing problem before Lambda, not final proof of
+  its cause. No account re-enable, renaming, credential change or Routine fix is
+  claimed. Simulator success does not establish reliable physical invocation.
+
 PUBLISHED AND ACTIVATED 0.4.1 / ECHO ROUTING UNRESOLVED - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
@@ -73,7 +140,7 @@ skipped the real OpenGL check. Those Windows results were not the release gate.
   floor 0.4.1. Five stable launch/service wrappers matched the private backup,
   and the pinned 0.3.0 recovery binary matched its original installer checksum.
   These authenticated process/startup checks do not replace owner confirmation
-  of the visible TV output, which remains pending.
+  of the visible TV output. The later 0.4.1 schedule check is recorded above.
 * All 41 original private data files remained after activation. Seven checked
   credential/client/token/artwork files matched their pre-upgrade hashes.
   Original configuration values were preserved except the manifest URL now
@@ -86,12 +153,11 @@ skipped the real OpenGL check. Those Windows results were not the release gate.
   the upgraded board API and credential isolation, not Echo invocation.
 * Physical Echo invocation remains unresolved: "Alexa, ask Flight Wall for
   dinner help" received "I'm not quite sure how to help you with that", and
-  "Alexa, open Flight Wall skill" received "I can't find that skill". Fresh AWS
-  invocation logs were not inspected because the authenticated session had
-  expired, so these replies alone do not prove whether Lambda was invoked.
-  Inspection of a direct Skills -> Your Skills Routine action was requested
-  and remains pending. The successful in-session simulator checks above do
-  not establish a reliable physical opening phrase.
+  "Alexa, open Flight Wall skill" received "I can't find that skill". At that
+  checkpoint the AWS session had expired and fresh invocation logs were not
+  available. Later log and Routine observations are recorded above. Neither
+  those replies nor the successful in-session simulator checks establish a
+  reliable physical opening phrase.
 
 NATIVE ALEXA TIMER FEASIBILITY FOLLOW-UP - OCTOBER 31, 2026
 
