@@ -31,8 +31,9 @@ HELP = ("You can say, start a pasta timer for five minutes, list timers, or canc
         "To watch a public flight, say, track Delta flight one twenty three on Friday. "
         "Say shopping list to show it, add olives, or remove olives. Clear shopping list asks for confirmation. "
         "I confirm appointments and flight requests before saving. For dinner instructions, say dinner help.")
-DINNER_HELP = ("Say, we are having chicken and rice for dinner. To choose another day, first say, "
-               "set dinner for tomorrow, then give the meal. A meal replaces that date's earlier dinner card.")
+DINNER_HELP = ("Say, dinner today is chicken teriyaki, or dinner tomorrow is pasta. "
+               "For another date, say set dinner for Friday, then give the meal.")
+DINNER_DAY_INTENTS = {"AddDinnerTodayIntent": 0, "AddDinnerTomorrowIntent": 1}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
             "american": "AA", "american airlines": "AA", "aa": "AA",
             "united": "UA", "united airlines": "UA", "ua": "UA",
@@ -219,6 +220,27 @@ def _exact_date(value):
     if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
         raise ValueError("date")
     return date.fromisoformat(value).isoformat()
+
+
+def _dinner_meal(value, *, day_selected):
+    """Keep meal text exact; ask again when SearchQuery swallowed date phrasing."""
+    meal = _text(value)
+    if (re.search(r"(?:^|\s)(?:is\s+)?for\s+dinner\s+(?:today|tonight|tomorrow)[.!?]?$", meal, re.I)
+            or re.fullmatch(r"(?:today|tonight|tomorrow)[.!?]?", meal, re.I)
+            or re.search(r"\s(?:today|tomorrow)[.!?]?$", meal, re.I)
+            or (not day_selected and re.search(r"\stonight[.!?]?$", meal, re.I))):
+        raise ValueError("meal date is ambiguous")
+    return meal
+
+
+def _dinner_day_words(value, zone):
+    day = date.fromisoformat(value)
+    today = _now().astimezone(zone).date()
+    if day == today:
+        return "today"
+    if day == today + timedelta(days=1):
+        return "tomorrow"
+    return "on " + _human_date(value)
 
 
 def _exact_time(value):
@@ -476,10 +498,8 @@ def _save(client, pending, context):
                 return _speech(f"{saved} {title} for dinner on {_human_date(actual_day)}. "
                                "Its display window has already ended, so it will not appear. "
                                "I have not moved it to tomorrow." + duplicate + hidden, end=True)
-            return _speech(f"{saved} {title} for dinner on {_human_date(actual_day)}. "
-                           f"Its display window is from {_human_time(display_start.astimezone(zone).strftime('%H:%M'))} "
-                           f"to {_human_time(display_end.astimezone(zone).strftime('%H:%M'))}, "
-                           "in the board's time zone." + duplicate + hidden, end=True)
+            return _speech(f"{saved} {title} for dinner {_dinner_day_words(actual_day, zone)}."
+                           + duplicate + hidden, end=True)
         minutes = int((end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds() / 60)
         until = _human_time(local_end.strftime("%H:%M"))
         if local_end.date() != local_start.date():
@@ -780,11 +800,15 @@ def lambda_handler(event, lambda_context):
             _exact_date(pending["date"])
             _request_id(pending["request_id"])
             return _save(client, pending, context)
-        if name == "AddDinnerIntent":
-            if not pending or pending["kind"] != "dinner" or pending.get("phase") == "retry":
+        if name == "AddDinnerIntent" or name in DINNER_DAY_INTENTS:
+            explicit_day = name in DINNER_DAY_INTENTS
+            if explicit_day or not pending or pending["kind"] != "dinner" or pending.get("phase") == "retry":
                 pending = _new_pending("dinner", request, context)
             pending["timezone"] = context["timezone"]
-            if "Date" in values:
+            if explicit_day:
+                today = _now().astimezone(ZoneInfo(context["timezone"])).date()
+                pending["date"] = (today + timedelta(days=DINNER_DAY_INTENTS[name])).isoformat()
+            elif "Date" in values:
                 try:
                     pending["date"] = _exact_date(values["Date"])
                 except ValueError:
@@ -792,11 +816,18 @@ def lambda_handler(event, lambda_context):
                     return _speech("Which exact day is dinner for? Say, set dinner for tomorrow, or give the exact date.", pending)
             if "Meal" in values:
                 try:
-                    pending["title"] = _text(values["Meal"])
-                except ValueError:
-                    return _speech("Please give a dinner name of one to 160 characters. Say, dinner is chicken and rice.", pending)
+                    pending["title"] = _dinner_meal(values["Meal"], day_selected=bool(pending.get("date")))
+                except ValueError as exc:
+                    pending.pop("title", None)
+                    if str(exc) == "meal date is ambiguous":
+                        prompt = ("Please say dinner is, followed by just the meal."
+                                  if pending.get("date") else
+                                  "Please say dinner today is, or dinner tomorrow is, followed by just the meal.")
+                        return _speech(prompt, pending)
+                    return _speech("Please give a dinner name of one to 160 characters. "
+                                   "Say, dinner is chicken teriyaki.", pending)
             if not pending.get("title"):
-                return _speech("What is for dinner? Say, we are having chicken and rice for dinner.", pending)
+                return _speech("What is for dinner? Say, dinner is chicken teriyaki.", pending)
             if "date" not in pending:
                 pending["date"] = _now().astimezone(ZoneInfo(context["timezone"])).date().isoformat()
             if not pending.get("date"):

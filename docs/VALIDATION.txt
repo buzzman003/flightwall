@@ -4,6 +4,154 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
+0.4.1 DINNER UPDATE IN PROGRESS - OCTOBER 31, 2026
+
+The owner paused shopping/email/IFTTT/store-delivery work and made short dinner
+commands first priority, native timer mirroring second. The latest attempted
+shopping email did not arrive, so earlier owner reports do not establish a
+reliable export. No shopping service has been configured or message sent by
+that research.
+
+A 0.4.0 live simulator control reached the explicit custom welcome and saved a
+disposable dinner through the existing handler. An independent Batocera read
+verified source alexa, America/Chicago and the expected 14:30-19:00 window.
+Exact-ID cleanup preserved other active cards. Two outside-skill direct dinner
+requests instead caused native Alexa announcements; these were unexpected and
+reported to the owner. No further direct dinner tests were attempted on that
+model. This confirms the in-session save path, not reliable physical invocation.
+
+The 0.4.1 source adds explicit today/tomorrow dinner intents and short saved
+meal/day replies. Focused synthetic unit/model and HTTP checks pass. The Windows full suite
+reported 508 passes and 309 subtests, with 47 platform/dependency skips and
+seven failures caused by its unavailable SDL offscreen driver. Rechecking those
+seven with the Windows dummy driver passed six and skipped the real OpenGL
+check. Linux must still pass every test without skips using real offscreen GL.
+The release gate additionally tests the actual 0.3.0 -> published 0.4.0 -> 0.4.1
+executable path, original recovery helper, timer/shopping/watch/private stores
+and failed-start rollback. Signed release, new model, deployment and physical
+checks are still pending.
+The actual board remains on 0.4.0 until a verified update activates.
+
+NATIVE ALEXA TIMER FEASIBILITY FOLLOW-UP - OCTOBER 31, 2026
+
+The owner subsequently requested mirroring ordinary Alexa timers. Current
+Amazon documentation confirms that custom-skill timer permission is limited
+to the calling skill's own timers. Primary-source review of Home Assistant
+and community Alexa Media Player v5.18.0 identified a possible separate bridge,
+including a provider failure/empty-snapshot ambiguity that must be handled.
+Known project records contain no provisioned Home Assistant host or connection.
+See NATIVE-ALEXA-TIMERS.txt for the source contract, limitations and prerequisites.
+This was read-only research and local documentation work, not a connected
+integration, broader Amazon permission grant or new application release.
+The installed signed 0.4.0 app and its tested custom timers remain unchanged.
+
+DESKTOP / IFTTT FEASIBILITY AND LAUNCH FOLLOW-UP - OCTOBER 31, 2026
+
+Read-only inventory found the existing Windows desktop has capacity for a small
+HAOS VM, but firmware CPU virtualization is disabled and no supported hypervisor
+was found. No firmware, Windows sleep policy, hypervisor or HA installation was
+changed. The iPad is a client option, not a supported HA server host.
+Official IFTTT research found a possible email-to-HTTPS snapshot path, with
+Free-plan service access under the October 28 credit-based plans. Its retired
+native Alexa service does not supply ordinary timers or shopping-list events.
+The owner subsequently confirmed grocery items are present in the actual email.
+Its parser completeness remains unverified. No mailbox was read, IFTTT connection
+created, message sent or importer implemented by this work. The requested
+store-arrival email trigger remains a plan: supported location/Routine actions
+do not establish unattended delivery of the owner's exact Alexa+ email command.
+See HOME-ASSISTANT-PLAN.txt for sources and the implementation gates.
+
+The owner reports renewed physical skill-launch failure after re-enabling it.
+The reported replies are absent from the reviewed handler; its LaunchRequest
+returns the welcome before making a board request. This points toward routing
+but does not establish whether the failed utterance reached Lambda. No correlated
+physical-attempt timestamp and Lambda invocation evidence has yet been collected.
+The latest normal-TLS public health check still returned ok=true and 0.4.0.
+Exact-ID cleanup removed the later uniquely named routing diagnostic timer;
+one unrelated household timer was preserved. No release, credentials or Alexa
+model changed. These are research/operational checks, not new code-test results.
+
+PHYSICAL BATOCERA 0.4.0 DEPLOYMENT - OCTOBER 31, 2026
+
+* The published signed update activated through the owner's normal Ports
+  launch. The active release and health endpoint report 0.4.0; startup health
+  is confirmed, with awaiting_health false and minimum_version 0.4.0. The
+  original pinned 0.3.0 recovery helper remains unchanged. Existing stable
+  CLI, launcher and service wrappers matched the pre-upgrade backup byte for
+  byte.
+* The owner confirmed real flights and the larger display fit on the HDMI TV.
+  This confirms those visible results, not every timer/ticker animation,
+  controller input or new view on this hardware.
+* A private pre-upgrade data backup containing 33 files was verified. No
+  existing data files were missing after upgrade. Existing configuration
+  values were preserved except the explicitly provisioned public signing key
+  and release channel; previously disabled automatic polling stayed disabled.
+  Google client identity, refresh authorization and granted scopes matched
+  the backup, and the app reported the configured Calendar profile connected.
+  No new Google consent, Gmail connection or phone pairing is implied.
+* On the actual upgraded board, the voice credential received HTTP 200 from
+  voice context, timer-list and shopping-list endpoints. The same credential
+  was rejected with HTTP 401 by private status, display and MCP endpoints.
+* The existing AWS Lambda accepted the published 0.4.0 ZIP successfully; its
+  deployed code checksum matched the published package. The Alexa interaction
+  model built successfully in en-US Development with 27 intents and eight slot
+  types, retaining the flight wall invocation name. In the actual Alexa
+  simulator, typed "open flight wall skill" returned "Flight Wall. What would
+  you like?" and "list timers" returned "There are no Flight Wall timers."
+  This verified Alexa-to-Lambda-to-public-HTTPS-to-board read-only timer access.
+  Read-only shopping-list access and Help also passed in the simulator.
+  The owner reported that "open flight wall skill" could not find the skill.
+  After cancelling the prior interaction, the physical Echo successfully
+  handled "ask Flight Wall to list timers" and replied that there were no
+  Flight Wall timers. This verifies a real spoken read through the upgraded
+  Alexa/board path. The open phrase remains unreliable. Subsequent physical
+  Echo timer writes are recorded below; broader spoken coverage remains open.
+* Subsequent live simulator timer checks reached the installed 0.4.0 board:
+  a two-minute named timer and a thirty-second timer with an unlisted label
+  were saved with source alexa. The private display route returned both at
+  once. Independently read remaining time decreased without moving either
+  deadline, both expired naturally to zero, and in-skill label cancellation
+  was acknowledged and independently confirmed. The TV was not opened during
+  these initial checks; later physical observations are recorded below.
+  Some direct-ask simulator requests instead received native-Alexa responses;
+  a duration-only request created a disposable native timer which was promptly
+  cancelled by its exact test label. No existing native timer was changed.
+  The controlled custom welcome followed by an in-skill command worked.
+  This distinguishes working Flight Wall timer handling from inconsistent
+  Alexa invocation, without establishing its cause or a universal workaround.
+* Normal return from the 0.4.0 TV app to the games menu passed: one background
+  service resumed, no GUI launch lock remained, local/public health reported
+  0.4.0 and authenticated HTTPS timer-list access returned HTTP 200.
+  Lisa's consenting phone setup, the deferred locked-phone
+  departure/arrival check, paid flight data and store/SMS setup remain separate
+  from this upgrade. No actual paid-provider request or SMS is established.
+* The owner subsequently confirmed restarting the board during troubleshooting.
+  An SSH check after a restart showed 39 seconds of uptime, the background
+  service running and local 0.4.0 health. A finished timer survived as expected.
+  After the final restart, the same LAN address was reachable, the GUI process
+  served local 0.4.0 health, and the original 0.3.0 recovery helper was still
+  pinned. Tailscale reported Running/online with no health warnings and its
+  existing Funnel target intact. Public HTTPS health and authenticated voice
+  context/timer reads passed with normal certificate checks. Exact-ID cleanup
+  completed and the timer list was empty. No assistant-initiated reboot,
+  reinstall, release change or setting reset was attempted.
+* After recovery, "open flight wall and list timers" again passed in the live
+  simulator. A five-minute synthetic timer was then created through the skill;
+  its unlisted label needed the explicit follow-up "call the timer comet".
+  The owner confirmed its countdown was visible at the top of the actual TV.
+  With simulator timer writes paused, the owner said on the physical Echo:
+  "Alexa, ask Flight Wall to start a pasta timer for two minutes." The owner
+  reported the correct Flight Wall acknowledgement, and an independent board
+  read verified the new source-alexa timer, 120-second deadline and coexistence
+  with the first timer. The owner then used "Alexa, ask Flight Wall to cancel
+  the pasta timer" and confirmed PASTA disappeared while COMET kept counting.
+  A separate board read confirmed cancellation and the other original deadline.
+  Exact-ID cleanup removed the remaining COMET diagnostic timer; a separate
+  unrecognized household timer was preserved. No native Echo ringing is
+  provided by Flight Wall's visual timers. Ordinary Alexa timers are not
+  mirrored. This verifies the tested physical start/cancel/TV path, not every
+  arbitrary label, five-timer layout, animation transition or invocation form.
+
 PUBLISHED 0.4.0 LINUX RELEASE - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.0
@@ -37,8 +185,9 @@ Release source commit: f03c98151a7f06dec69a969f572c049047512224
 Published native-validation.json, linux-tests.xml and SHA256SUMS.txt carry the
 detailed evidence. This is Linux release acceptance, not physical 0.4.0 TV,
 controller, Google, iPhone, paid-provider, SMS or live Alexa validation. The
-release was built and published without changing the installed 0.3.0 board
-or deployed Alexa skill. Those deployment checks remain separate.
+release was built and published without changing the then-installed 0.3.0
+board or deployed Alexa skill. Subsequent deployment evidence is recorded
+separately above.
 
 PRE-RELEASE 0.4.0 WINDOWS SOURCE SNAPSHOT - OCTOBER 31, 2026
 
@@ -96,9 +245,10 @@ PRE-RELEASE 0.4.0 WINDOWS SOURCE SNAPSHOT - OCTOBER 31, 2026
   These source checks do not replace a native release or upgrade validation.
 
 The Linux build, upgrade/rollback and signed-delivery gates pending at that
-source snapshot are now covered by the published record above. Remaining
-checks include physical TV/Echo tests, real consenting iPhone reports,
-verified store coordinates and SMS setup. Native
+source snapshot are now covered by the published record above. The newer
+physical deployment record identifies completed TV checks and remaining
+Echo, phone and display checks. Real consenting iPhone reports, verified
+store coordinates and SMS setup remain separate. Native
 Alexa list export through daily email or a hidden calendar remains unverified;
 no such import or recurring message has been enabled. See RELEASE-0.4.0.txt.
 

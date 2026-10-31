@@ -150,7 +150,7 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
             try:
                 with patch.dict("os.environ", environment), patch.object(alexa, "build_opener", return_value=Transport()), \
                         patch.object(alexa, "_now", return_value=NOW), patch("flightwall.personal._now", return_value=NOW):
-                    meal = event("AddDinnerIntent", "dinner-one", {"Meal": "Teriyaki chicken"})
+                    meal = event("AddDinnerTodayIntent", "dinner-one", {"Meal": "Teriyaki chicken"})
                     response = alexa.lambda_handler(meal, None)
                     self.assertIn("Teriyaki chicken", response["response"]["outputSpeech"]["text"])
                     visible = runtime.personal.visible(NOW)
@@ -164,11 +164,20 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                     self.assertIn("cancel", replay["response"]["outputSpeech"]["text"].lower())
                     self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza"])
 
+                    tomorrow = event("AddDinnerTomorrowIntent", "dinner-tomorrow", {"Meal": "Soup & rice"})
+                    response = alexa.lambda_handler(tomorrow, None)
+                    self.assertEqual(response["response"]["outputSpeech"]["text"], "Saved Soup & rice for dinner tomorrow.")
+                    alexa.lambda_handler(tomorrow, None)
+                    tomorrow_item = next(item for item in runtime.personal.list_items(NOW) if item["title"] == "Soup & rice")
+                    self.assertEqual(tomorrow_item["start"], "2026-10-23T18:30:00.000000Z")
+                    self.assertEqual(tomorrow_item["end"], "2026-10-23T23:00:00.000000Z")
+                    self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza"])
+
                     begin = event("AddAppointmentIntent", "appointment-one", {"Title": "Emerson doctor appointment", "Date": "2026-11-03", "Time": "11:25"})
                     prompt = alexa.lambda_handler(begin, None)
                     self.assertFalse(prompt["response"]["shouldEndSession"])
                     self.assertIn("Should I save", prompt["response"]["outputSpeech"]["text"])
-                    self.assertEqual(len(runtime.personal.list_items(NOW)), 1)
+                    self.assertEqual(len(runtime.personal.list_items(NOW)), 2)
                     confirmation = event("AMAZON.YesIntent", "appointment-yes", attributes=prompt["sessionAttributes"])
                     saved = alexa.lambda_handler(confirmation, None)
                     self.assertTrue(saved["response"]["shouldEndSession"])

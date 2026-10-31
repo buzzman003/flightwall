@@ -30,6 +30,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 BASELINE_VERSION = "0.3.0"
 BASELINE_SHA256 = "086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08"
+CURRENT_BASELINE_VERSION = "0.4.0"
+CURRENT_BASELINE_SHA256 = "b8adc58999acec5b9d9263ee85939c8fe75dd3a40ab7876c6084cff8baad596c"
 MAX_GLIBC = (2, 36)
 
 
@@ -60,6 +62,11 @@ def inventory(root):
 
 def verify_baseline(path):
     require(digest(path) == BASELINE_SHA256, "Original 0.3.0 installer SHA-256 does not match the published baseline")
+
+
+def verify_current_baseline(path):
+    require(digest(path) == CURRENT_BASELINE_SHA256,
+            "Published 0.4.0 installer SHA-256 does not match the current baseline")
 
 
 def extract_installer(path, destination, version):
@@ -311,6 +318,22 @@ def assert_preserved(case, fixtures, recovery_hash):
     require(all((case.data / name).stat().st_mode & 0o777 == 0o600 for name in fixtures), "Private fixture modes changed")
 
 
+def preserve_current_fixtures(case):
+    """Create 0.4-owned state through that frozen service, never guessed schemas."""
+    auth = {"Authorization": "Bearer " + "C" * 64}
+    day = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+    requests = (("/api/v1/timers", {"label": "Synthetic upgrade timer", "duration_seconds": 3600,
+                                  "source": "manual", "request_id": "native-upgrade-timer"}),
+                ("/api/v1/shopping-list/add", {"item": "Synthetic upgrade shopping item", "source": "manual",
+                                             "request_id": "native-upgrade-shopping"}),
+                ("/api/v1/flight-watches", {"airline": "DL", "flight_number": "123", "date": day,
+                                           "source": "manual", "request_id": "native-upgrade-watch"}))
+    for route, payload in requests:
+        case.request(route, payload, auth)
+    return {name: digest(case.data / name)
+            for name in ("timers.json", "shopping/flightwall-list.json", "flight-watches.json")}
+
+
 def verify_setup(case, source):
     """Exercise the same browser origin, session and CSRF contract as setup UI."""
     for route, filename in (("/setup", "index.html"), ("/setup/app.js", "app.js"), ("/setup/style.css", "style.css")):
@@ -359,7 +382,7 @@ def fresh_install(package, root, source, version):
         case.stop()
 
 
-def upgrade_install(old_package, package, root, version, *, rollback=False):
+def upgrade_install(old_package, package, root, version, *, rollback=False, current_package=None):
     case = Installation(root)
     try:
         case.install_package(old_package)
@@ -369,10 +392,25 @@ def upgrade_install(old_package, package, root, version, *, rollback=False):
         recovery_hash = digest(case.install / "update-helper" / "FlightWall")
         case.service("start")
         case.wait_health(BASELINE_VERSION)
+        previous = BASELINE_VERSION
+        if current_package is not None:
+            # Reproduce the actual installed history instead of making 0.4.0
+            # the recovery helper: original 0.3.0 -> healthy 0.4.0 -> candidate.
+            case.install_package(current_package)
+            require(case.selected() == BASELINE_VERSION, "Current baseline activated before a safe launch")
+            case.wait_health(BASELINE_VERSION)
+            case.launch(shader=True)
+            previous = CURRENT_BASELINE_VERSION
+            require(case.selected() == previous and case.app("--version").stdout.strip() == previous,
+                    "Current baseline is not the real published 0.4.0 executable")
+            case.wait_health(previous)
+            require(case.state().get("awaiting_health") is False, "Current baseline did not pass startup health")
+            assert_preserved(case, fixtures, recovery_hash)
+            fixtures.update(preserve_current_fixtures(case))
         case.install_package(package)
-        require(case.selected() == BASELINE_VERSION, "Installer activated the update before a safe Ports launch")
+        require(case.selected() == previous, "Installer activated the update before a safe Ports launch")
         require(json.loads((case.install / "pending.json").read_text())["version"] == version, "New executable was not staged")
-        case.wait_health(BASELINE_VERSION)
+        case.wait_health(previous)
         assert_preserved(case, fixtures, recovery_hash)
         if rollback:
             # Corrupt only this disposable staged copy after a real installation.
@@ -381,8 +419,9 @@ def upgrade_install(old_package, package, root, version, *, rollback=False):
             (case.install / "releases" / version / "FlightWall").write_bytes(b"flightwall-validation-intentional-missing-command\n")
             result = case.launch(success=False)
             require(result.returncode != 0, "Broken staged executable unexpectedly launched")
-            require(case.selected() == BASELINE_VERSION, "Failed startup did not roll back")
-            case.wait_health(BASELINE_VERSION)
+            require(case.selected() == previous, "Failed startup did not roll back")
+            require(case.app("--version").stdout.strip() == previous, "Rollback did not restore the previous real executable")
+            case.wait_health(previous)
             state = case.state()
             require(state.get("awaiting_health") is False and version in state.get("failed_versions", []), "Rollback state was not retained")
         else:
@@ -393,20 +432,35 @@ def upgrade_install(old_package, package, root, version, *, rollback=False):
             state = case.state()
             require(state.get("awaiting_health") is False, "First rendered frame did not mark the upgrade healthy")
         require(state.get("minimum_version") == version, "Update version floor was lowered")
+        require(state.get("previous_version") == previous, "Update recovery history selected the wrong previous release")
         assert_preserved(case, fixtures, recovery_hash)
-        return {"from": BASELINE_VERSION, "to": version, "real_executables": True, "next_launch_only": True,
+        return {"from": previous, "to": version, "real_executables": True, "next_launch_only": True,
                 "private_fixtures_preserved": len(fixtures), "pinned_recovery_preserved": True,
+                "pinned_recovery_version": BASELINE_VERSION,
                 "background_service_restored": True, "rollback": rollback, "version_floor_preserved": True}
     finally:
         case.stop()
 
 
-def verify_report(release, report_path):
+def verify_report(release, report_path, *, require_current=False):
     report = json.loads(Path(report_path).read_text())
     require(report.get("passed") is True and report.get("baseline_sha256") == BASELINE_SHA256,
             "A successful pinned-baseline native validation report is required")
     require(report.get("bundle_files") == inventory(release), "Frozen bundle changed after native validation")
     require((Path(release) / "VERSION").read_text().strip() == report["version"], "Report version does not match bundle")
+    if require_current:
+        require(report.get("current_baseline_sha256") == CURRENT_BASELINE_SHA256,
+                "The published current baseline must be pinned in its validation report")
+        for name, is_rollback in (("upgrade", False), ("rollback", True)):
+            result = report.get(name, {})
+            require(result.get("from") == CURRENT_BASELINE_VERSION and result.get("to") == report["version"]
+                    and result.get("rollback") is is_rollback
+                    and result.get("pinned_recovery_version") == BASELINE_VERSION
+                    and all(result.get(flag) is True for flag in ("real_executables", "next_launch_only",
+                        "pinned_recovery_preserved", "background_service_restored", "version_floor_preserved"))
+                    and type(result.get("private_fixtures_preserved")) is int
+                    and result["private_fixtures_preserved"] > 0,
+                    "Current-version upgrade and rollback acceptance is incomplete")
     return report
 
 
@@ -416,11 +470,16 @@ def main():
     parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--installer", type=Path)
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--current-baseline", type=Path,
+                        help="Separately test published 0.4.0 -> candidate with the original 0.3.0 recovery helper")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
+    parser.add_argument("--verify-current-report", type=Path)
     args = parser.parse_args()
-    if args.verify_report:
-        verify_report(args.release, args.verify_report)
+    require(not (args.verify_report and args.verify_current_report), "Choose only one report verification mode")
+    if args.verify_report or args.verify_current_report:
+        verify_report(args.release, args.verify_report or args.verify_current_report,
+                      require_current=bool(args.verify_current_report))
         print("Native validation report matches the exact frozen bundle.")
         return
     require(sys.platform == "linux" and platform.machine() == "x86_64", "Native release validation requires Linux x86_64")
@@ -432,6 +491,10 @@ def main():
     require(re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) and tuple(map(int, version.split("."))) > (0, 3, 0),
             "Candidate must be a newer numeric version than 0.3.0")
     verify_baseline(args.baseline)
+    if args.current_baseline:
+        require(tuple(map(int, version.split("."))) > tuple(map(int, CURRENT_BASELINE_VERSION.split("."))),
+                "Candidate must be newer than the current 0.4.0 baseline")
+        verify_current_baseline(args.current_baseline)
     report = {"version": version, "baseline_sha256": BASELINE_SHA256, "bundle_files": inventory(args.release)}
     print("Auditing frozen source, assets, architecture and glibc requirements.", flush=True)
     report.update(audit_elf(args.release))
@@ -441,12 +504,19 @@ def main():
         package = extract_installer(args.installer, root / "candidate", version)
         baseline = extract_installer(args.baseline, root / "baseline", BASELINE_VERSION)
         require(inventory(package / "releases" / version) == report["bundle_files"], "Packaged installer differs from audited frozen bundle")
-        print("Checking fresh frozen installation, graphics and local setup.", flush=True)
-        report["fresh_install"] = fresh_install(package, root / "fresh", args.source, version)
-        print("Checking genuine 0.3.0 executable upgrade and private-data preservation.", flush=True)
-        report["upgrade"] = upgrade_install(baseline, package, root / "upgrade", version)
+        current = None
+        if args.current_baseline:
+            current = extract_installer(args.current_baseline, root / "current-baseline", CURRENT_BASELINE_VERSION)
+            report["current_baseline_sha256"] = CURRENT_BASELINE_SHA256
+            print("Checking genuine 0.4.0 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
+        else:
+            print("Checking fresh frozen installation, graphics and local setup.", flush=True)
+            report["fresh_install"] = fresh_install(package, root / "fresh", args.source, version)
+            print("Checking genuine 0.3.0 executable upgrade and private-data preservation.", flush=True)
+        report["upgrade"] = upgrade_install(baseline, package, root / "upgrade", version, current_package=current)
         print("Checking failed-start rollback through the original pinned recovery helper.", flush=True)
-        report["rollback"] = upgrade_install(baseline, package, root / "rollback", version, rollback=True)
+        report["rollback"] = upgrade_install(baseline, package, root / "rollback", version,
+                                             rollback=True, current_package=current)
     report.update(passed=True, checked_at=datetime.now(timezone.utc).isoformat(),
                   limitations=["Synthetic offline Linux checks; not physical Batocera/TV, Google, phone, paid-provider or live Alexa acceptance."])
     args.output.parent.mkdir(parents=True, exist_ok=True)

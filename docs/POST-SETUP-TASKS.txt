@@ -1,13 +1,28 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
 Updated October 31, 2026
 
+OWNER PRIORITY UPDATE - OCTOBER 31, 2026
+
+Shopping-list integration, email export, IFTTT, store-arrival delivery and SMS
+work are paused at the owner's request. The owner now reports the attempted
+Alexa shopping email did not arrive; earlier spoken success is not reliable
+export evidence. Preserve the existing local list; do not configure new shopping
+services or send test messages. Shared Alexa-app access can be evaluated later.
+
+First priority is reliable short Alexa dinner commands for today and tomorrow,
+with a short acknowledgement and the card in the normal TV rotation. Fix date
+intent handling separately from Amazon's intermittent invocation routing.
+Second priority is mirroring ordinary Alexa timers; the host and provider gates
+in NATIVE-ALEXA-TIMERS.txt remain unresolved. No HA installation is required for
+the dinner feature, and none has been performed.
+
 CURRENT SCOPE
 
 The signed 0.4.0 release implements the ten-day custody outlook and the expanded
 features described in RELEASE-0.4.0.txt. Its Linux build, native acceptance and
 public download/signature checks are complete. See NEXT-VERSION-PLAN.txt for the
 design record and VALIDATION.txt for evidence. Physical board installation and
-matching Alexa deployment remain separate from publishing the release.
+matching Alexa deployment are now complete. Remaining device checks are below.
 
 TEN-DAY CUSTODY OUTLOOK
 
@@ -27,12 +42,14 @@ frozen assets, real OpenGL/software rendering, fresh installation, genuine
 and public delivery. Future code releases must use a higher matching version
 and pass the same gates. Never replace or reuse published 0.4.0 assets.
 
-1. Install the verified update at a safe Ports launch, preserving private DATA
-   and the existing recovery helper. Provision initial trust locally only if
-   needed; do not replace an existing pinned key as an ordinary update step.
-2. Check the ten-day outlook, display fit, timers, ticker, trip views and motion
-   on the physical TV. Deploy the matching Alexa handler/model and verify its
-   new intents on an actual Echo.
+1. Completed: the signed update activated on the owner's normal Ports launch;
+   real flights, larger display fit and return to the background service passed.
+   Existing private settings/Google authorization and original recovery helper
+   were preserved. Future releases must retain the same preservation checks.
+2. Check the ten-day outlook, ticker, trip views and motion on the physical TV;
+   larger display fit and visible timer countdowns already passed. The matching
+   Alexa handler/model are deployed, and actual Echo timer start/cancel passed.
+   Broaden speech checks to other new commands and arbitrary labels.
 3. Validate opted-in phones with real locked/background outings and stationary
    freshness. The iPhone invitation still needs its real-device consent/import/
    permissions/report checks. Keep shopping/private cards off until their own
@@ -62,9 +79,100 @@ recognition without verification.
 https://developer.amazon.com/en-US/docs/alexa/custom-skills/create-the-interaction-model-for-your-skill.html#intent-and-slot-name-requirements
 
 The explicit phrase "Alexa, open Flight Wall skill" passed a real Echo check
-for 0.3.0. Simpler variants had inconsistent routing; the cause is unproven.
-Use disposable synthetic cards when checking speech, and remove only their
-verified IDs. Source/simulator tests do not prove arbitrary spoken-title support.
+for 0.3.0, but the owner reported that it failed after the 0.4.0 deployment.
+The physical Echo did handle "Alexa, ask Flight Wall to list timers" correctly.
+That does not establish reliable routing for every phrase. On October 31,
+0.4.0 simulator tests also showed inconsistent direct-ask routing: some timer
+requests were handled as native Alexa requests instead of reaching this skill.
+After the simulator's exact "Flight Wall. What would you like?" welcome,
+in-session timer creation, naming, listing and cancellation worked. Batocera
+independently confirmed countdowns, simultaneous timers, and natural expiry.
+The owner subsequently confirmed a real Echo two-minute timer start and its
+cancellation using "Alexa, ask Flight Wall to start a pasta timer for two
+minutes" and "Alexa, ask Flight Wall to cancel the pasta timer". Independent
+board reads confirmed both operations; the owner saw the timer disappear from
+the TV while a second timer continued. The initial simulator timer was also
+confirmed visible on the TV. Use disposable synthetic cards/timers and remove
+only their verified IDs. These checks do not prove every spoken label or the
+quality of every animation transition.
+
+TIMER FOLLOW-UP FOR A FUTURE SIGNED RELEASE
+
+* The tested Echo start/cancel commands and physical timer strip passed. Check
+  more arbitrary spoken labels, the five-timer layout and animation quality.
+  Do not treat native Alexa replies as evidence of a board write.
+* Improve the safe timer-limit/disabled error response: TimerError currently
+  reaches the generic personal-item validation response. Rejecting a sixth
+  running timer is safe, but the message should explain the five-timer limit.
+  Preserve request deduplication and reject without changing existing timers.
+* Current Flight Wall timers are visual countdowns and DONE indicators; they
+  do not ring an Echo alarm. Adding an alarm needs its own explicit design.
+* Amazon's public Timers API lists only timers created by the calling skill.
+  It cannot mirror every ordinary "Alexa, set a timer" timer. Native-timer
+  integration must not be described as an existing Flight Wall capability.
+  https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-overview.html
+  https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-api-reference.html#list-timers
+* The owner requested ordinary/native Alexa timer mirroring on October 31.
+  This cannot be enabled by adding a custom-skill permission. See
+  NATIVE-ALEXA-TIMERS.txt for the researched implementation path and gates.
+  Home Assistant's built-in Alexa Devices integration documents the next timer
+  per device. The separate community Alexa Media Player v5.18.0 can expose
+  multiple native timers, but uses an unofficial API and currently conflates
+  some failed fetches with a fresh empty list. Resolve that success/failure
+  ambiguity before treating absence as cancellation. An always-running host,
+  owner-completed Amazon authentication and real device tests are still needed.
+  No Home Assistant host/account was provisioned, no broader permission was
+  granted, and no native-timer adapter or app update was deployed.
+* Any shipped code fix or timer integration requires a version above 0.4.0,
+  relevant tests and the established signed release/next-launch workflow.
+
+HOME ASSISTANT HOST AND NATIVE SHOPPING FOLLOW-UP
+
+The owner initially selected a separate Home Assistant host, then clarified
+that no dedicated device is available and asked about an existing Windows
+desktop VM and IFTTT. A desktop VM is feasible subject to firmware virtualization
+and an always-awake host; no hypervisor or HA was installed. Compare the email
+snapshot route before buying hardware. See HOME-ASSISTANT-PLAN.txt for the
+current options. No Home Assistant or Docker was installed on Batocera.
+
+See HOME-ASSISTANT-PLAN.txt for the native shopping/timer bridge setup sequence.
+The current built-in Alexa Devices integration supports native shopping lists;
+it is separate from the retired custom-skill List Management API. The existing
+Flight Wall ticker is ready to display a future mirrored source, but native
+list access has not been authenticated, implemented or verified in Flight Wall.
+Keep the private Flight Wall list separate and preserve it during source choice.
+
+The bare Alexa launch remains unresolved. A later simulator check again
+returned "not supported on this device" for "open flight wall", while
+"open flight wall skill" reached the custom welcome. Public voice endpoints
+were healthy. A physical reply that only says no timers are set is ambiguous;
+a uniquely named diagnostic timer did not establish a successful physical
+readback. Its exact ID was subsequently cleared, preserving the unrelated
+household timer. The owner reports that disabling/re-enabling the development
+skill again did not resolve launch, and the latest replies differ from our
+handler. Correlate a timestamped failed physical launch with Lambda invocation
+records and a simulator control before changing code; verify the particular
+Echo account, en-US locale and duplicate enabled versions if no invocation
+arrives. Do not treat Home Assistant as a repair for custom-skill invocation.
+
+IFTTT EMAIL SNAPSHOT ALTERNATIVE
+
+The owner already uses IFTTT and reports a working Alexa-to-Lisa shopping email
+command and has now confirmed the email includes grocery items. Exact format
+and parser completeness remain unverified. IFTTT can match Gmail messages and
+POST their text, but its native
+Alexa service ended in 2023. An email bridge would update a snapshot only when
+an email is sent, not automatically after every native list edit. Current Free
+plan services include Webhooks, subject to monthly credits. No Applet, mailbox
+connection, import credential or Flight Wall importer exists from this work.
+Keep this route separate from native timer mirroring and the existing local
+Flight Wall list; any importer must use the new signed-release workflow.
+The owner wants the first qualifying store arrival to request that email once
+per America/Chicago day across all stores. Test the exact working email phrase
+as one Alexa Routine Custom action before adding location automation: Amazon
+documents review/confirmation for general Alexa+ contact emails. A conversation
+that sends successfully is not an unattended-send check. No location-triggered
+request or test email was sent. Details and sources: HOME-ASSISTANT-PLAN.txt.
 
 DEPLOYMENT LONGEVITY
 

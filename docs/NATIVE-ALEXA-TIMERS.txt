@@ -1,0 +1,167 @@
+FLIGHT WALL: NATIVE ALEXA TIMER MIRROR FEASIBILITY
+Research date: October 31, 2026
+
+STATUS
+
+Native Alexa timer mirroring is not implemented or connected. No new app
+executable, release or account setup was created for it. Existing 0.4.0
+visual timers are separate from ordinary "Alexa, set a timer" timers.
+
+There is no global/native-timer permission to add to the custom skill.
+Amazon's alexa::alerts:timers:skill:readwrite permission covers only timers
+created by that skill. GET /v1/alerts/timers lists those timers across the
+customer's devices; an out-of-session token does not expand this scope. [1]
+
+AVAILABLE INTEGRATIONS
+
+* Home Assistant's built-in Alexa Devices integration documents the next
+  scheduled timer per device, not all simultaneous timers. The inspected
+  Home Assistant 2026.10.4 source exposes one timer timestamp sensor per
+  device, without a full-list attribute. Default sensor polling is five
+  minutes; timers are not in its documented push-update list. [2]
+* Community Alexa Media Player (AMP) v5.18.0, published October 22, 2026,
+  depends on alexapy 1.33.0. Its next_timer sensor does expose full returned
+  timer lists. AMP is a maintained custom integration, not Amazon's public
+  Timers API or Home Assistant's built-in Alexa Devices integration. Its
+  README explicitly warns that its unofficial Alexa-app API can stop
+  working if Amazon changes access. [3]
+
+PINNED AMP DATA SHAPE
+
+Source: v5.18.0 sensor.py, especially lines 666-678, 1090-1160 and 1183-1243. [4]
+
+  next_timer.attributes.process_timestamp: ISO timestamp with offset
+  next_timer.attributes.total_all: number of returned timer rows
+  next_timer.attributes.total_active: number of ON/SNOOZED rows
+  next_timer.attributes.sorted_all: array of full timer dictionaries
+  next_timer.attributes.sorted_active: array of ON/SNOOZED dictionaries
+  each row: id, type="Timer", timerLabel (possibly null), status,
+            remainingTime (milliseconds), and other provider fields
+
+These are lists of dictionaries, unlike older wiki templates. brief
+truncates lists to 12 rows; do not treat it as complete. sorted_all retains
+paused rows that sorted_active excludes. Do not guess unknown statuses.
+
+AMP derives a running timer deadline from process_timestamp + remainingTime.
+That is an integration-derived deadline, not a guaranteed provider timestamp.
+Do not restart a countdown when the same cached entity is fetched again.
+Keep paused remaining time fixed; do not turn a paused row into a deadline.
+
+FRESHNESS AND CANCELLATION LIMITATION
+
+AMP handles PUSH_NOTIFICATION_CHANGE by fetching the full notification
+snapshot. Its coordinator defaults to 60-second polling without HTTP/2 push
+and 600 seconds with push. Notification polling has a 60-second cooldown;
+alexapy also has a 10-second cooldown. Push refresh retries use a fixed
+15-second delay. These mechanisms do not guarantee delivery latency. [5,6]
+
+Important source-review finding: the ordinary process_notifications poll
+path creates a new process_timestamp and replaces the stored snapshot even
+when alexapy returns None. alexapy can return None after cooldown, throttling,
+HTTP errors or invalid JSON. This produces an apparently fresh empty
+snapshot. The push worker guards against None, but the ordinary poll path
+does not. Therefore fresh process_timestamp + empty sorted_all cannot
+distinguish cancellation of the last timer from a failed fetch. [5,6]
+
+Entity availability follows Echo availability; it does not certify a
+successful timer fetch. HA last_updated and a periodic bridge heartbeat
+also do not prove a new Amazon observation. alexa_media_notification_event
+is locally scheduled for the next timer's calculated expiry, not an
+authoritative Amazon state-change feed. [4]
+
+Do not ship an attribute-only mirror until successful empty snapshots can
+be distinguished from failures. An upstream fix or reviewed HA-side adapter
+must observe successful complete fetches, including valid empty results.
+Outages mean unavailable, never "all timers canceled".
+
+AUTHENTICATION AND HOST PREREQUISITES
+
+Identify a supported, always-running Home Assistant host. None was connected
+by this research; installing HA on Batocera is not an incidental app update.
+
+AMP requires owner-entered Amazon authentication and an authenticator secret.
+HA then stores both the password and the ability to generate MFA codes,
+broader access than skill consent. Challenges and reauthorization can require
+the owner. Keep credentials private; no unattended sign-in is assumed. [7]
+
+Keep Amazon credentials solely in the separately secured HA environment.
+Do not import browser cookies, copy credentials into Flight Wall, send them
+to chat, or reuse Flight Wall's admin, voice or presence credentials. A
+future bridge needs its own revocable credential and normal TLS validation.
+
+PROPOSED IMPLEMENTATION BOUNDARY
+
+* Opt-in read-only mirror in a separate store. Native creation, ringing and
+  cancellation remain owned by Alexa. Flight Wall voice cancellation must
+  not cancel native timers. No duplicate timers or automated voice commands.
+  Use a dedicated write-only snapshot credential, isolated from all existing
+  app credentials and incapable of reading household state.
+* HA adapter forwards only complete, successful snapshots for explicitly
+  selected devices. Include a source/device key, adapter instance epoch,
+  increasing sequence, observation timestamp and explicit success/completeness.
+  Repeated delivery must retain the original observation time and sequence.
+* Bound payload size, row count and labels. Import only opaque identity,
+  device alias, label, timer state and timing. Discard raw account/device
+  identifiers, other notification types and unrelated provider metadata.
+* Reject replay, future timestamps, partial/invalid lists and unknown schema.
+  Only successful complete device snapshots remove absent IDs from that
+  device's mirror. Errors mark unavailable, not canceled. Hide stale mirror
+  rows on every frame, including pause and backend outage.
+* Run countdowns locally; retain paused remaining seconds separately. Decide
+  label privacy explicitly and exclude labels from generic maintenance status.
+  Preserve flight priority and per-frame privacy checks.
+* The current TV strip supports five timers. Specify paging or an honest
+  overflow indication before promising that all household timers are visible.
+
+ACCEPTANCE GATES BEFORE DELIVERY
+
+1. Synthetic protocol tests: replay/order/future rejection, complete vs partial
+   replacement, empty-success vs fetch-failure, stale expiry, paused/resumed
+   timers, duplicate labels, multiple devices and malformed/unbounded inputs.
+2. Demonstrate a trustworthy success/empty signal using the pinned HA/AMP
+   versions. Poll failure, throttling, authentication loss and push disconnect
+   must not be reported as cancellation or reset timer deadlines.
+3. With owner authentication completed, compare two simultaneous labeled
+   ordinary Echo timers against HA and the TV. Verify exact cancellation of
+   either timer, final cancellation, expiry, pause/resume where supported,
+   restart/reconnect, multi-device isolation and observed update latency.
+   Use disposable test timers; preserve unrelated timers.
+4. Verify the TV strip, overflow, service/GUI handoff, offline behavior and
+   existing Flight Wall timer isolation on actual hardware. Distinguish
+   derived countdown expiry from a verified Echo alarm/dismissal event.
+5. Ship only a new version above the last published release through relevant
+   tests, Linux native acceptance and the signed workflow. Verify an actual
+   0.4.0-to-new-version executable upgrade and rollback, preserving private
+   DATA, games and pinned recovery/trust.
+
+PRIMARY SOURCES (REVIEWED OCTOBER 31, 2026)
+
+[1] Amazon permission and ownership scope:
+https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-overview.html#add-timers-to-your-skill
+https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-api-reference.html#list-timers
+
+[2] Home Assistant built-in integration and inspected source:
+https://www.home-assistant.io/integrations/alexa_devices/#alarm-timer-and-reminder-sensors
+https://www.home-assistant.io/integrations/alexa_devices/#data-updates
+https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/alexa_devices/sensor.py
+https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/alexa_devices/entity.py
+
+[3] Community AMP release, dependency and API disclaimer:
+https://github.com/alandtse/alexa_media_player/releases/tag/v5.18.0
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/manifest.json
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/README.md
+
+[4] AMP timer schema, availability, local event and deadline calculation:
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/sensor.py
+
+[5] AMP snapshot replacement, refresh worker, push handler and intervals:
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/__init__.py#L1573
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/__init__.py#L2417
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/coordinator.py
+https://github.com/alandtse/alexa_media_player/blob/v5.18.0/custom_components/alexa_media/const.py
+
+[6] alexapy 1.33.0 notification fetch, cooldown and failure handling:
+https://gitlab.com/keatontaylor/alexapy/-/raw/v1.33.0/alexapy/alexaapi.py
+
+[7] AMP authentication and credential-storage requirements:
+https://github.com/alandtse/alexa_media_player/wiki/Configuration#2sv-authenticator-app-key---required

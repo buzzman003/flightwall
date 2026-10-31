@@ -21,6 +21,34 @@
           ]
         },
         {
+          "name": "AddDinnerTodayIntent",
+          "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
+          "samples": [
+            "set dinner today to {Meal}",
+            "dinner today is {Meal}",
+            "today dinner is {Meal}",
+            "for dinner today we are having {Meal}",
+            "we are having {Meal} for dinner today",
+            "{Meal} is for dinner today",
+            "that {Meal} is for dinner today",
+            "dinner today"
+          ]
+        },
+        {
+          "name": "AddDinnerTomorrowIntent",
+          "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
+          "samples": [
+            "set dinner tomorrow to {Meal}",
+            "dinner tomorrow is {Meal}",
+            "tomorrow dinner is {Meal}",
+            "for dinner tomorrow we are having {Meal}",
+            "we are having {Meal} for dinner tomorrow",
+            "{Meal} is for dinner tomorrow",
+            "that {Meal} is for dinner tomorrow",
+            "dinner tomorrow"
+          ]
+        },
+        {
           "name": "AddAppointmentIntent",
           "slots": [
             {"name": "Title", "type": "APPOINTMENT_TITLE"},

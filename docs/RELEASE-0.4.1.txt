@@ -1,0 +1,35 @@
+FLIGHT WALL 0.4.1: SHORT DINNER COMMANDS
+
+Release candidate. Publication, signed-build and device status are recorded in
+VALIDATION.txt; source changes alone do not update Batocera or Alexa.
+
+The Alexa adapter adds separate today/tomorrow dinner intents. Candidate direct
+forms are: "Alexa, ask Flight Wall to set dinner today to chicken teriyaki" and
+"Alexa, ask Flight Wall to set dinner tomorrow to tacos and rice". Once inside
+the confirmed skill session, say "dinner today is chicken teriyaki" or
+"dinner tomorrow is tacos and rice". Literal-day forms keep the free-text meal
+separate from the date. Another date still uses "set dinner for Friday", then
+the meal. Alexa receives no flight/calendar data through these voice routes.
+
+The adapter computes today/tomorrow using the board's current timezone, including
+calendar-day boundaries across daylight-saving changes. A short acknowledgement
+reads the actual saved meal/day. Expired-window, hidden-card and uncertain-write
+warnings remain. Ambiguous date words captured as the meal ask for clarification
+instead of silently saving the meal for today. Existing request deduplication,
+selected-date follow-up and same-date replacement remain in place.
+
+Dinner cards retain the configured display window (default 14:30-19:00) and
+existing custody visibility rules, and join the normal rotation. These commands
+do not send messages to children or create Google Calendar events.
+
+Invocation reliability is a separate issue. On the owner's current Alexa setup,
+some direct dinner requests were routed to native announcements instead of the
+skill. The explicit skill launch followed by an in-session dinner command passed
+a live simulator-to-board save/cleanup check on 0.4.0. Neither that simulator
+result nor these source tests guarantees physical Echo routing. New 0.4.1 phrases
+need a real model build, handler deployment, NLU and physical Echo checks.
+
+This release does not add native Alexa timer mirroring, Home Assistant, email
+export, IFTTT or shopping geofences. Shopping work is paused by the owner.
+Games, credentials, mutable settings, original recovery helper and trust key
+must remain outside/reused across the signed next-launch update.

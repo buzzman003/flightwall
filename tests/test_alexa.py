@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request
+from zoneinfo import ZoneInfo
 
 from integrations.alexa import lambda_function as alexa
 from flightwall.personal import PersonalError, PersonalStore
@@ -171,8 +172,11 @@ class AlexaConversationTests(unittest.TestCase):
         self.assertEqual(self.board.calls[-1]["date"], "2026-10-21")
         self.assertEqual(self.board.calls[-1]["kind"], "dinner")
         self.assertNotIn("duration_minutes", self.board.calls[-1])
-        self.assertIn("2:30 P.M.", speech(response))
-        self.assertIn("7 P.M.", speech(response))
+        self.assertEqual(speech(response), "Saved teriyaki chicken for dinner today.")
+        item = self.board.results[-1]["item"]
+        zone = ZoneInfo(self.config["timezone"])
+        self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(zone).strftime("%H:%M"), "14:30")
+        self.assertEqual(datetime.fromisoformat(item["display_end"]).astimezone(zone).strftime("%H:%M"), "19:00")
 
     def test_dinner_date_can_be_selected_before_free_text_meal(self):
         first = self.call(slots={"Date": "2026-10-23"})
@@ -190,16 +194,125 @@ class AlexaConversationTests(unittest.TestCase):
         self.assertIn("will not appear", speech(response))
         self.assertIn("not moved it to tomorrow", speech(response))
 
-    def test_saved_response_uses_actual_stored_window_if_settings_change_during_write(self):
+    def test_short_dinner_response_preserves_changed_window_during_write(self):
         save = self.board.save
         def changed_settings(payload):
             self.config.update(dinner_start="16:00", dinner_end="20:00")
             return save(payload)
         with patch.object(self.board, "save", side_effect=changed_settings):
             response = self.call(slots={"Meal": "pasta"})
-        self.assertIn("4 P.M.", speech(response))
-        self.assertIn("8 P.M.", speech(response))
-        self.assertNotIn("2:30 P.M.", speech(response))
+        self.assertEqual(speech(response), "Saved pasta for dinner today.")
+        item = self.board.results[-1]["item"]
+        zone = ZoneInfo(self.config["timezone"])
+        self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(zone).strftime("%H:%M"), "16:00")
+        self.assertEqual(datetime.fromisoformat(item["display_end"]).astimezone(zone).strftime("%H:%M"), "20:00")
+
+    def test_explicit_dinner_days_use_board_calendar_day_across_dst_and_year_boundary(self):
+        self.config["timezone"] = "America/Chicago"
+        cases = (
+            (datetime(2026, 11, 1, 4, 30, tzinfo=timezone.utc), "2026-10-31", "2026-11-01", "20:30"),
+            (datetime(2026, 3, 8, 5, 30, tzinfo=timezone.utc), "2026-03-07", "2026-03-08", "19:30"),
+            (datetime(2027, 1, 1, 5, 30, tzinfo=timezone.utc), "2026-12-31", "2027-01-01", "20:30"),
+        )
+        for now, today, tomorrow, tomorrow_utc_start in cases:
+            for name, expected in (("AddDinnerTodayIntent", today), ("AddDinnerTomorrowIntent", tomorrow)):
+                with self.subTest(now=now, intent=name), patch.object(alexa, "_now", return_value=now):
+                    response = self.call(name, {"Meal": "Chicken teriyaki & rice"}, request_id=f"{name}.{today}")
+                    self.assertEqual(self.board.calls[-1]["date"], expected)
+                    self.assertEqual(self.board.calls[-1]["title"], "Chicken teriyaki & rice")
+                    self.assertTrue(response["response"]["shouldEndSession"])
+                    if name == "AddDinnerTomorrowIntent":
+                        item = self.board.results[-1]["item"]
+                        self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(timezone.utc).strftime("%H:%M"), tomorrow_utc_start)
+                        self.assertEqual(speech(response), "Saved Chicken teriyaki & rice for dinner tomorrow.")
+                    else:
+                        self.assertIn("display window has already ended", speech(response))
+
+    def test_explicit_dinner_missing_meal_retains_selected_date_on_followup(self):
+        self.config["timezone"] = "America/Chicago"
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 4, 59, tzinfo=timezone.utc)):
+            first = self.call("AddDinnerTomorrowIntent")
+        self.assertFalse(self.board.calls)
+        self.assertIn("What is for dinner", speech(first))
+        self.assertEqual(first["sessionAttributes"]["pending"]["date"], "2026-11-01")
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 6, 1, tzinfo=timezone.utc)):
+            response = self.call(slots={"Meal": "Chicken Tonight"}, previous=first, request_id="meal.followup")
+        self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
+        self.assertEqual(self.board.calls[-1]["title"], "Chicken Tonight")
+        self.assertEqual(speech(response), "Saved Chicken Tonight for dinner today.")
+
+    def test_explicit_dinner_replaces_old_pending_date_and_reads_fresh_board_timezone(self):
+        first = self.call(slots={"Date": "2026-12-25"})
+        first["sessionAttributes"]["pending"]["title"] = "Old meal"
+        self.config["timezone"] = "America/Chicago"
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 4, 30, tzinfo=timezone.utc)):
+            response = self.call("AddDinnerTomorrowIntent", {"Meal": "Fresh meal"}, first, "fresh.meal")
+        self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
+        self.assertEqual(self.board.calls[-1]["request_id"], "fresh.meal")
+        self.assertEqual(speech(response), "Saved Fresh meal for dinner tomorrow.")
+
+    def test_explicit_dinner_without_meal_never_reuses_prior_title(self):
+        first = self.call(slots={"Date": "2026-12-25"})
+        first["sessionAttributes"]["pending"]["title"] = "Old meal"
+        response = self.call("AddDinnerTodayIntent", previous=first, request_id="new.today")
+        self.assertFalse(self.board.calls)
+        self.assertNotIn("title", response["sessionAttributes"]["pending"])
+        self.assertIn("What is for dinner", speech(response))
+
+    def test_dinner_date_words_captured_as_meal_require_clarification_without_saving(self):
+        cases = (
+            ("AddDinnerIntent", "chicken teriyaki tomorrow"),
+            ("AddDinnerIntent", "chicken teriyaki for dinner tomorrow"),
+            ("AddDinnerTodayIntent", "chicken teriyaki tomorrow"),
+            ("AddDinnerTomorrowIntent", "chicken teriyaki today"),
+            ("AddDinnerTodayIntent", "chicken teriyaki is for dinner tomorrow"),
+            ("AddDinnerTomorrowIntent", "chicken teriyaki is for dinner tomorrow"),
+            ("AddDinnerTomorrowIntent", "tomorrow"),
+        )
+        for name, meal in cases:
+            with self.subTest(intent=name, meal=meal):
+                response = self.call(name, {"Meal": meal})
+                self.assertFalse(self.board.calls)
+                self.assertIn("followed by just the meal", speech(response))
+                self.assertNotIn("title", response["sessionAttributes"]["pending"])
+
+    def test_explicit_dinner_preserves_exact_meal_and_same_day_replacement(self):
+        today = self.call("AddDinnerTodayIntent", {"Meal": "Chicken Tonight"}, request_id="today.first")
+        self.call("AddDinnerTomorrowIntent", {"Meal": "Soup & Sourdough"}, request_id="tomorrow.first")
+        self.call("AddDinnerTodayIntent", {"Meal": "Crème brûlée"}, request_id="today.second")
+        response = self.call("AddDinnerTodayIntent", {"Meal": "Chicken Tonight"}, request_id="today.first")
+        self.assertEqual(speech(today), "Saved Chicken Tonight for dinner today.")
+        self.assertIn("already replaced or cancelled", speech(response))
+        self.assertEqual({item["title"] for item in self.store.list_items()}, {"Crème brûlée", "Soup & Sourdough"})
+
+    def test_explicit_dinner_uncertain_retry_keeps_original_day_after_midnight(self):
+        self.config["timezone"] = "America/Chicago"
+        self.board.fail_after_save = True
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 4, 59, tzinfo=timezone.utc)):
+            first = self.call("AddDinnerTomorrowIntent", {"Meal": "Pasta"})
+        self.assertIn("could not confirm whether", speech(first))
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 6, 1, tzinfo=timezone.utc)):
+            response = self.call("AMAZON.YesIntent", previous=first, request_id="retry.after.midnight")
+        self.assertEqual(self.board.calls[0], self.board.calls[1])
+        self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
+        self.assertEqual(len(self.store.list_items()), 1)
+        self.assertIn("Already saved Pasta for dinner today", speech(response))
+
+    def test_explicit_dinner_errors_never_save_or_expose_private_details(self):
+        with patch.object(self.board, "context", side_effect=alexa.BoardError()):
+            response = self.call("AddDinnerTomorrowIntent", {"Meal": "Pasta"})
+        self.assertIn("could not connect", speech(response))
+        self.assertFalse(self.board.calls)
+        for meal in ("", "x" * 161, "private\nmeal"):
+            with self.subTest(meal_length=len(meal)):
+                response = self.call("AddDinnerTodayIntent", {"Meal": meal})
+                self.assertFalse(self.board.calls)
+                if meal:
+                    self.assertNotIn(meal, speech(response))
+        with patch.object(self.board, "save", side_effect=alexa.BoardError(retryable=False)):
+            response = self.call("AddDinnerTodayIntent", {"Meal": "Pasta"})
+        self.assertIn("could not accept", speech(response))
+        self.assertNotIn("Saved", speech(response))
 
     def test_timed_out_save_retries_original_id_without_duplicate(self):
         self.board.fail_after_save = True
@@ -341,6 +454,19 @@ class AlexaHttpBoundaryTests(unittest.TestCase):
 
 
 class AlexaModelTests(unittest.TestCase):
+    def test_day_specific_dinner_phrases_select_distinct_intents(self):
+        path = Path(__file__).resolve().parents[1] / "integrations" / "alexa" / "interaction-model-en-US.json"
+        intents = {intent["name"]: intent for intent in json.loads(path.read_text())["interactionModel"]["languageModel"]["intents"]}
+        for day, name in (("today", "AddDinnerTodayIntent"), ("tomorrow", "AddDinnerTomorrowIntent")):
+            with self.subTest(day=day):
+                intent = intents[name]
+                self.assertEqual(intent["slots"], [{"name": "Meal", "type": "AMAZON.SearchQuery"}])
+                self.assertIn(f"set dinner {day} to {{Meal}}", intent["samples"])
+                self.assertIn(f"dinner {day} is {{Meal}}", intent["samples"])
+                self.assertIn(f"{{Meal}} is for dinner {day}", intent["samples"])
+                self.assertIn(f"dinner {day}", intent["samples"])
+                self.assertTrue(all(day in sample for sample in intent["samples"]))
+
     def test_model_does_not_combine_searchquery_with_other_slots_in_a_sample(self):
         path = Path(__file__).resolve().parents[1] / "integrations" / "alexa" / "interaction-model-en-US.json"
         model = json.loads(path.read_text())["interactionModel"]["languageModel"]

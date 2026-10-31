@@ -11,7 +11,7 @@ Shared data conventions (plain JSON dictionaries):
 - Root owns app.py, config.py, main.py, pyproject/requirements, integration, tests and packaging finalization. No agent should modify another agent's files without messaging.
 - Default data root: `/userdata/system/configs/flightwall` on Batocera, override `FLIGHTWALL_DATA_DIR`. Install root `/userdata/roms/ports/.data/flightwall`; versioned releases under `releases/<version>`, root `current` symlink, updater stages `pending` for next safe launch. Stable launcher/config kept outside releases.
 - Remote endpoint on 127.0.0.1:8765, MCP + OAuth protected endpoints; network exposure only explicitly configured via HTTPS proxy such as Tailscale Serve/Funnel. No arbitrary shell/exec tool. Remote operations via callbacks from main app: status, validated settings updates, calendar refresh, update check. Service may run outside GUI for schedule caching/updater.
-- VERSION 0.4.0 source candidate; last published and installed version 0.3.0. Development/test verification must be distinguished from physical Batocera testing.
+- VERSION 0.4.0 is published as a signed Linux release and activated on the owner's Batocera installation. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
 
 Household cards (v0.2.0): PersonalStore persists appointments/dinner in a private
 JSON file outside releases, independent of read-only Google. Each card has id,
@@ -57,7 +57,7 @@ Desktop CLI OAuth remains available. Credentials, consent, household caches,
 images and API keys stay in private DATA outside versioned releases. Exact
 home addresses and real calendar IDs must never ship in artifacts.
 
-Next-version integration (0.4.0 source, not yet a Linux release):
+Version 0.4.0 integration:
 
 - Display remains 512x256 with aspect-fit default and optional integer scaling.
   Timers use a centered top strip, shopping a right-to-left bottom ticker.
@@ -90,3 +90,12 @@ Next-version integration (0.4.0 source, not yet a Linux release):
   cannot access admin settings, Chris's state, private cards, or mail. Pairing
   does not imply a verified phone report; background reliability needs a real
   locked-phone outing. No SMS, private cards or Gmail consent is implied.
+
+Version 0.4.1 dinner adapter:
+- Today and tomorrow use distinct intents with literal-day phrases and one
+  SearchQuery Meal slot. Resolve the calendar day in current board timezone;
+  never combine a phrase slot with a Date slot in the same sample utterance.
+- Read back the actual saved meal/day briefly. Retain hidden/expired-window and
+  uncertain-write warnings, original retry IDs and same-date replacement.
+- Recognition/routing is external to the handler and must be checked on real
+  devices. Do not claim that model changes fix Alexa's native-announcement route.

@@ -1,3 +1,19 @@
+DINNER COMMAND UPDATE (0.4.1)
+
+After installing the matching adapter/model, candidate direct forms are:
+  "Alexa, ask Flight Wall to set dinner today to chicken teriyaki."
+  "Alexa, ask Flight Wall to set dinner tomorrow to tacos and rice."
+Inside the confirmed skill session, use "dinner today is chicken teriyaki"
+or "dinner tomorrow is tacos and rice". Alexa reads the saved meal/day briefly.
+For another date, say "set dinner for Friday", then provide the meal.
+
+These phrases require live recognition checks. The owner's Alexa has sometimes
+routed direct dinner requests into native announcements, including an "ask"
+form. Do not treat those replies as saved Flight Wall cards. "Let the kids know"
+is not a registered variable-content shortcut. Check for the custom welcome and
+actual saved card; see VALIDATION.txt for current evidence and remaining tests.
+The app's dinner window/custody rules remain unchanged.
+
 Alexa custom-skill cloud adapter for one household Flight Wall board.
 
 Runtime: Python 3.12 or newer. No pip dependencies. Handler:

@@ -1,4 +1,20 @@
-FLIGHT WALL 0.4.0 — HOUSEHOLD TOOLS AND YOUR PRIVATE ALEXA SKILL
+DINNER COMMAND UPDATE (0.4.1)
+
+After installing the matching adapter/model, candidate direct forms are:
+  "Alexa, ask Flight Wall to set dinner today to chicken teriyaki."
+  "Alexa, ask Flight Wall to set dinner tomorrow to tacos and rice."
+Inside the confirmed skill session, use "dinner today is chicken teriyaki"
+or "dinner tomorrow is tacos and rice". Alexa reads the saved meal/day briefly.
+For another date, say "set dinner for Friday", then provide the meal.
+
+These phrases require live recognition checks. The owner's Alexa has sometimes
+routed direct dinner requests into native announcements, including an "ask"
+form. Do not treat those replies as saved Flight Wall cards. "Let the kids know"
+is not a registered variable-content shortcut. Check for the custom welcome and
+actual saved card; see VALIDATION.txt for current evidence and remaining tests.
+The app's dinner window/custody rules remain unchanged.
+
+FLIGHT WALL 0.4.1 — HOUSEHOLD TOOLS AND YOUR PRIVATE ALEXA SKILL
 
 WHAT THIS ADDS
 
@@ -35,7 +51,7 @@ on your own compatible Alexa device registered to that same Amazon account.
 SOURCE DEVELOPMENT / MATCHING DEPLOYMENTS
 
 The 0.4.0 source adds timers, a shopping list and public flight watches. Local
-source edits do not update the installed 0.3.0 Linux executable or the deployed
+source edits do not update an installed Linux executable or the deployed
 Lambda/model. Finish testing, build and sign a new versioned Linux release,
 install it through the established update workflow, and deliberately deploy
 the matching Alexa adapter/model before expecting these new routes to work.

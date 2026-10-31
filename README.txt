@@ -1,16 +1,20 @@
-FLIGHT WALL 0.4.0 SOURCE CANDIDATE
+FLIGHT WALL 0.4.1
 
-This checkout contains the next version in development. The last published
-installer and the household's installed app remain 0.3.0. A matching Linux
-build, Linux validation and signed release are required before these source
-changes can be installed. See docs/RELEASE-0.4.0.txt for features and status.
+This source checkout prepares the 0.4.1 dinner-command update. Build, signing
+and deployment status are recorded in docs/VALIDATION.txt. The previously
+published, signed Linux release is 0.4.0.
+The owner's Batocera installation has activated 0.4.0 through the Ports
+launcher, with real flights and the larger display fit confirmed on the TV.
+See docs/VALIDATION.txt for completed checks and remaining device checks.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.0
 
 Your calendar-driven flight board and household display, delivered as a
 Batocera Port. Initial platform: x86_64 Batocera 42 on an HP Ryzen mini PC
 and HDMI TV, also installed and checked on the owner's Batocera 43.1.
 Published installer packages contain a frozen Linux executable; no Python
-installation or programming is required on Batocera. This source candidate
-does not contain a newly built executable.
+installation or programming is required on Batocera. Use the published
+installer or signed update ZIP to install the executable; source edits alone
+do not update the app on the TV.
 
 START HERE: docs/INSTALL.txt
 Household onboarding, both phones and Google accounts: docs/HOUSEHOLD-SETUP.txt

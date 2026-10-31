@@ -1,0 +1,240 @@
+FLIGHT WALL: SEPARATE HOME ASSISTANT HOST PLAN
+Research and plan date: October 31, 2026
+
+STATUS AND SCOPE
+Shopping-list and email/store-delivery work is PAUSED at the owner's request.
+The latest attempted Alexa email did not arrive; the proposed email export is
+not established. Dinner voice commands are first priority; native timers second.
+The shopping material below is retained as a deferred research record only.
+The owner has no dedicated Home Assistant (HA) box. An existing Windows desktop
+pilot, a Home Assistant Green and a DIY host are under consideration; none has
+been selected or installed. The host must remain separate from Batocera.
+No HA host, Amazon account or native-list/timer bridge is connected by this plan.
+Signed Flight Wall 0.4.0 remains installed; this document creates no app update.
+Native timer mirroring is the next integration priority after dinner commands.
+
+1. IDENTIFY AND PREPARE THE HOST
+Confirm the device model, available storage, existing workloads and Ethernet.
+Prefer Home Assistant OS on supported dedicated hardware; an existing always-on
+VM host is another option. Choose the installation guide only after identification.
+Identify the exact target disk and preserve its data before any image write.
+Do not install HA on the Batocera games computer as part of this plan. [1]
+Establish reliable power, automatic startup, clock synchronization, a stable LAN
+address and private HA backups. Keep its administrator interface off public ports.
+Record the actual HA/core/integration versions; review differences from the pins
+below before relying on their behavior. Amazon list access still needs internet.
+
+WINDOWS PILOT AND HARDWARE CHOICES (NOT SELECTED)
+If the existing desktop has capacity, first evaluate HAOS in a VM without buying
+hardware. A proposed pilot allocation is 2 vCPUs, 4 GB RAM and an expanding 64 GB
+virtual disk; this is a candidate configuration, not a verified installation.
+HA documents VirtualBox, VMware Workstation and Hyper-V; its VM minimum is 2 GB
+RAM and 2 vCPUs. Use UEFI and bridged networking. CPU virtualization must be
+enabled. Windows Home needs VirtualBox or another compatible hypervisor; the
+full Hyper-V role requires a supported Pro/Enterprise edition. Hyper-V has no
+USB passthrough. Check available capacity and existing VM software first. [10,11]
+The desktop must stay awake with automatic VM startup; sleep, Windows updates
+and restarts interrupt HA. Measure actual electricity use rather than inferring
+it from the power-supply rating. A verified HA backup can later move to another
+supported host. No Windows settings or virtualization software were changed. [12]
+
+Current US Green MSRP is $199 before tax/shipping, including power supply and
+Ethernet cable, with 4 GB RAM and 32 GB eMMC. Official consumption is about
+1.7 W idle / 3 W under load. At an illustrative $0.20/kWh, that is roughly
+$0.25-$0.44 per 30-day month before power-supply losses and accessories. [13]
+One DIY reference is a Pi 5 4 GB starter kit listed at $169.95 before tax/shipping:
+case, active cooler, power supply, 64 GB microSD and reader are included; an
+Ethernet cable may be extra. It has no SSD and requires assembly and HAOS flashing.
+Recheck price and stock before purchase; compare complete kits, not bare boards.
+HA supports Pi 4/5 with at least 2 GB RAM and 32 GB storage, preferably A2 SD. [14]
+HA itself has no required subscription. Optional Nabu Casa hosted services list
+US pricing of $6.50/month or $65/year plus tax. The Alexa Devices setup below
+does not require that subscription. An iPad is a dashboard/controller client,
+not a supported HA host; current Companion requirements include iOS/iPadOS 16.4+
+and iPad fifth generation or newer, connecting to a separate HA server. [2,15,16]
+
+EMAIL SNAPSHOT ALTERNATIVE TO CHECK BEFORE A PURCHASE
+The owner confirmed that the existing Alexa shopping email contains grocery
+item text, not only a link. An IFTTT email snapshot is therefore a candidate
+to evaluate before buying HA hardware. No mailbox/sample was inspected here;
+exact formatting, completeness and machine parsing still need a bounded test.
+The original Amazon Alexa IFTTT integration was retired on October 31, 2023;
+it cannot supply the old native shopping-list triggers or queries. [17]
+IFTTT's October 28, 2026 guidance gives all plans, including Free, access to all
+services and Applet features, including Webhooks, under usage credits. Successful
+steps consume credits; Applets pause when the balance is exhausted. Review the
+actual account allowance and step costs before claiming ongoing free operation.
+Do not rely on older guidance that categorically requires Pro for Webhooks. [18]
+IFTTT Email triggers expose subject/body fields. The owner's confirmation of
+item text does not establish completeness after parsing. An email route shares
+the chosen message with IFTTT and provide a dated snapshot, not verified ongoing
+Amazon add/completion/deletion synchronization. Any future Flight Wall importer
+still needs bounded parsing, a separate credential, stale/partial-state handling
+and the signed-release gate below. No Applet, email forwarding or importer is
+configured by this plan. [19]
+Another candidate is connected Gmail's "New email matching search" trigger,
+which accepts Gmail syntax including in:sent and exposes body_plain and message_id.
+Verify the actual sender, mailbox and complete body first; a shopping email may
+be in sent mail, but this is not established. Very long bodies are truncated,
+so a matching message is not proof of a complete shopping snapshot. No new email
+is sent and no Gmail connection is authorized or created by this plan. [20]
+
+STORE-ARRIVAL EMAIL REQUEST (PROPOSED, NOT CONNECTED)
+The owner wants an opted-in phone arriving at a configured grocery store to
+request the Alexa shopping email automatically, once per Central calendar day
+across all configured stores. Preserve the existing native Alexa shopping list.
+A candidate chain is phone arrival -> shared daily reservation -> Alexa Routine
+-> actual shopping email -> IFTTT text snapshot -> future Flight Wall importer.
+IFTTT Location supports area-entry events on iPhone/Android, and its documented
+Voice Monkey bridge can trigger an Alexa Routine. [21,22] Native Alexa location
+events may avoid that bridge if available for the actual account/phone; inspect
+the app before selecting this route. Independent per-store cooldowns do not
+satisfy the shared daily limit. A strict gate needs persistent shared state.
+
+FIRST PROOF: obtain the exact working spoken email command, put it in one Alexa
+Routine Custom action without the wake word, and use one controlled Preview
+with the owner choosing the recipient. Verify actual receipt with current list
+items and no spoken follow-up. [23] Amazon's general Alexa+ Email to Contacts
+workflow includes draft review and send confirmation. A successful conversation
+does not prove an unattended Routine can complete that same action. [24]
+Do not automate a blind yes or claim completion from an accepted command.
+
+HA's send_text_command is an alternative request path, not a delivery guarantee.
+The reviewed 2026.10.4/16.3.2 path uses legacy Alexa.TextCommand; maintainer notes
+show Alexa+ Custom actions can use a different operation. The library queues
+requests and does not return an email receipt. Target one physical Echo, not a
+group, if tested. No HA purchase/install is justified solely by assuming this
+email command works. [25,26] If the exact command requires interactive approval,
+evaluate direct delivery of a verified native-list snapshot via a separately
+configured email sender, or retain a user-confirmed export. Source-completeness
+and freshness gates below still apply. No sending account is configured here.
+
+For a production trigger, require the phone owner's own consent and tested
+background permissions. Lisa's phone setup remains deferred; Chris's existing
+400 m / 1,200 s preference must not silently be changed. Do not promise reliable
+50 m arrivals from those reports. Test actual store boundaries, fresh/accurate
+reports, drive-bys, locked-phone arrivals, duplicate events, restart persistence
+and Central-Time midnight/DST. Reserve the daily attempt before external I/O;
+ambiguous results must not trigger a second automatic email. Keep dispatch
+metadata only, without GPS history. This remains a plan: no Routine, geofence,
+message, IFTTT connection or new app release has been created by this research.
+
+2. CONNECT THE BUILT-IN ALEXA DEVICES INTEGRATION
+Use HA's built-in Alexa Devices integration for shopping, not Alexa Media Player.
+The owner enters the intended Amazon account, password and authenticator-app OTP
+privately in HA. The built-in flow does not request the authenticator seed. [2]
+Confirm the Amazon region/account and discover the actual shopping-list entity;
+do not guess an entity ID or select every household list. Expect reauthentication
+and rate limits. Keep Amazon credentials in HA, never in Flight Wall or chat.
+This HA-maintained integration reads Amazon's retail-site list service. It is
+separate from Amazon's retired public skill List Management API. [3,8]
+Ordinary native Alexa shopping additions can populate that list without invoking
+Flight Wall; verify this on the owner's account before claiming a connection.
+
+3. VERIFY SHOPPING DATA WITHOUT WRITING TO AMAZON
+Call todo.get_items for the selected entity with status: needs_action. [4]
+The response is keyed by entity ID: {entity_id: {items: [...]}}.
+Alexa rows supply uid, summary and status (needs_action or completed). [5]
+Map only uid and bounded summary into the proposed read-only mirror. The entity's
+numeric state is an incomplete-item count, not its contents or freshness proof.
+Observe an owner-created disposable item, rename, completion and deletion. The
+adapter must never call add, update, remove or clear actions on Amazon's list.
+Use item-change notifications, not count changes alone: renames and same-count
+replacements matter. HA's todo/item/subscribe emits cached item arrays. [7]
+
+4. RESOLVE SOURCE COMPLETENESS AND FRESHNESS BEFORE SHIPPING
+Pinned review: HA core 2026.10.4 with aioamazondevices 16.3.2. [5,6,8]
+todo.get_items serializes cached items; it does not fetch Amazon. Alexa list items
+use initial synchronization and push updates; the normal five-minute device poll
+and homeassistant.update_entity do not provide list reconciliation. [2,5,6]
+Initial synchronization is best-effort. A failed initial fetch may leave missing
+cache represented as an empty list. Generic device availability is not proof of
+successful list initialization. A later push for one item is not a full baseline.
+The pinned library fetches one page with limit=100 and has no pagination loop;
+it also defaults a missing itemInfoList field to empty. Do not call such results
+complete without checking response shape and pagination/size limits. [8]
+Before enabling automatic replacement, use an upstream improvement or reviewed
+HA-side adapter that exposes successful complete initialization and reconciliation.
+It must distinguish valid empty results, partial results, failed requests, lost
+push, authentication loss and throttling. Bound retries and reconcile periodically.
+Cached reads and bridge heartbeats must not advance the Amazon-observation time.
+Until this evidence exists, HA list visibility is a pilot, not a reliable TV mirror.
+
+5. FUTURE FLIGHT WALL SHOPPING ADAPTER
+Keep the existing Flight Wall list and native Alexa mirror in separate stores.
+Offer an explicit ticker source: Flight Wall or native Alexa. Do not silently
+merge lists, overwrite local entries or redirect existing skill list commands.
+HA sends minimal snapshots over authenticated HTTPS with normal TLS validation.
+Provision a separate revocable, write-only import credential; never reuse admin,
+Alexa voice or phone credentials. It must grant no household-data reads.
+Include list alias, source epoch/sequence, original observation time and explicit
+success/completeness. Bound items/text; reject replay, future times and bad schema.
+Only a proven successful complete snapshot removes absent IDs. Failures preserve
+the stored snapshot while marking it unavailable; stale data must not look current.
+Choose a documented freshness limit and hide the native ticker when stale/offline;
+provide owner-visible status without exposing item names in maintenance logs.
+Keep source IDs and mutable state in private DATA outside releases. Preserve
+flight priority, ticker visibility controls and existing per-frame privacy checks.
+
+6. ACCEPT SHOPPING BEFORE EXPANDING SCOPE
+Test initialization failure versus empty success, missed push and reconciliation,
+pagination/oversize rejection, same-count edits, duplicates, replay and stale expiry.
+Verify native add/completion/deletion against HA and TV using disposable items;
+measure latency without promising instantaneous delivery. Preserve unrelated items.
+Test HA restart, internet loss, reauthentication and Batocera service/GUI handoff.
+Confirm no Amazon mutation and no changes to the separate local Flight Wall list.
+
+7. NATIVE TIMERS REMAIN A LATER, SEPARATE MIRROR
+Amazon's skill timer permission covers that skill's own timers, not all native
+timers. Built-in Alexa Devices exposes only the next timer per device. [2,9]
+Community Alexa Media Player v5.18.0 / alexapy 1.33.0 exposes full returned lists,
+but is unofficial and its ordinary poll can publish fresh-looking empty data when
+a fetch returns None. Resolve that source-success ambiguity before implementation.
+AMP also needs broader owner authentication, including its documented MFA seed.
+See NATIVE-ALEXA-TIMERS.txt for pinned sources, schema and detailed acceptance gates.
+Keep native timers separate from local timers; no Flight Wall voice cancellation
+of native timers. Handle pause, stale data, multiple devices and more than five.
+
+8. DELIVERY GATE
+Do not modify installed 0.4.0 for a plan or HA account setup. Future app code must
+use a new matching VERSION/module version above the latest published release.
+Pass relevant tests and Linux native gates; build/sign/publish through the existing
+workflow. Verify actual 0.4.0-to-new executable upgrade, rollback and TV behavior,
+preserving games, private settings, original recovery helper and pinned trust key.
+
+PRIMARY SOURCES AND PINNED IMPLEMENTATION
+[1] https://www.home-assistant.io/installation/
+[2] https://www.home-assistant.io/integrations/alexa_devices/
+[3] https://developer.amazon.com/en-US/docs/alexa/ask-overviews/deprecated-features.html
+[4] https://www.home-assistant.io/actions/todo.get_items/
+[5] https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/alexa_devices/todo.py
+    https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/todo/services.py
+[6] https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/alexa_devices/coordinator.py
+    https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/alexa_devices/__init__.py
+[7] https://github.com/home-assistant/core/blob/2026.10.4/homeassistant/components/todo/__init__.py
+[8] https://pypi.org/project/aioamazondevices/16.3.2/
+    https://github.com/chemelli74/aioamazondevices/blob/f3318d15faee9a652427c4afe8b55e41a62babac/src/aioamazondevices/implementation/todo.py
+[9] https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-api-reference.html#list-timers
+[10] https://www.home-assistant.io/installation/windows/
+[11] https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/host-hardware-requirements?pivots=windows
+     https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/get-started/install-hyper-v
+[12] https://www.home-assistant.io/blog/2025/05/22/deprecating-core-and-supervised-installation-methods-and-32-bit-systems/
+[13] https://www.home-assistant.io/green/
+     https://support.nabucasa.com/hc/en-us/articles/25212448491165-About-Home-Assistant-Green
+[14] https://www.pishop.us/product/raspberry-pi-5-starter-kit-4gb/
+     https://www.home-assistant.io/installation/raspberrypi/
+[15] https://www.home-assistant.io/faq/is-it-free/
+     https://www.nabucasa.com/link/
+[16] https://companion.home-assistant.io/docs/getting_started/
+[17] https://help.ifttt.com/hc/en-us/articles/19823288619419-An-important-update-to-the-Alexa-IFTTT-service
+[18] https://help.ifttt.com/hc/en-us/articles/57322299076763-What-are-credits-and-how-do-they-work
+     https://help.ifttt.com/hc/en-us/articles/360053706813-IFTTT-Plans-at-a-glance
+[19] https://ifttt.com/email
+[20] https://ifttt.com/gmail/triggers/new_email_matching_search
+[21] https://ifttt.com/location
+[22] https://help.ifttt.com/hc/en-us/articles/33066244533659-How-to-connect-IFTTT-to-Alexa
+[23] https://digprjsurvey.amazon.co.uk/csad/help/node/GLXY7RFX3L5GH2VR
+[24] https://digprjsurvey.amazon.com/csad/help/node/TnKtSlCkJlSwohengK
+[25] https://www.home-assistant.io/actions/alexa_devices.send_text_command/
+     https://github.com/chemelli74/aioamazondevices/blob/f3318d15faee9a652427c4afe8b55e41a62babac/src/aioamazondevices/implementation/sequence.py
+[26] https://github.com/home-assistant/core/issues/184274

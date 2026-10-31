@@ -44,6 +44,15 @@ class NativeGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             gate.verify_baseline(path)
 
+    def test_current_baseline_is_independently_pinned(self):
+        path = self.root / "not-published-040.tar.gz"
+        path.write_bytes(b"synthetic different current installer")
+        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.0")
+        self.assertEqual(gate.CURRENT_BASELINE_SHA256,
+                         "b8adc58999acec5b9d9263ee85939c8fe75dd3a40ab7876c6084cff8baad596c")
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            gate.verify_current_baseline(path)
+
     def test_glibc_audit_uses_required_symbols_and_rejects_private_abis(self):
         symbols = "\n".join(("000 *UND* (GLIBC_2.36) arc4random", "000 *UND* GLIBC_2.2.5 malloc",
                               "000 .text GLIBC_2.39 provided_symbol"))
@@ -133,6 +142,47 @@ class NativeGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "successful"):
                 gate.verify_report(release, report)
 
+    def test_current_report_requires_both_upgrade_and_rollback_with_original_recovery(self):
+        release = self.root / "release"
+        release.mkdir()
+        (release / "VERSION").write_text("0.4.1")
+        (release / "FlightWall").write_bytes(b"synthetic frozen bundle")
+        report = self.root / "report.json"
+        acceptance = {"from": "0.4.0", "to": "0.4.1", "real_executables": True,
+                      "next_launch_only": True, "pinned_recovery_version": "0.3.0",
+                      "pinned_recovery_preserved": True, "background_service_restored": True,
+                      "version_floor_preserved": True, "private_fixtures_preserved": 20}
+        value = {"passed": True, "version": "0.4.1", "baseline_sha256": gate.BASELINE_SHA256,
+                 "current_baseline_sha256": gate.CURRENT_BASELINE_SHA256,
+                 "bundle_files": gate.inventory(release),
+                 "upgrade": {**acceptance, "rollback": False},
+                 "rollback": {**acceptance, "rollback": True}}
+        report.write_text(json.dumps(value))
+        self.assertEqual(gate.verify_report(release, report, require_current=True), value)
+        mutations = [("current_baseline_sha256", None, "0" * 64),
+                     ("rollback", None, {}), ("upgrade", "from", "0.3.0"),
+                     ("upgrade", "to", "0.4.2"), ("rollback", "rollback", False),
+                     ("upgrade", "pinned_recovery_version", "0.4.0"),
+                     ("upgrade", "private_fixtures_preserved", 0),
+                     ("upgrade", "private_fixtures_preserved", True)]
+        mutations.extend(("upgrade", flag, False) for flag in ("real_executables", "next_launch_only",
+                         "pinned_recovery_preserved", "background_service_restored", "version_floor_preserved"))
+        for field, nested, replacement in mutations:
+            with self.subTest(field=field, nested=nested):
+                broken = json.loads(json.dumps(value))
+                if nested is None:
+                    broken[field] = replacement
+                else:
+                    broken[field][nested] = replacement
+                report.write_text(json.dumps(broken))
+                with self.assertRaises(ValueError):
+                    gate.verify_report(release, report, require_current=True)
+        original_only = {key: val for key, val in value.items()
+                         if key not in {"current_baseline_sha256", "upgrade", "rollback"}}
+        report.write_text(json.dumps(original_only))
+        with self.assertRaisesRegex(ValueError, "current baseline"):
+            gate.verify_report(release, report, require_current=True)
+
     def test_launcher_output_requires_actual_gui_result_among_helper_messages(self):
         log = 'helper text\n{"status":"activated"}\n{"frames":4,"shader":true}\n'
         self.assertEqual(gate.json_objects(log), [{"status": "activated"}, {"frames": 4, "shader": True}])
@@ -149,6 +199,25 @@ class NativeGateTests(unittest.TestCase):
             gate.verify_setup(case, MODULE.parents[1])
             self.assertEqual(ConfigStore(case.data).get()["rotation_seconds"], 30)
             self.assertTrue((case.data / "setup-complete.json").is_file())
+        finally:
+            runtime.stop()
+
+    def test_current_mutable_fixtures_use_real_authenticated_routes(self):
+        from flightwall.backend import Runtime
+        from flightwall.config import ConfigStore
+
+        case = gate.Installation(self.root)
+        ConfigStore(case.data).update({"control_port": case.port})
+        gate.private_file(case.data / "control-token.txt", b"C" * 64 + b"\n")
+        runtime = Runtime(case.data, case.install).start()
+        try:
+            fixtures = gate.preserve_current_fixtures(case)
+            self.assertEqual(set(fixtures), {"timers.json", "shopping/flightwall-list.json", "flight-watches.json"})
+            for name, expected in fixtures.items():
+                self.assertEqual(gate.digest(case.data / name), expected)
+            self.assertEqual(len(json.loads((case.data / "timers.json").read_text())["timers"]), 1)
+            self.assertEqual(len(json.loads((case.data / "shopping/flightwall-list.json").read_text())["items"]), 1)
+            self.assertEqual(len(json.loads((case.data / "flight-watches.json").read_text())["watches"]), 1)
         finally:
             runtime.stop()
 
