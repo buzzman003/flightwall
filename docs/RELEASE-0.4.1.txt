@@ -1,7 +1,12 @@
 FLIGHT WALL 0.4.1: SHORT DINNER COMMANDS
 
-Release candidate. Publication, signed-build and device status are recorded in
-VALIDATION.txt; source changes alone do not update Batocera or Alexa.
+Published signed Linux release:
+https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
+Linux validation passed 562 tests and 314 subtests without skips or failures,
+including real offscreen OpenGL and native upgrade/recovery checks from both
+0.3.0 and published 0.4.0. Maximum required glibc remains 2.36.
+Detailed publication and deployment evidence is recorded in VALIDATION.txt;
+source changes alone do not update Batocera or Alexa.
 
 The Alexa adapter adds separate today/tomorrow dinner intents. Candidate direct
 forms are: "Alexa, ask Flight Wall to set dinner today to chicken teriyaki" and
@@ -24,10 +29,15 @@ do not send messages to children or create Google Calendar events.
 
 Invocation reliability is a separate issue. On the owner's current Alexa setup,
 some direct dinner requests were routed to native announcements instead of the
-skill. The explicit skill launch followed by an in-session dinner command passed
-a live simulator-to-board save/cleanup check on 0.4.0. Neither that simulator
-result nor these source tests guarantees physical Echo routing. New 0.4.1 phrases
-need a real model build, handler deployment, NLU and physical Echo checks.
+skill. The published 0.4.1 Lambda ZIP is deployed, its AWS code checksum matches
+the package, and the en-US model built successfully with 29 intents. Inside a
+confirmed skill session, typed today/tomorrow simulator commands both saved
+correctly through the live board connection. Independent reads verified the
+meal dates and 14:30-19:00 Central windows across the daylight-saving change.
+Exact-ID cleanup removed both disposable cards and preserved unrelated data.
+These checks do not establish physical Echo routing or reliable direct phrases.
+The board remains on 0.4.0: staging correctly refused while the GUI was running,
+before backup or release mutation. Staging and activation are pending.
 
 This release does not add native Alexa timer mirroring, Home Assistant, email
 export, IFTTT or shopping geofences. Shopping work is paused by the owner.

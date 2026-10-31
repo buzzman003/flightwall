@@ -4,7 +4,11 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
-0.4.1 DINNER UPDATE IN PROGRESS - OCTOBER 31, 2026
+PUBLISHED 0.4.1 DINNER UPDATE / DEPLOYMENT PENDING - OCTOBER 31, 2026
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
+Successful build: https://github.com/buzzman003/flightwall/actions/runs/41234785760
+Release source commit: a22064a30d9eb2acc3f1156443611b90c9b15f52
 
 The owner paused shopping/email/IFTTT/store-delivery work and made short dinner
 commands first priority, native timer mirroring second. The latest attempted
@@ -21,16 +25,46 @@ reported to the owner. No further direct dinner tests were attempted on that
 model. This confirms the in-session save path, not reliable physical invocation.
 
 The 0.4.1 source adds explicit today/tomorrow dinner intents and short saved
-meal/day replies. Focused synthetic unit/model and HTTP checks pass. The Windows full suite
-reported 508 passes and 309 subtests, with 47 platform/dependency skips and
-seven failures caused by its unavailable SDL offscreen driver. Rechecking those
-seven with the Windows dummy driver passed six and skipped the real OpenGL
-check. Linux must still pass every test without skips using real offscreen GL.
-The release gate additionally tests the actual 0.3.0 -> published 0.4.0 -> 0.4.1
-executable path, original recovery helper, timer/shopping/watch/private stores
-and failed-start rollback. Signed release, new model, deployment and physical
-checks are still pending.
-The actual board remains on 0.4.0 until a verified update activates.
+meal/day replies. Focused synthetic unit/model and HTTP checks passed. The earlier
+Windows full suite reported 508 passes and 309 subtests, with 47 platform or
+dependency skips and seven failures caused by its unavailable SDL offscreen
+driver. Rechecking those seven with the Windows dummy driver passed six and
+skipped the real OpenGL check. Those Windows results were not the release gate.
+
+* The linked Linux workflow completed all build and publish jobs successfully.
+  Pytest passed 562 tests and 314 subtests, with zero skips or failures. Real
+  offscreen OpenGL, the frozen executable and software fallback checks passed.
+* Native acceptance passed from both the checksum-pinned original 0.3.0 and
+  published 0.4.0 baselines, including the 0.3.0 -> 0.4.0 -> 0.4.1 executable
+  path, next-launch activation and failed-start rollback. Twenty-one synthetic
+  private fixtures were preserved, along with unrelated games, the original
+  pinned recovery helper and trust/version-floor behavior. Maximum required
+  glibc remains 2.36. These isolated checks used no household credentials.
+* The public release and main source identify the commit above. Local verification
+  used the pinned Ed25519 public key, verified the signed manifest and matched
+  the entire bundle inventory. The Alexa companion ZIP and interaction-model
+  bytes matched the reviewed source. These companion files are not independently
+  signed; their byte comparison is distinct from the signed Linux update.
+* AWS Lambda was updated with the published 0.4.1 companion ZIP. Its visible
+  deployed code checksum matched this package SHA-256:
+  29bf74eb13b55acdcf9c2313f6aa97ab052e1c4b6c31356477ae4831a6ededb4
+  The en-US interaction model built successfully with 29 intents. Lambda
+  retained its existing 128 MB memory, 512 MB temporary storage and eight-second
+  timeout.
+* With the new handler/model, typed in-session simulator commands for dinner
+  today and dinner tomorrow both returned the short saved-meal/day response.
+  Each test began inside the confirmed Flight Wall custom-skill session. An
+  independent SSH read verified source alexa and the stored dates/windows on
+  the still-installed 0.4.0 board: October 31 used 19:30-00:00 UTC, and November 1
+  used 20:30-01:00 UTC, with each end on the next UTC date. Both equal the configured
+  14:30-19:00 America/Chicago window across the daylight-saving change. Exact-ID
+  cleanup cancelled both disposable cards and preserved unrelated data. This
+  verifies the tested simulator NLU and live save path, not physical Echo
+  recognition or reliable outside-skill direct invocation.
+* The actual Batocera board still runs the 0.4.0 GUI. The staging preflight
+  correctly refused while the GUI was active, before creating its backup or
+  mutating releases. The owner was asked to return to the games menu. No 0.4.1
+  staging or physical activation has completed; those checks remain pending.
 
 NATIVE ALEXA TIMER FEASIBILITY FOLLOW-UP - OCTOBER 31, 2026
 
