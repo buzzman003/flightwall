@@ -59,6 +59,30 @@ class BackendRemoteIntegrationTests(unittest.TestCase):
         self.assertEqual(self.connection.request("updates/check", {})["status"], "disabled")
 
     @unittest.skipIf(ClientSession is None, "Optional official mcp SDK not installed")
+    def test_rejected_post_advertises_close_before_pooled_oauth_discovery(self):
+        # The server rejects this body before reading it. HTTP/1.1 clients must
+        # be told to discard the socket instead of racing its eventual EOF.
+        url = f"http://127.0.0.1:{self.runtime.remote.address[1]}"
+        initialize = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+            "protocolVersion": "2025-11-25", "capabilities": {},
+            "clientInfo": {"name": "Synthetic pooled client", "version": "1"}}}
+        token = (self.data_dir / "control-token.txt").read_text().strip()
+        with httpx.Client(trust_env=False, timeout=5,
+                          limits=httpx.Limits(max_connections=1, max_keepalive_connections=1)) as client:
+            denied = client.post(url + "/mcp", json=initialize)
+            self.assertEqual(denied.status_code, 401)
+            self.assertEqual(denied.headers.get("connection"), "close")
+            self.assertIn("resource_metadata=", denied.headers["www-authenticate"])
+            discovery = client.get(url + "/.well-known/oauth-protected-resource/mcp")
+            self.assertEqual(discovery.status_code, 200)
+            self.assertEqual(discovery.json()["resource"], "https://wall.example.com/mcp")
+            initialized = client.post(url + "/mcp", json=initialize,
+                                      headers={"Authorization": "Bearer " + token})
+            self.assertEqual(initialized.status_code, 200)
+            self.assertEqual(initialized.json()["id"], 1)
+            self.assertEqual(initialized.json()["result"]["serverInfo"]["name"], "flightwall")
+
+    @unittest.skipIf(ClientSession is None, "Optional official mcp SDK not installed")
     def test_official_mcp_sdk_streamable_http_against_runtime(self):
         async def exercise():
             token = (self.data_dir / "control-token.txt").read_text().strip()
