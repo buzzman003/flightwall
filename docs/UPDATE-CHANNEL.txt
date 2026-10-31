@@ -24,8 +24,8 @@ Do not generate a new key for each release.
 Initial trust must be provisioned manually on the display, outside its release
 directories. Verify the public value with a maintainer you authorize to deliver
 code. A downloaded public-key.txt is a convenient copy, not independent proof
-of trust. That public asset is planned for the canonical releases; do not assume
-it exists before publication. If the display already pins a different key,
+of trust. The signed 0.4.0 release includes that public asset. If the display
+already pins a different key,
 do not overwrite it as part of an ordinary update. Key replacement is a separate
 deliberate local trust decision, not a release feature.
 

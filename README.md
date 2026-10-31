@@ -4,7 +4,7 @@ A native x86_64 Batocera Ports application that turns a TV into a flight board a
 
 This repository contains **0.4.0 source**. Install only a published Linux package from the [Releases page](https://github.com/buzzman003/flightwall/releases); source edits are not an installable update. Each signed release includes its Linux test and native installation/upgrade validation reports. See [features and release gates](docs/RELEASE-0.4.0.txt) and [validation and limitations](docs/VALIDATION.txt).
 
-The board prioritizes scheduled operating flights around departures and arrivals. The 0.4.0 candidate adds dated trip previews, a ten-day custody outlook, persistent timers and a shopping ticker. Optional calendar, phone-presence, Alexa and flight-data integrations each require their own configuration and consent. Calendar schedules are not live tracking.
+The board prioritizes scheduled operating flights around departures and arrivals. Version 0.4.0 adds dated trip previews, a ten-day custody outlook, persistent timers and a shopping ticker. Optional calendar, phone-presence, Alexa and flight-data integrations each require their own configuration and consent. Calendar schedules are not live tracking.
 
 Private credentials, calendars and mutable settings stay outside application releases in `/userdata/system/configs/flightwall`. Google Calendar access is read-only. Presence requires fresh opted-in phone reports; unknown or stale state hides private cards. No household accounts or credentials are supplied by this repository.
 

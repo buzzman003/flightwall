@@ -8,6 +8,11 @@ https://github.com/buzzman003/flightwall/releases after those gates pass.
 Source changes alone are not a signed Linux installer. Do not upload the changed
 Lambda/model to the live skill before the matching board update.
 
+The signed 0.4.0 release is now published at:
+https://github.com/buzzman003/flightwall/releases/tag/v0.4.0
+Its Linux/native gates passed; see VALIDATION.txt and the published reports.
+Physical board installation and matching live Alexa deployment are separate.
+
 WHAT CHANGES
 
 * Fit the full 2:1 LED canvas to the TV by default: at 1080p, 1920x960 rather

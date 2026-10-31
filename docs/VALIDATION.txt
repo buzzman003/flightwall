@@ -4,7 +4,43 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
-LOCAL 0.4.0 SOURCE VALIDATION - OCTOBER 31, 2026
+PUBLISHED 0.4.0 LINUX RELEASE - OCTOBER 31, 2026
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.0
+Successful build: https://github.com/buzzman003/flightwall/actions/runs/41192656261
+Release source commit: f03c98151a7f06dec69a969f572c049047512224
+
+* Linux pytest passed 550 tests and 283 subtests, with no skips, failures or
+  errors. The JUnit report contains 833 test cases including those subtests.
+* The Debian 12 build produced the actual frozen x86_64 executable. All 238
+  ELF objects passed the architecture/import audit; maximum required glibc
+  is 2.36. Frozen runtime code and assets matched the tested source.
+* Network-isolated native acceptance passed a fresh offline DEMO installation,
+  512x256 software preview, real offscreen OpenGL shader, software fallback,
+  setup assets/login/save/Finish, and service-to-GUI-to-service handoff.
+* The checksum-pinned original 0.3.0 executable upgraded to 0.4.0 only on the
+  next Ports launch. Eighteen synthetic private fixtures, an unrelated game,
+  the original pinned recovery helper and monotonic version floor survived.
+  Deliberately breaking a disposable staged executable proved startup rollback
+  and restoration of the old background service. No household DATA was used.
+* The release workflow signed the manifest with Ed25519, independently checked
+  it, and compared every signed ZIP member with the exact native-tested bundle.
+  The temporary signing key was removed. Private signing material is absent
+  from the public repository and packages.
+* Public release downloads were verified again on Windows using the app's
+  HTTPS-only downloader, the independently retained public key, checksums and
+  the native report's complete file inventory. The signed update ZIP SHA-256 is
+  37a16cb0749167296ade0e5176a7b0f0d1b729d2ca428a1a441ece7a6230e729
+  The complete installer SHA-256 is
+  b8adc58999acec5b9d9263ee85939c8fe75dd3a40ab7876c6084cff8baad596c
+
+Published native-validation.json, linux-tests.xml and SHA256SUMS.txt carry the
+detailed evidence. This is Linux release acceptance, not physical 0.4.0 TV,
+controller, Google, iPhone, paid-provider, SMS or live Alexa validation. The
+release was built and published without changing the installed 0.3.0 board
+or deployed Alexa skill. Those deployment checks remain separate.
+
+PRE-RELEASE 0.4.0 WINDOWS SOURCE SNAPSHOT - OCTOBER 31, 2026
 
 * Full Windows Python 3.12 source suite: 491 passed, 48 platform-dependent
   skips, 273 subtests passed. SDL used its dummy driver on this Windows host;
@@ -54,13 +90,15 @@ LOCAL 0.4.0 SOURCE VALIDATION - OCTOBER 31, 2026
 * The GitHub release workflow now runs pytest (including function-based tests)
   and requires an actual offscreen OpenGL context. At the source-check snapshot
   recorded here, that release workflow had not yet run.
-* Both source version files report 0.4.0. No Linux binary was built, signed,
-  published, installed or activated; no deployed Alexa model/Lambda changed.
+* Both source version files reported 0.4.0. At this earlier source snapshot,
+  no Linux binary had been built, signed, published, installed or activated;
+  no deployed Alexa model/Lambda changed.
   These source checks do not replace a native release or upgrade validation.
 
-Outstanding 0.4.0 gates: Linux pytest/native build/compatibility audit, real
-0.3.0-to-0.4.0 executable upgrade and rollback, signed delivery, TV/Echo tests,
-real consenting iPhone reports, verified store coordinates and SMS setup. Native
+The Linux build, upgrade/rollback and signed-delivery gates pending at that
+source snapshot are now covered by the published record above. Remaining
+checks include physical TV/Echo tests, real consenting iPhone reports,
+verified store coordinates and SMS setup. Native
 Alexa list export through daily email or a hidden calendar remains unverified;
 no such import or recurring message has been enabled. See RELEASE-0.4.0.txt.
 
