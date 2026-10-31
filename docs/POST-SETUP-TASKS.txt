@@ -267,3 +267,14 @@ Shopping discussion reopened: independent Flight Wall list/ticker is supported;
 Alexa native-list reading is not. Lisa's iPhone uses OwnTracks via her own
 consent/invitation; no pairing, geofence/SMS service or automatic send is implied.
 See INTEGRATION-OPTIONS.txt for current providers, constraints and source links.
+
+0.4.4 CORRECTION / NEXT SAFE DEPLOYMENT
+
+The actual Google API note contains paragraph markup; normalized connector
+text concealed that. Bounded HTML-to-text handling passed live parser/exact
+outbound matching. Supersede uninstalled0.4.3 with0.4.4; do not reuse a published
+version. After signed/nativeverification and preservationchecks, select the
+uniquely verified Buzz secondarycalendar and enable briefleave/report_safe.
+Preserve glow0, weather/nearbyfeeds, radius5 and all existing credentials.
+Amazon support submission explicitly authorized but no form submitted: browser
+policy could not establish the current URL confidently. Draft remains private.

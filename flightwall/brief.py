@@ -5,6 +5,7 @@ the requested formula's RECOMMENDED clock from an explicit report-safe clock.
 These are planning notes, never live tracking or a recalculated report time.
 """
 from datetime import datetime, time, timedelta, timezone
+from html.parser import HTMLParser
 import re
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,101 @@ _TITLE = re.compile(
     r"^(?:🏠\s*)?BUZZ FLIGHT BRIEF\s*[—–-]\s*VPS HOME OVERNIGHT\s*"
     r"\(([A-Z]{3})\s+(\d{1,2})\s*[—–-]\s*(?:([A-Z]{3})\s+)?(\d{1,2})\)$"
 )
+
+
+class _NoteText(HTMLParser):
+    """Bounded text-only HTML fragments; no attributes or active content.
+
+    Google can return rich-text descriptions while another client shows their
+    plain text. Only recognized formatting is accepted; unsupported or malformed
+    markup makes the leave note unavailable instead of guessing its meaning.
+    """
+    _BLOCK = {"p", "div", "section", "article", "blockquote", "pre", "h1", "h2", "h3", "h4", "h5", "h6",
+              "ul", "ol", "li", "table", "thead", "tbody", "tfoot", "tr", "td", "th"}
+    _INLINE = {"html", "body", "span", "strong", "b", "em", "i", "u", "s", "small", "font", "a", "code", "sub", "sup"}
+    _VOID = {"br", "hr", "wbr"}
+    _DROP = {"script", "style", "template", "noscript", "head", "iframe", "object", "svg", "math"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []
+        self.chunks = []
+        self.invalid = False
+        self.length = 0
+        self.elements = 0
+
+    def _append(self, text):
+        self.length += len(text)
+        if self.length > 32768:
+            self.invalid = True
+        elif not self.invalid:
+            self.chunks.append(text)
+
+    @staticmethod
+    def _hidden(attrs):
+        for key, value in attrs:
+            if key == "hidden" or key == "aria-hidden" and str(value).lower() == "true":
+                return True
+            if key == "style" and isinstance(value, str):
+                if re.search(r"(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\s*(?:!important\s*)?(?:;|$)", value, re.IGNORECASE):
+                    return True
+        return False
+
+    def handle_starttag(self, tag, attrs):
+        self.elements += 1
+        if self.elements > 512 or len(self.stack) >= 32:
+            self.invalid = True
+            return
+        if tag not in self._BLOCK | self._INLINE | self._VOID | self._DROP:
+            self.invalid = True
+            return
+        blocked = bool(self.stack and self.stack[-1][1]) or tag in self._DROP or self._hidden(attrs)
+        if tag in self._BLOCK | self._VOID and not blocked:
+            self._append("\n")
+        if tag not in self._VOID:
+            self.stack.append((tag, blocked))
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in self._VOID:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        if tag in self._VOID:
+            return
+        if not self.stack or self.stack[-1][0] != tag:
+            self.invalid = True
+            return
+        self.stack.pop()
+        if tag in self._BLOCK and not (self.stack and self.stack[-1][1]):
+            self._append("\n")
+
+    def handle_data(self, data):
+        if not (self.stack and self.stack[-1][1]):
+            self._append(data)
+
+    def handle_decl(self, decl):
+        self.invalid = True
+
+    def unknown_decl(self, data):
+        self.invalid = True
+
+    def handle_pi(self, data):
+        self.invalid = True
+
+
+def _note_text(value):
+    if not isinstance(value, str) or len(value) > 32768:
+        return None
+    parser = _NoteText()
+    try:
+        parser.feed(value)
+        parser.close()
+    except (ValueError, TypeError, RecursionError):
+        return None
+    if parser.invalid or parser.stack:
+        return None
+    return "".join(parser.chunks)
 
 
 def _stamp(value):
@@ -88,8 +184,8 @@ def parse_brief_leave_notes(events, timezone_name):
         if (_MONTHS[first.month - 1] != title_match[1] or first.day != int(title_match[2])
                 or _MONTHS[last.month - 1] != (title_match[3] or title_match[1]) or last.day != int(title_match[4])):
             continue
-        note = event.get("description")
-        if not isinstance(note, str) or len(note) > 32768 or "<" in note or ">" in note:
+        note = _note_text(event.get("description"))
+        if note is None:
             continue
         lines = note.splitlines()
         recommended = []

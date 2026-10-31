@@ -4,7 +4,7 @@ Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame +
 
 Shared data conventions (plain JSON dictionaries):
 
-0.4.3 source candidate: the logical board remains512x256. Only nearby
+0.4.4 source candidate: the logical board remains512x256. Only nearby
 geographic pixels may be presented at TV resolution after the LED pass,
 following the same timer/ticker content bounds and brightness in both paths.
 The native GUI reads its own saved point locally; never add that point to
@@ -28,7 +28,7 @@ Household cards (v0.2.0): PersonalStore persists appointments/dinner in a privat
 JSON file outside releases, independent of read-only Google. Each card has id,
 kind, title, start/end/display_start/display_end RFC3339, timezone, source.
 Appointment visible local midnight through end; default duration60minutes.
-Dinner visible14:30–19:00 for its local date. End is exclusive. Runtime status
+Dinner visible14:30â€“19:00 for its local date. End is exclusive. Runtime status
 includes currently visible personal_items. TV inserts one personal view into
 the usual rotation and cycles the selected card on each visit. Real household
 cards stay real while flights may still be in demo mode. Config personal_enabled

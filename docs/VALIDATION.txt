@@ -1,5 +1,32 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.4 LIVE-FORMAT CORRECTION - OCTOBER31,2026
+
+A read-only check through the app's own existing Google credentials found
+that its actual VPS overnight note was returned with paragraph HTML. The
+connector's normalized plain text had hidden that structural difference.
+0.4.4 adds bounded text-only normalization before the existing strict parser;
+scripts, hidden content and unsupported/malformed markup do not supply times.
+No original note is retained. Focused tests cover markup boundaries/entities,
+hidden/script content, malformed input and limits, plus all existing matching,
+cache and display cases.
+
+The corrected parser was run in an ephemeral read-only process on Batocera
+against the selected source: one overnight note parsed and exactly one current
+FC View outbound matched its arrival/report anchors. The owner-selected report
+calculation produced the expected leave clock, distinct from the scheduled
+outbound clock. Only allowlisted parsed metadata was printed; no source note,
+calendar ID or credential left the device. This is parser acceptance, not proof
+that the new frozen executable is active. The app's secondary calendar was
+not selected yet; configure it only after preservation verification.
+
+0.4.3 completed signed publication/native validation but was never staged or
+installed on this device. Its complete Linux/OpenGL/frozen upgrade gates passed;
+0.4.4 must pass the matching workflow again. Existing device remains0.4.2.
+An authorized Amazon support submission was blocked before form entry because
+Computer Use could not confidently verify Chrome's URL. Nothing was submitted;
+the private draft remains ready for a working session/manual submission.
+
 0.4.3 SOURCE CANDIDATE - OCTOBER 31, 2026
 
 Local Windows suite:626 tests and374 subtests passed,49 expected dependency/

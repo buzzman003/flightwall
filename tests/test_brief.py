@@ -68,7 +68,6 @@ def test_partial_conflicts_multiple_values_unrelated_titles_and_bad_dates_hide()
               overnight(description="IMPORTANT REPORT-TIME CONFLICT: To meet scheduled report on time, leave by 7:20 AM."),
               overnight(description=base["description"] + "\nTo meet scheduled report on time, leave by 7:10 AM."),
               overnight(description=base["description"].replace("7:35 AM", "12:35 PM")),
-              overnight(description="<b>" + base["description"] + "</b>"),
               overnight(description="X" * 32769), overnight(description=None),
               overnight(start={"date": "2027-01-12"}), overnight(status="cancelled")]
     for event in events:
@@ -132,3 +131,41 @@ def test_no_notes_removes_old_derived_fields():
     legs = flights(leave_at="2027-01-13T13:20:00Z", leave_conflict=True)
     attach_brief_leaves(legs, [])
     assert "leave_at" not in legs[1] and "leave_conflict" not in legs[1]
+
+
+def test_html_paragraphs_inline_labels_breaks_and_entities_match_plain_text():
+    plain = parse_brief_leave_notes([overnight()], "America/Chicago")
+    note = ("<p><b>LEAVE HOME FOR VPS</b> &mdash; requested aircraft-arrival formula: "
+            "<strong>RECOMMENDED</strong><br/>7:35&nbsp;AM</p>"
+            "<p>IMPORTANT REPORT-TIME CONFLICT: To meet scheduled report on time,<br>"
+            "leave by <span style='color: red'>7:20 AM</span>.</p>"
+            "<p>Crew: PRIVATE-CREW<br>Hotel: PRIVATE-HOTEL</p>")
+    source = overnight(description=note)
+    original = deepcopy(source)
+    assert parse_brief_leave_notes([source], "America/Chicago") == plain
+    assert source == original
+    assert "PRIVATE" not in json.dumps(parse_brief_leave_notes([source], "America/Chicago"))
+
+
+def test_html_active_hidden_comment_and_attribute_contents_never_supply_clocks():
+    hidden_clock = "To meet scheduled report on time, leave by 5:10 AM."
+    hidden = ["<script>" + hidden_clock + "</script>", "<style>" + hidden_clock + "</style>",
+              "<template><p>" + hidden_clock + "</p></template>", "<p hidden>" + hidden_clock + "</p>",
+              "<p aria-hidden='true'>" + hidden_clock + "</p>",
+              "<p style='color:red;display: none !important;'>" + hidden_clock + "</p>",
+              "<p style='visibility: hidden'>" + hidden_clock + "</p>", "<!-- " + hidden_clock + " -->",
+              "<a href='https://example.invalid/' title='" + hidden_clock + "'>Link</a>"]
+    expected = parse_brief_leave_notes([overnight(description="To meet scheduled report on time, leave by 7:20 AM.")], "America/Chicago")
+    for prefix in hidden:
+        note = prefix + "<p>To meet scheduled report on time, leave by 7:20 AM.</p>"
+        assert parse_brief_leave_notes([overnight(description=note)], "America/Chicago") == expected
+        assert parse_brief_leave_notes([overnight(description=prefix)], "America/Chicago") == []
+
+
+def test_html_unknown_malformed_declarations_and_bounds_reject_the_note():
+    clock = "To meet scheduled report on time, leave by 7:20 AM."
+    for note in ("<unknown>" + clock + "</unknown>", "<p><span>" + clock + "</p></span>",
+                 "<p>" + clock, "<!DOCTYPE html><p>" + clock + "</p>", "<?xml version='1.0'?><p>" + clock + "</p>",
+                 "<div>" * 33 + clock + "</div>" * 33,
+                 "<br>" * 513 + clock, "<p>" + "X" * 32768 + clock + "</p>"):
+        assert parse_brief_leave_notes([overnight(description=note)], "America/Chicago") == []

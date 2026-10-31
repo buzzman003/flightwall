@@ -1,12 +1,14 @@
-FLIGHT WALL 0.4.3
+FLIGHT WALL 0.4.4
 
-0.4.3 source adds clear route maps without airport labels over the geography,
+0.4.4 source adds clear route maps without airport labels over the geography,
 dated VPS outbound departures, optional narrowly parsed Buzz leave-home notes,
 and a dinner snack notice that changes at 17:00 in the household timezone.
 The nearby-aircraft geographic inset uses bundled OpenStreetMap water, roads
 and runways at presentation resolution, keeping LED titles and the 512x256
 board. No runtime map download or map subscription is required. See
-docs/RELEASE-0.4.3.txt for candidate validation and deployment status.
+docs/RELEASE-0.4.4.txt for candidate validation and deployment status. It also
+normalizes bounded Google rich-text notes before the strict leave-time parser;
+the first 0.4.3 build was not installed on the owner's TV.
 The prior published/installed release evidence follows:
 
 The signed 0.4.2 Linux release is published and independently verified. Linux
