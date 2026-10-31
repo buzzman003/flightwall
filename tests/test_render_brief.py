@@ -62,11 +62,11 @@ def rendered(view, *, conflict=True, chosen=True, enabled=True):
 
 def test_details_separates_brief_leave_from_departure_and_keeps_date_and_warning():
     labels, _ = rendered("details")
-    assert "10:00" in labels  # Scheduled flight departure, not the 07:20 brief clock.
+    assert "10:00 AM" in labels  # Scheduled flight departure, not the 07:20 brief clock.
     assert "13 JAN" in labels
-    assert "BRIEF LEAVE 13 JAN 07:20 CST" in labels
+    assert "BRIEF LEAVE 13 JAN 7:20 AM CST" in labels
     assert "VERIFY REPORT" in labels
-    assert "REPORT 09:00 CST" not in labels
+    assert "REPORT 9:00 AM CST" not in labels
 
 
 def test_local_visit_next_day_departure_and_brief_clock_are_both_visible():
@@ -77,14 +77,14 @@ def test_local_visit_next_day_departure_and_brief_clock_are_both_visible():
     assert "10:00 AM" in labels
     assert "WED 13 JAN / CST" in labels
     assert "STAY / 14H 00M" in labels
-    assert "BRIEF LEAVE / WED 13 JAN 07:20 CST" in labels
+    assert "BRIEF LEAVE / WED 13 JAN 7:20 AM CST" in labels
     assert "VERIFY" in labels
 
 
 def test_trip_summary_inbound_row_shows_next_day_departure_and_leave_date():
     labels, _ = rendered("trip_summary")
-    assert "DEP 01/13 10:00 CST" in labels
-    assert "LEAVE 01/13 07:20 CST" in labels
+    assert "DEP 01/13 10:00 AM CST" in labels
+    assert "LEAVE 01/13 7:20 AM CST" in labels
     assert "BRIEF / VERIFY REPORT" in labels
     assert "CST / 14H00M STAY" in labels
 
@@ -95,17 +95,17 @@ def test_unselected_conflicting_time_warns_without_inventing_a_leave_clock():
                           ("trip_summary", "LEAVE TIME CONFLICT")):
         labels, _ = rendered(view, chosen=False)
         assert warning in labels
-        assert not any("07:20" in value for value in labels)
-        assert any("10:00" in value for value in labels)
+        assert not any("7:20 AM" in value for value in labels)
+        assert any("10:00 AM" in value for value in labels)
 
 
 def test_disabled_note_opt_in_hides_cached_clock_and_conflict_in_every_view():
     for view in ("details", "local_visit", "trip_summary"):
         labels, _ = rendered(view, enabled=False)
         assert not any("BRIEF" in value or "LEAVE" in value or "VERIFY" in value for value in labels)
-        assert any("10:00" in value for value in labels)
+        assert any("10:00 AM" in value for value in labels)
     labels, _ = rendered("details", enabled=False)
-    assert "REPORT 09:00 CST" in labels
+    assert "REPORT 9:00 AM CST" in labels
     labels, _ = rendered("local_visit", enabled=False)
     assert "PLANNED STAY / 14H 00M" in labels
 
@@ -113,7 +113,7 @@ def test_disabled_note_opt_in_hides_cached_clock_and_conflict_in_every_view():
 def test_unconflicted_chosen_time_does_not_show_a_false_report_warning():
     for view in ("details", "local_visit", "trip_summary"):
         labels, _ = rendered(view, conflict=False)
-        assert any("07:20" in value for value in labels)
+        assert any("7:20 AM" in value for value in labels)
         assert not any("CONFLICT" in value or "VERIFY" in value for value in labels)
 
 
@@ -136,4 +136,4 @@ def test_visit_end_exclusive_hides_cached_brief_information():
     with patch.object(render, "_text", side_effect=capture):
         render.render_frame(state, config)
     assert "NO LOCAL VISIT TO DISPLAY" in labels
-    assert not any("BRIEF" in value or "07:20" in value for value in labels)
+    assert not any("BRIEF" in value or "7:20 AM" in value for value in labels)

@@ -79,11 +79,11 @@ class RenderTests(unittest.TestCase):
 
         with patch.object(render, "_text", side_effect=capture):
             render.render_frame(self.state, self.config)
-        self.assertIn("10:20 EDT", labels)
-        self.assertNotIn("14:20 UTC", labels)
+        self.assertIn("10:20 AM EDT", labels)
+        self.assertNotIn("2:20 PM UTC", labels)
         self.assertIn("DEPART / EDT", labels)
-        self.assertIn("12:20", labels)
-        self.assertIn("REPORT 11:25 EDT", labels)
+        self.assertIn("12:20 PM", labels)
+        self.assertIn("REPORT 11:25 AM EDT", labels)
 
     def test_completed_legs_and_hidden_deadheads_are_not_selected(self):
         now = render._dt(self.state["now"])

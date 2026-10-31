@@ -13,7 +13,7 @@ from flightwall.config import DEFAULTS
 from flightwall.feeds import FlightFeeds, nearby_distance_miles, request_json
 
 
-NOW = datetime(2026, 10, 21, 15, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 31, 15, 0, tzinfo=timezone.utc)
 
 
 def selected(**changes):
@@ -23,7 +23,7 @@ def selected(**changes):
 
 
 def scheduled(identifier="matching-flight", minutes=0, **changes):
-    return {"fa_flight_id": identifier, "origin": {"code_iata": "ATL"},
+    return {"fa_flight_id": identifier, "ident": "DAL1946", "ident_iata": "DL1946", "origin": {"code_iata": "ATL"},
             "destination": {"code_iata": "MEM"},
             "scheduled_out": (NOW - timedelta(minutes=20) + timedelta(minutes=minutes)).isoformat(), **changes}
 
@@ -49,6 +49,7 @@ class FeedTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
+        (self.directory / "flightaware.key").write_text("synthetic-test-key")
         self.feed = FlightFeeds(self.directory)
         self.config = DEFAULTS | {"demo": False, "flightaware_enabled": True, "airline": "DAL"}
         self.clock = patch("flightwall.feeds.utcnow", return_value=NOW)
@@ -72,8 +73,8 @@ class FeedTests(unittest.TestCase):
             network.assert_not_called()
         self.assertIsNone(self.feed.live)
 
-    def test_first_poll_after_boot_matches_nearest_departure_and_units(self):
-        call = self.poll_live([scheduled("earlier", -180), scheduled("correct", 0),
+    def test_first_poll_after_boot_matches_unique_dated_route_and_units(self):
+        call = self.poll_live([scheduled("yesterday", -1440), scheduled("correct", 0),
                                scheduled("wrong-route", destination={"code_iata": "LAX"})])
         self.assertEqual(self.feed._live_id, "correct")
         self.assertEqual(self.feed.live["flight_id"], "roster-1")
@@ -134,16 +135,16 @@ class FeedTests(unittest.TestCase):
 
     def test_daily_budget_counts_requests_and_rejects_corrupt_counter(self):
         self.config["flightaware_daily_limit"] = 2
-        self.feed._allow_paid_request(self.config)
-        self.feed._allow_paid_request(self.config)
+        self.feed._allow_paid_request(self.config, "/flights/DAL1946?max_pages=1")
+        self.feed._allow_paid_request(self.config, "/flights/DAL1946?max_pages=1")
         with self.assertRaises(ValueError):
-            self.feed._allow_paid_request(self.config)
+            self.feed._allow_paid_request(self.config, "/flights/DAL1946?max_pages=1")
         usage_path = self.directory / "flightaware-usage.json"
         if os.name == "posix":
             self.assertEqual(usage_path.stat().st_mode & 0o777, 0o600)
         usage_path.write_text("corrupt")
         with self.assertRaises(ValueError):
-            self.feed._allow_paid_request(self.config)
+            self.feed._allow_paid_request(self.config, "/flights/DAL1946?max_pages=1")
 
     def test_paid_key_is_header_only_and_not_in_request_url(self):
         (self.directory / "flightaware.key").write_text("private-example-key")

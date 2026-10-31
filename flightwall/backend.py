@@ -25,6 +25,7 @@ from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .weather import WeatherFeed
+from .flight_alerts import choose_tracking_flight
 
 
 def choose_flight(snapshot, config, now=None):
@@ -130,6 +131,11 @@ class Runtime:
         config = self.config.get()
         snapshot = self.snapshot()
         flight = choose_flight(snapshot, config, now)
+        operating = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
+        operating_status = self.feeds.operating_status_for_config(config, operating, now)
+        if (operating_status.get("status") == "fresh"
+                and operating_status.get("phase") in {"departed_gate", "airborne", "landed"}):
+            flight = operating
         personal_error = None
         try:
             personal_items = self.personal.visible(now) if config["personal_enabled"] else []
@@ -145,6 +151,8 @@ class Runtime:
                     "updater": copy.deepcopy(self.updater_status), "last_live_error": self.feeds.error,
                     "last_error": self.last_error,
                     "personal_items": personal_items, "personal_error": personal_error}
+        status["operating_status"] = operating_status
+        status["operating_flight"] = operating
         household = self.household.status(now=now)
         status.update(presence=self.presence.snapshot(now), kids=household.get("kids", {}))
         status["custody_outlook"] = household.get("custody_outlook", {}) if config["family_calendar_id"] else {}
@@ -374,14 +382,17 @@ class Runtime:
                 self.refresh_event.clear()
                 self.sync()
                 last_sync = time.monotonic()
-            selected = choose_flight(self.snapshot(), config)
-            context = household_context({"presence": self.presence.snapshot(), "snapshot": self.snapshot()}, config)
+            roster_selected = choose_flight(self.snapshot(), config)
+            selected = choose_tracking_flight(self.snapshot(), config, datetime.now(timezone.utc), self.feeds.operating_status)
+            context = household_context({"presence": self.presence.snapshot(), "snapshot": self.snapshot(),
+                                         "operating_status": self.feeds.operating_status}, config)
             try:
                 watches = self.flight_watches.list_watches()
             except (ValueError, OSError):
                 watches = []
             try:
-                self.feeds.poll(config, selected, on_duty=is_on_duty(selected, config) or context["chris_away"], watches=watches)
+                self.feeds.poll(config, selected, on_duty=is_on_duty(roster_selected, config)
+                                or context["chris_away"] or context["flight_priority"], watches=watches)
             except Exception:
                 self.feeds.error = "Optional traffic feed is unavailable."
             if config["updates_enabled"] and tick - last_update >= config["update_interval_minutes"] * 60:

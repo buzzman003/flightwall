@@ -24,7 +24,7 @@ from . import __version__
 from .config import private_json
 
 UTC = timezone.utc
-POLL_SECONDS = 1800
+POLL_SECONDS = 900
 CACHE_MAX_AGE = 7200
 FORECAST_MAX_AGE = 43200
 MAX_RESPONSE = 2_000_000

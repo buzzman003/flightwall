@@ -1,4 +1,13 @@
-FLIGHT WALL 0.4.4
+FLIGHT WALL 0.4.5
+
+0.4.5 source adds actual-deck progress squares, AM/PM clocks throughout the
+TV, automatic 15-minute weather polling and crisp weather icons. Operating
+flight status/early-late cards are prepared for AeroAPI, with a shared monthly
+app request budget capped at $5. No account/key has been connected; paid
+tracking remains off. See docs/RELEASE-0.4.5.txt for candidate/release status.
+No close/reopen is needed for routine weather refresh. Program changes still
+activate only at the next safe Ports launch; local source edits are not a
+new executable. Previous installed-release evidence follows.
 
 The signed 0.4.4 release is published, independently verified and active on
 this owner's Batocera. Linux passed 688 tests and 403 subtests with no skips,

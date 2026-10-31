@@ -4,6 +4,15 @@ Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame +
 
 Shared data conventions (plain JSON dictionaries):
 
+0.4.5 candidate: GUI-local eligible-deck count/index, AM/PM presentation,
+automatic900second weather cadence and source-native summary icons. Provider
+operating status stays separate from calendar times and ages every frame.
+Exact matched provider-event baselines only; tracking-ended is not confirmed
+airline cancellation. Paid operating/watch requests share a durable local$5
+nominal-fee monthly cap plus existing daily limit. Provider key/enablement,
+monthly limit and usage ledger remain local/private; no paid provider is
+connected by this release. See RELEASE-0.4.5.txt for rate expiry/account limits.
+
 0.4.4 published/active integration: the logical board remains512x256. Only nearby
 geographic pixels may be presented at TV resolution after the LED pass,
 following the same timer/ticker content bounds and brightness in both paths.

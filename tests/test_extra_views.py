@@ -54,11 +54,53 @@ class WeatherViewTests(unittest.TestCase):
         labels, image = capture(render_weather, weather_state(), self.config)
         for value in ("TODAY", "TOMORROW", "72", "51", "68", "48", "RAIN POSSIBLE", "PUT CUSHIONS IN", "PEAK HOUR 60%"):
             self.assertIn(value, labels)
-        self.assertIn("18:00-08:00 LOCAL", labels)
-        self.assertIn("NWS / AS OF 10/31 12:00 CDT", labels)
+        self.assertIn("6 PM-8 AM LOCAL", labels)
+        self.assertIn("NWS / AS OF 10/31 12:00 PM CDT", labels)
         self.assertEqual(image.size, (512, 256))
         self.assertEqual(image.mode, "RGB")
         self.assertNotIn("4 DAY", " ".join(labels))
+
+    def test_icons_follow_known_fresh_summary_and_hide_stale_conditions(self):
+        from flightwall.extra_views import _weather_icon
+        state = weather_state()
+        seen = []
+        def icon(draw, xy, kind):
+            seen.append(kind)
+            _weather_icon(draw, xy, kind)
+        with patch("flightwall.extra_views._weather_icon", side_effect=icon):
+            capture(render_weather, state, self.config)
+            self.assertEqual(seen, ["partly", "rain"])
+            seen.clear()
+            state["weather"]["daily_fetched_at"] = (NOW - timedelta(hours=2)).isoformat()
+            capture(render_weather, state, self.config)
+            self.assertEqual(seen, ["unknown", "unknown"])
+            seen.clear()
+            capture(render_weather, weather_state(), self.config | {"weather_enabled": False})
+            self.assertEqual(seen, ["unknown", "unknown"])
+
+    def test_overnight_and_issuance_use_unambiguous_am_pm_through_dst(self):
+        state = weather_state()
+        now = datetime(2026, 11, 1, 7, 45, tzinfo=timezone.utc)  # second 1:45 AM, CST
+        state["weather"]["hourly_fetched_at"] = now.isoformat()
+        state["weather"]["hourly_updated_at"] = "2026-11-01T07:30:00Z"
+        labels, _ = capture(render_weather, state, self.config, now)
+        self.assertIn("NOW-8 AM LOCAL", labels)
+        self.assertIn("NWS / AS OF 11/01 1:30 AM CST", labels)
+        self.assertNotIn("NOW-08:00 LOCAL", labels)
+        self.assertNotIn("18:00-08:00 LOCAL", labels)
+
+    def test_crisp_weather_symbols_do_not_invent_conditions_for_unknown_text(self):
+        from flightwall.extra_views import _weather_icon, _weather_icon_kind
+        cases = (("Sunny", "sun"), ("Partly Sunny", "partly"), ("Mostly Cloudy", "cloud"),
+                 ("Chance Rain Showers", "rain"), ("Slight Chance Thunderstorms", "thunder"),
+                 ("Snow", "snow"), ("Patchy Fog", "fog"), ("Unavailable", "unknown"),
+                 (None, "unknown"), ("Hot", "unknown"))
+        for summary, expected in cases:
+            with self.subTest(summary=summary):
+                self.assertEqual(_weather_icon_kind(summary), expected)
+                image = Image.new("RGB", (24, 18))
+                _weather_icon(ImageDraw.Draw(image), (0, 0), expected)
+                self.assertIsNotNone(image.getbbox())
 
     def test_low_requires_complete_exact_window_and_probability(self):
         state = weather_state()
@@ -108,7 +150,7 @@ class WeatherViewTests(unittest.TestCase):
         self.assertNotIn("72", labels)
         self.assertNotIn("68", labels)
         self.assertIn("RAIN POSSIBLE", labels)
-        self.assertIn("NOW-08:00 LOCAL", labels)
+        self.assertIn("NOW-8 AM LOCAL", labels)
 
     def test_remaining_night_snapshot_does_not_lose_coverage_as_frame_ages(self):
         state = weather_state()
@@ -121,7 +163,7 @@ class WeatherViewTests(unittest.TestCase):
         night.update(coverage_start=now.isoformat(), expected_hours=hours, covered_hours=hours,
                      max_precipitation_probability=10, rain_mentioned=False)
         labels, _ = capture(render_weather, state, self.config, now + timedelta(minutes=10, microseconds=500))
-        self.assertIn("NOW-08:00 LOCAL", labels)
+        self.assertIn("NOW-8 AM LOCAL", labels)
         self.assertIn("LOW PRECIP CHANCE", labels)
 
     def test_hourly_warning_survives_missing_daily_forecasts(self):
@@ -140,7 +182,7 @@ class WeatherViewTests(unittest.TestCase):
         labels, _ = capture(render_weather, state, self.config, now)
         self.assertIn("RAIN RISK UNKNOWN", labels)
         self.assertNotIn("RAIN POSSIBLE", labels)
-        self.assertIn("18:00-08:00 LOCAL", labels)
+        self.assertIn("6 PM-8 AM LOCAL", labels)
 
     def test_fresh_hourly_survives_stale_daily_section(self):
         state = weather_state()

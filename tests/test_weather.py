@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from zoneinfo import ZoneInfo
 
-from flightwall.weather import MAX_RESPONSE, WeatherFeed, request_json
+from flightwall.weather import MAX_RESPONSE, POLL_SECONDS, WeatherFeed, request_json
 
 UTC = timezone.utc
 ZONE = ZoneInfo("America/Chicago")
@@ -209,14 +209,47 @@ class WeatherTests(unittest.TestCase):
 
     def test_failure_retains_cache_and_is_rate_limited(self):
         before, _ = self.poll()
-        self.clock.return_value = 1900
+        self.clock.return_value = 1000
         with patch("flightwall.weather.request_json", side_effect=OSError("PRIVATE_URL_AND_COORDINATES")) as network:
-            failed = self.feed.poll(NOW + timedelta(minutes=30))
-            self.feed.poll(NOW + timedelta(minutes=31))
+            failed = self.feed.poll(NOW + timedelta(minutes=15))
+            self.clock.return_value = 1899.999
+            self.feed.poll(NOW + timedelta(minutes=29, seconds=59))
             self.assertEqual(network.call_count, 2)  # hourly/daily; cached points reused
         self.assertEqual(failed["today"], before["today"])
         self.assertEqual(failed["status"], "partial")
         self.assertNotIn("PRIVATE", json.dumps(failed))
+
+    def test_fifteen_minute_poll_boundary_uses_cached_grid_mapping(self):
+        self.assertEqual(POLL_SECONDS, 15 * 60)
+        self.poll()
+        self.clock.return_value = 999.999
+        with patch("flightwall.weather.request_json") as network:
+            self.feed.poll(NOW + timedelta(minutes=15, microseconds=-1))
+            network.assert_not_called()
+        later = NOW + timedelta(minutes=15)
+        self.clock.return_value = 1000
+        with patch("flightwall.weather.request_json", side_effect=documents(later)) as network:
+            result = self.feed.poll(later)
+            self.assertEqual([call.args[0] for call in network.call_args_list], [HOURLY, DAILY])
+        self.assertEqual(result["hourly_fetched_at"], later.isoformat())
+        self.assertEqual(result["daily_fetched_at"], later.isoformat())
+
+    def test_disabled_and_demo_skip_even_when_refresh_due_then_resume_without_burst(self):
+        self.poll()
+        self.clock.return_value = 1000
+        with patch("flightwall.weather.request_json") as network:
+            self.config["weather_enabled"] = False
+            self.assertEqual(self.feed.poll(NOW + timedelta(minutes=15))["status"], "disabled")
+            self.config["weather_enabled"] = True
+            self.config["demo"] = True
+            self.assertEqual(self.feed.poll(NOW + timedelta(minutes=15))["status"], "demo")
+            network.assert_not_called()
+        self.config["demo"] = False
+        later = NOW + timedelta(minutes=15)
+        with patch("flightwall.weather.request_json", side_effect=documents(later)) as network:
+            self.assertEqual(self.feed.poll(later)["hourly_fetched_at"], later.isoformat())
+            self.feed.poll(later)
+            self.assertEqual(network.call_count, 2)
 
     def test_daily_failure_still_allows_fresh_hourly_rain_warning(self):
         with patch("flightwall.weather.request_json", side_effect=[POINTS, documents(probability=60)[0], OSError("unavailable")]):

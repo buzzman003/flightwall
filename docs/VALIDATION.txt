@@ -1,5 +1,30 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.5 SOURCE CANDIDATE - OCTOBER31,2026
+
+Owner authorized the previously deferred deck/AMPM feedback,15minuteweather
+and future-connected real-time operating status/alert cards. Existing device
+remains0.4.4 until matching signed code activates on a normal Ports launch.
+Windows full snapshot:669tests+429subtests,49 expected dependency/platform
+skips. Later final affected status/cost/view/deck integration:59tests+39subtests.
+New provider/ledger suites separately passed77tests+42subtests. These are
+synthetic provider responses, not paid API results. Linux/native gates remain
+required; no0.4.5 physical-display acceptance is implied by these source tests.
+
+Tests cover eligible-card count/wrap/privacy reconciliation; AMPM midnight,
+noon, Central date boundaries/repeated DST hour and layout; automatic900second
+weather cadence, backoff and no-network disabled/DEMO modes; crisp supplied-
+summary icons; exact provider association, actual/estimated versus matched
+scheduled event, fresh/stale/offline/disabled rendering and operating windows.
+Budget tests include real concurrentprocess reservations: a$0.025 allowance
+permits exactlyfive$0.005 reservations and blocksfive additional contenders.
+UTCrollover, pricingexpiry, corrupted/legacy state, uncertain network attempts,
+persistence failure and unpriced endpoints failclosed. Private usage.lock is
+excluded from source-control/release inventories. No real AeroAPI request.
+
+No real paid-provider result is claimed. The application default monthly
+request budget is $5; an account/key and explicit enablement are still required. Local reservation accounting is
+not an account-wide spend guarantee; see RELEASE-0.4.5.txt for rates/limitations.
 PUBLISHED AND ACTIVATED 0.4.4 - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.4

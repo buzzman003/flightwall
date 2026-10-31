@@ -1,0 +1,61 @@
+FLIGHT WALL 0.4.5 - DECK PROGRESS, AM/PM, WEATHER AND FLIGHT STATUS
+
+SOURCE CANDIDATE / NATIVE RELEASE PENDING
+
+* Progress uses the actual per-frame eligible rotation, left-to-right, rather
+  than a fixed list of view types. Individual trip pages and priority repeats
+  are real slots. Hidden private cards do not contribute counts. Normal decks
+  show all squares; large decks use bounded 24-square pages and index/total.
+* Every TV clock is 12-hour AM/PM with existing Central/DST/date semantics.
+  Stored RFC3339 timestamps, durations and exact visibility windows stay intact.
+* NWS polling changes from30 to 15 minutes, automatically in the independent
+  worker while the display OR background service is running. There is no need
+  to close/reopen the display. Fresh received summaries have small crisp icons;
+  stale/unknown forecasts retain honest labels and a question mark.
+* Operating-status polling prepares actual/estimated gate-out/in or runway-
+  off/on clocks, early/late comparisons against the SAME provider event's
+  scheduled baseline, and diversion/tracking-ended notices. Schedule is never
+  relabeled as live data. Tracking-ended does not prove airline cancellation.
+* One date/route/canonical-ident provider match is required, followed by its
+  exact provider flight ID for positions. Ambiguous results never select a
+  nearest flight. Queries are bounded to4 hours before..6 hours after the leg;
+  a departed flight can outlast its roster arrival, without inferring presence.
+* Default 120-second polling alternates provider status/position after initial
+  association, so each normally refreshes about4 minutes while eligible. Status
+  expires after5 minutes and is rechecked every frame, including pause/outage.
+  No estimate or early/late verdict is displayed as current when stale.
+* The owner chose to connect AeroAPI later. No key/account was configured and
+  no paid API call was made. This release supplies capability, not live-data
+  activation. Existing FC View and Buzz schedule views remain available.
+* flightaware_monthly_limit_usd defaults 5 and is local-only, capped at 5. Shared
+  operating/watch calls reserve full published nominal fees BEFORE network I/O,
+  under an interprocess lock, in private flightaware-usage.json. Status lookup
+  costs $0.005/result-set, position$0.010; max_pages=1 enforced. Daily 240-request
+  limit remains. Uncertain/failed calls are not refunded. UTC month rollover,
+  malformed ledgers, persistence failure and concurrent processes are covered.
+* This is the app's request budget at checked prices, not a provider-wide hard
+  spending cap; other account usage, taxes/fees and credits are not controlled.
+  Rates were checked October 31, 2026; after 90 days, paid calls stop pending rate
+  review. A legacy daily-only ledger conservatively consumes that old month's
+  full allowance, because it cannot establish earlier monthly spending.
+* Private credentials, caches, settings, original recovery helper and games
+  remain outside versioned releases. Native gates use original 0.3.0 and
+  published 0.4.4 executable upgrade/rollback paths. GUI-live staging takes
+  coherent individual-file backups and keeps the current display running;
+  activation remains next-launch only.
+
+VALIDATION
+
+Windows full snapshot passed 669 tests and 429 subtests, with 49 expected platform/dependency
+skips; final affected status/cost/deck/view integration passed 59 tests and 39 subtests.
+Linux must pass the full final inventory with zero skips plus frozen OpenGL,
+software fallback, fresh install and both real executable upgrade/rollback
+paths before signing/publication. Physical 0.4.5 TV/provider checks not performed.
+Alexa device discovery, native global timer bridges, Lisa's own phone consent
+and shopping/SMS account setup are separate pending integrations. No claim of
+those connections or any paid-data result is made by this release.
+
+Primary references (checked October 31, 2026):
+https://www.flightaware.com/commercial/aeroapi/
+https://www.flightaware.com/commercial/aeroapi/resources/aeroapi-openapi.yml
+https://www.flightaware.com/commercial/aeroapi/#pricing

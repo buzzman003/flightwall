@@ -61,6 +61,9 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
         result["custody_outlook"] = dict(outlook, stale=outlook.get("stale") is not False or not fresh)
     if not backend_available:
         result["live"], result["nearby"] = None, []
+    from .flight_alerts import fresh_status
+    result["operating_status"] = fresh_status(status.get("operating_status"), now, backend_available=backend_available)
+    if not backend_available:
         weather = status.get("weather")
         if isinstance(weather, dict):
             weather = dict(weather, status="stale")
@@ -123,13 +126,15 @@ def entry_render_state(status, config, entry, now=None):
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
              "weather": status.get("weather", {}),
+             "operating_status": status.get("operating_status", {}),
+             "operating_flight": status.get("operating_flight"),
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,
              "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
-    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "trip_summary", "trip_map", "home", "setup", "custody_outlook"}:
+    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):
         artwork = decode_artwork(image_data)
@@ -608,6 +613,9 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             entries = build_rotation(current_status, config, wall_now)
             entry = cursor.tick(entries, now, automatic)
             state = entry_render_state(current_status, config, entry, wall_now)
+            # Entries have already passed per-frame presence/privacy gates.
+            # Priority repeats and individual trip pages are real deck slots.
+            state["deck_count"], state["deck_index"] = len(entries), cursor.index
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
             if is_sleeping(config) and not settings_open and not help_open:

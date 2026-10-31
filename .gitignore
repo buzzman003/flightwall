@@ -48,3 +48,4 @@ timers.lock
 flight-watches.json
 flight-watches.lock
 flightaware-usage.json
+flightaware-usage.lock

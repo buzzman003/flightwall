@@ -61,7 +61,7 @@ def _source_files(source: Path, private_key: Path):
                        "openai-usage.json", "flightaware-usage.json",
                        "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                        "personal.lock", "timers.lock", "flight-watches.lock",
-                       "household-calendars.lock", "openai-usage.lock"}
+                       "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock"}
     # These are private runtime/workstation directories, even when accidentally
     # nested under _internal. Code such as shopping.py and public assets/stores
     # remain valid; a directory named shopping contains mutable household data.

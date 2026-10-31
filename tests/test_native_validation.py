@@ -45,11 +45,11 @@ class NativeGateTests(unittest.TestCase):
             gate.verify_baseline(path)
 
     def test_current_baseline_is_independently_pinned(self):
-        path = self.root / "not-published-042.tar.gz"
+        path = self.root / "not-published-044.tar.gz"
         path.write_bytes(b"synthetic different current installer")
-        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.2")
+        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.4")
         self.assertEqual(gate.CURRENT_BASELINE_SHA256,
-                         "13a453fdd79b04babe6aff72ccc265aa8b1b0acfbfdb8d231dc0a4e9eee4d63b")
+                         "3ade101c93573d1ca091159616f3573b9c3c9fd83e2e81748f83e8c68a40f181")
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             gate.verify_current_baseline(path)
 
@@ -145,14 +145,14 @@ class NativeGateTests(unittest.TestCase):
     def test_current_report_requires_both_upgrade_and_rollback_with_original_recovery(self):
         release = self.root / "release"
         release.mkdir()
-        (release / "VERSION").write_text("0.4.3")
+        (release / "VERSION").write_text("0.4.5")
         (release / "FlightWall").write_bytes(b"synthetic frozen bundle")
         report = self.root / "report.json"
-        acceptance = {"from": "0.4.2", "to": "0.4.3", "real_executables": True,
+        acceptance = {"from": "0.4.4", "to": "0.4.5", "real_executables": True,
                       "next_launch_only": True, "pinned_recovery_version": "0.3.0",
                       "pinned_recovery_preserved": True, "background_service_restored": True,
                       "version_floor_preserved": True, "private_fixtures_preserved": 20}
-        value = {"passed": True, "version": "0.4.3", "baseline_sha256": gate.BASELINE_SHA256,
+        value = {"passed": True, "version": "0.4.5", "baseline_sha256": gate.BASELINE_SHA256,
                  "current_baseline_sha256": gate.CURRENT_BASELINE_SHA256,
                  "bundle_files": gate.inventory(release),
                  "upgrade": {**acceptance, "rollback": False},
@@ -163,7 +163,9 @@ class NativeGateTests(unittest.TestCase):
                      ("rollback", None, {}), ("upgrade", "from", "0.3.0"),
                      ("upgrade", "from", "0.4.0"),
                      ("upgrade", "from", "0.4.1"),
-                     ("upgrade", "to", "0.4.4"), ("rollback", "rollback", False),
+                     ("upgrade", "from", "0.4.2"),
+                     ("upgrade", "from", "0.4.3"),
+                     ("upgrade", "to", "0.4.6"), ("rollback", "rollback", False),
                      ("upgrade", "pinned_recovery_version", "0.4.0"),
                      ("upgrade", "private_fixtures_preserved", 0),
                      ("upgrade", "private_fixtures_preserved", True)]

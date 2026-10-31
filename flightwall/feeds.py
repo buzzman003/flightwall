@@ -15,6 +15,57 @@ from pathlib import Path
 
 from .config import private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
+from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
+                            match_operating_flight, normalize_operating_status, operating_ident,
+                            stamp as status_stamp, within_tracking_window)
+from .personal import PersonalError, PersonalStore
+
+
+PRICING_CHECKED = datetime(2026, 10, 31, tzinfo=timezone.utc).date()
+PRICING_MAX_AGE_DAYS = 90
+
+
+class PaidLimitError(ValueError):
+    """Only fixed reason codes, without key, URL or provider error contents."""
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__({"pricing_expired": "FlightAware pricing needs review before paid requests can resume",
+                          "monthly_limit": "FlightAware monthly app cost limit reached",
+                          "daily_limit": "FlightAware daily request limit reached",
+                          "usage_unknown": "Cannot verify the local FlightAware usage limit"}[reason])
+
+
+def _paid_path(path):
+    """Only the two priced single-result-set routes may reach the network."""
+    if not isinstance(path, str) or len(path) > 4096:
+        raise ValueError("Unsupported paid endpoint")
+    split = urllib.parse.urlsplit(path)
+    match = re.fullmatch(r"/flights/([^/]+)(/position)?", split.path)
+    if split.scheme or split.netloc or split.fragment or not match:
+        raise ValueError("Unsupported paid endpoint")
+    ident = urllib.parse.unquote(match[1])
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", ident):
+        raise ValueError("Unsupported paid flight identity")
+    if match[2]:
+        if split.query:
+            raise ValueError("Unsupported position query")
+        return split.path, 10  # $0.010, integer milli-USD.
+    parameters = urllib.parse.parse_qs(split.query, keep_blank_values=True, strict_parsing=True)
+    if set(parameters) - {"start", "end", "ident_type", "max_pages"} or any(len(value) != 1 for value in parameters.values()):
+        raise ValueError("Unsupported paid flight query")
+    if parameters.get("max_pages", ["1"]) != ["1"]:
+        raise ValueError("Paid queries must request exactly one result set")
+    if parameters.get("ident_type", ["designator"])[0] != "designator":
+        raise ValueError("Unsupported paid identity type")
+    # Static routes such as /flights/search have a different, higher fee.
+    # This app only buys designator lookups, never arbitrary path segments.
+    if not re.fullmatch(r"(?:[A-Z][A-Z0-9]|[0-9][A-Z]|[A-Z]{3})[0-9]{1,5}[A-Z]?", ident):
+        raise ValueError("Unsupported paid flight designator")
+    for key in ("start", "end"):
+        if key in parameters:
+            status_stamp(parameters[key][0])
+    parameters["max_pages"] = ["1"]
+    return split.path + "?" + urllib.parse.urlencode(parameters, doseq=True), 5  # $0.005.
 
 
 def utcnow():
@@ -180,35 +231,114 @@ class FlightFeeds:
         self._selected = None
         self._lookup_at = -math.inf
         self._budget_path = self.data_dir / "flightaware-usage.json"
+        self._budget_storage = PersonalStore(self.data_dir, lambda: {})
+        self._budget_storage.lock_path = self.data_dir / "flightaware-usage.lock"
+        self.operating_status = {"status": "idle", "source": FLIGHT_SOURCE}
+        self._operating_completed = (None, self.operating_status)
+        self._operating_next = "status"
+        self._operating_terminal = None
         self._lock = threading.Lock()
 
-    def _allow_paid_request(self, config):
-        day = utcnow().date().isoformat()
+    def _allow_paid_request(self, config, path):
+        from decimal import Decimal, InvalidOperation
+        _, fee = _paid_path(path)
+        today = utcnow().astimezone(timezone.utc).date()
+        if not PRICING_CHECKED <= today <= PRICING_CHECKED + timedelta(days=PRICING_MAX_AGE_DAYS):
+            raise PaidLimitError("pricing_expired")
+        day, month = today.isoformat(), today.strftime("%Y-%m")
         try:
-            usage = json.loads(self._budget_path.read_text())
-        except FileNotFoundError:
-            usage = {}
-        except (OSError, ValueError):
-            raise ValueError("Cannot verify the local FlightAware usage limit") from None
-        if not isinstance(usage, dict):
-            raise ValueError("Cannot verify the local FlightAware usage limit")
-        count = usage.get("count", 0) if usage.get("day") == day else 0
-        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
-            raise ValueError("Cannot verify the local FlightAware usage limit")
-        if count >= config["flightaware_daily_limit"]:
-            raise ValueError("FlightAware daily request limit reached")
-        private_json(self._budget_path, {"day": day, "count": count + 1})
+            limit = Decimal(str(config.get("flightaware_monthly_limit_usd", 5)))
+            if not limit.is_finite() or not 0 <= limit <= 5 or isinstance(config.get("flightaware_monthly_limit_usd"), bool):
+                raise ValueError("Invalid monthly app budget")
+            limit_milliusd = int(limit * 1000)
+            daily = config["flightaware_daily_limit"]
+            if type(daily) is not int or daily < 0:
+                raise ValueError("Invalid daily app budget")
+            with self._budget_storage._locked():
+                try:
+                    with self._budget_path.open(encoding="utf-8") as stream:
+                        raw = stream.read(8193)
+                    if len(raw) > 8192:
+                        raise ValueError("Invalid usage file")
+                    usage = json.loads(raw)
+                except FileNotFoundError:
+                    usage = None
+                if usage is None:
+                    usage = {"schema_version": 2, "day": day, "count": 0, "month": month,
+                             "reserved_milliusd": 0, "pricing_checked": PRICING_CHECKED.isoformat()}
+                elif isinstance(usage, dict) and set(usage) == {"day", "count"}:
+                    # The old daily counter cannot establish earlier spending
+                    # in its month. Consume that whole month conservatively.
+                    legacy_day, count = usage["day"], usage["count"]
+                    if (not isinstance(legacy_day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", legacy_day)
+                            or datetime.fromisoformat(legacy_day).date() > today or type(count) is not int or count < 0):
+                        raise ValueError("Invalid old usage counter")
+                    usage = {"schema_version": 2, "day": legacy_day, "count": count, "month": legacy_day[:7],
+                             "reserved_milliusd": max(5000, count * 10), "pricing_checked": PRICING_CHECKED.isoformat()}
+                if (not isinstance(usage, dict) or set(usage) != {"schema_version", "day", "count", "month", "reserved_milliusd", "pricing_checked"}
+                        or type(usage["schema_version"]) is not int or usage["schema_version"] != 2
+                        or type(usage["count"]) is not int or usage["count"] < 0
+                        or type(usage["reserved_milliusd"]) is not int or usage["reserved_milliusd"] < usage["count"] * 5
+                        or not isinstance(usage["day"], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", usage["day"])
+                        or datetime.fromisoformat(usage["day"]).date() > today or usage["month"] != usage["day"][:7]
+                        or usage["pricing_checked"] != PRICING_CHECKED.isoformat()):
+                    raise ValueError("Invalid usage counter")
+                if usage["month"] != month:
+                    usage.update(month=month, reserved_milliusd=0)
+                if usage["day"] != day:
+                    usage.update(day=day, count=0)
+                # Persist migration/rollover even if a limit then blocks this
+                # request. A lower configured cap cannot erase reservations.
+                if usage["count"] >= daily:
+                    private_json(self._budget_path, usage)
+                    raise PaidLimitError("daily_limit")
+                if usage["reserved_milliusd"] + fee > limit_milliusd:
+                    private_json(self._budget_path, usage)
+                    raise PaidLimitError("monthly_limit")
+                usage["count"] += 1
+                usage["reserved_milliusd"] += fee
+                private_json(self._budget_path, usage)
+        except PaidLimitError:
+            raise
+        except (OSError, ValueError, TypeError, KeyError, PersonalError, InvalidOperation):
+            raise PaidLimitError("usage_unknown") from None
 
     def _flightaware(self, path, config):
+        path, _ = _paid_path(path)
         key_path = self.data_dir / "flightaware.key"
         try:
-            api_key = key_path.read_text().strip()
+            with key_path.open(encoding="utf-8") as stream:
+                raw_key = stream.read(4097)
+            api_key = raw_key.strip()
         except OSError:
             raise ValueError("FlightAware is enabled; add its API key using store-secret") from None
-        if not api_key:
+        if not api_key or len(raw_key) > 4096:
             raise ValueError("FlightAware key is empty")
-        self._allow_paid_request(config)
+        self._allow_paid_request(config, path)
         return request_json("https://aeroapi.flightaware.com/aeroapi" + path, {"x-apikey": api_key})
+
+    def _set_operating_status(self, config, flight, result):
+        self.operating_status = result
+        self._operating_completed = (flight_identity(flight, config), result)
+
+    def operating_status_for_config(self, config, flight, now=None):
+        """No network; ignore results for another calendar leg/configuration."""
+        now = now or utcnow()
+        base = {"source": FLIGHT_SOURCE}
+        if config.get("demo"):
+            return {**base, "status": "demo"}
+        if not config.get("flightaware_enabled"):
+            return {**base, "status": "off"}
+        if not tracking_available(self.data_dir, config):
+            return {**base, "status": "unconfigured"}
+        if not flight or flight.get("deadhead"):
+            return {**base, "status": "idle"}
+        if not within_tracking_window(flight, now):
+            return {**base, "status": "outside_window"}
+        identity, result = self._operating_completed
+        if identity != flight_identity(flight, config):
+            return {**base, "status": "pending"}
+        return fresh_status(result, now)
 
     def nearby_for_config(self, config, now=None):
         """Publish only a completed observation for the currently selected pin."""
@@ -235,11 +365,19 @@ class FlightFeeds:
         now = utcnow()
         try:
             self._poll_live(config, selected, now)
-        except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError):
+        except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError) as error:
             self.error = "Live flight lookup unavailable; showing the calendar schedule. Check your airline code, API key, account and request limit."
+            previous = fresh_status(self.operating_status, now)
+            reason = error.reason if isinstance(error, PaidLimitError) else "provider_unavailable"
+            result = (previous if previous.get("status") == "unconfigured" and previous.get("reason") == "airline_required" else
+                      {**previous, "status": "stale", "reason": reason} if previous.get("fetched_at") else
+                      {"status": "unavailable", "source": FLIGHT_SOURCE, "reason": reason})
+            if reason == "pricing_expired":
+                result["message"] = "FlightAware pricing needs review before paid requests can resume."
+            self._set_operating_status(config, selected, result)
         if self.live:
             try:
-                if abs((now - parse_time(self.live["observed_at"])).total_seconds()) > 300:
+                if not 0 <= (now - parse_time(self.live["observed_at"])).total_seconds() <= 300:
                     self.live = None
             except (ValueError, KeyError):
                 self.live = None
@@ -430,64 +568,72 @@ class FlightFeeds:
         self.watch_results = {watch["id"]: copy.deepcopy(self._watch_cache[watch["id"]]["result"]) for watch in safe}
 
     def _poll_live(self, config, selected, now):
-        if not config["flightaware_enabled"] or not selected or config["demo"]:
+        if not config["flightaware_enabled"] or not selected or config["demo"] or selected.get("deadhead"):
             self.live = None
+            self._selected, self._live_id = None, None
+            self._operating_terminal = None
+            self._set_operating_status(config, selected, {"status": "demo" if config["demo"] else "off" if not config["flightaware_enabled"] else "idle", "source": FLIGHT_SOURCE})
             return
-        if self._selected != selected["id"]:
-            self._selected, self._live_id, self._lookup_at = selected["id"], None, -math.inf
+        identity = flight_identity(selected, config)
+        if self._selected != identity:
+            self._selected, self._live_id, self._lookup_at = identity, None, -math.inf
             self._last_live = -math.inf
             self.live = None
-        start, end = parse_time(selected["start"]), parse_time(selected["end"])
-        if not -3600 <= (now - start).total_seconds() or (now - end).total_seconds() > 3600:
+            self._operating_terminal = None
+            self._operating_next = "status"
+            self._set_operating_status(config, selected, {"status": "pending", "source": FLIGHT_SOURCE})
+        if not tracking_available(self.data_dir, config):
+            self.live = None
+            self._set_operating_status(config, selected, {"status": "unconfigured", "source": FLIGHT_SOURCE})
+            return
+        if not within_tracking_window(selected, now):
+            self.live = None
+            self._set_operating_status(config, selected, {"status": "outside_window", "source": FLIGHT_SOURCE})
+            return
+        if self._operating_terminal == identity:
             self.live = None
             return
-        if time.monotonic() - self._last_live < config["flightaware_poll_seconds"]:
+        try:
+            number = operating_ident(selected, config.get("airline", ""))
+        except ValueError:
+            self._set_operating_status(config, selected, {"status": "unconfigured", "source": FLIGHT_SOURCE, "reason": "airline_required"})
+            raise
+        tick = time.monotonic()
+        if tick - self._last_live < config["flightaware_poll_seconds"]:
             return
-        self._last_live = time.monotonic()
-        if self._live_id is None and time.monotonic() - self._lookup_at > 300:
-            self._lookup_at = time.monotonic()
-            number = re.sub(r"[^A-Z0-9]", "", str(selected["number"]).upper())
-            if number.isdigit():
-                if not config["airline"]:
-                    raise ValueError("Set your operating airline code for FlightAware lookups")
-                number = config["airline"] + number
-            params = urllib.parse.urlencode({"start": (start - timedelta(hours=6)).astimezone(timezone.utc).isoformat(),
-                                             "end": (start + timedelta(hours=6)).astimezone(timezone.utc).isoformat(),
-                                             "max_pages": 1})
+        if not self._live_id and tick - self._lookup_at < 300:
+            return
+        self._last_live = tick
+        start = status_stamp(selected["start"])
+        position_eligible = start - timedelta(hours=1) <= now or self.operating_status.get("phase") in {"departed_gate", "airborne", "landed"}
+        first = self._live_id is None
+        if first or self._operating_next == "status" or not position_eligible:
+            self._lookup_at = tick
+            params = urllib.parse.urlencode({"start": (start - timedelta(hours=6)).isoformat(),
+                                             "end": (start + timedelta(hours=6)).isoformat(),
+                                             "ident_type": "designator", "max_pages": 1})
             data = self._flightaware("/flights/" + urllib.parse.quote(number, safe="") + "?" + params, config)
-            matches = []
-            for flight in data.get("flights", []):
-                if not isinstance(flight, dict):
-                    continue
-                origin, destination = flight.get("origin") or {}, flight.get("destination") or {}
-                if origin.get("code_iata") != selected["origin"] or destination.get("code_iata") != selected["destination"]:
-                    continue
-                departure = flight.get("scheduled_out") or flight.get("scheduled_off")
-                if departure and flight.get("fa_flight_id"):
-                    try:
-                        difference = abs((parse_time(departure) - start).total_seconds())
-                    except ValueError:
-                        continue
-                    if difference < 6 * 3600:
-                        matches.append((difference, str(flight["fa_flight_id"])))
-            matches.sort()
-            # An ambiguous exact tie has no sufficiently reliable position association.
-            if matches and (len(matches) == 1 or matches[0][0] < matches[1][0]):
-                self._live_id = matches[0][1]
-        if not self._live_id:
-            return
+            outcome, matched = match_operating_flight(data, selected, config)
+            if matched is None:
+                self._live_id, self.live = None, None
+                self._set_operating_status(config, selected, {"status": outcome, "source": FLIGHT_SOURCE})
+                return
+            status = normalize_operating_status(matched, selected, now)
+            previous_id = self._live_id
+            self._live_id = status["provider_flight_id"]
+            if previous_id != self._live_id:
+                self.live = None
+            self._set_operating_status(config, selected, status)
+            if status["phase"] in {"at_gate", "blocked", "tracking_ended"}:
+                self._operating_terminal = identity
+                self.live = None
+                return
+            self._operating_next = "position"
+            if not first or not position_eligible:
+                return
+        # The initial association can buy one position immediately. Subsequent
+        # passes alternate status/position, one request each poll interval.
+        self._operating_next = "status"
         data = self._flightaware("/flights/" + urllib.parse.quote(self._live_id, safe="") + "/position", config)
-        position = data.get("last_position") or {}
-        observed = position.get("timestamp")
-        lat, lon = position.get("latitude"), position.get("longitude")
-        if not observed or not coordinates(lat, lon):
-            return
-        if abs((now - parse_time(observed)).total_seconds()) > 300:
-            self.live = None
-            return
-        altitude = position.get("altitude")
-        altitude_feet = altitude * 100 if _is_number(altitude) else None
-        self.live = {"latitude": lat, "longitude": lon, "observed_at": observed,
-                     "flight_id": selected["id"],
-                     "altitude": altitude_feet, "altitude_units": "feet", "groundspeed": position.get("groundspeed"),
-                     "heading": position.get("heading"), "source": "FlightAware"}
+        live = self._watch_position(data, {"id": self._live_id}, now)
+        self.live = ({**live, "flight_id": selected["id"], "provider_flight_id": self._live_id} if live else None)

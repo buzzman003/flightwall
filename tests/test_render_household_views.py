@@ -116,8 +116,8 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertIn("MOM'S HOUSE", labels)
         self.assertIn("DAD'S HOUSE", labels)
         self.assertIn("CHANGE DAY", labels)
-        self.assertIn("00:00 DAD", labels)
-        self.assertIn("15:00 MOM", labels)
+        self.assertIn("12:00 AM DAD", labels)
+        self.assertIn("3:00 PM MOM", labels)
         self.assertEqual(labels.count("UNKNOWN"), 7)
         self.assertIn("11/09", labels)  # October 31 through November 9, inclusive.
         self.assertEqual(self.state, before)
@@ -129,13 +129,13 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertEqual(labels.count("UNKNOWN"), 10)
         self.assertNotIn("MOM'S HOUSE", labels)
         self.assertNotIn("DAD'S HOUSE", labels)
-        self.assertNotIn("15:00 MOM", labels)
+        self.assertNotIn("3:00 PM MOM", labels)
 
     def test_household_clock_labels_repeated_dst_hour_correctly(self):
         before, image = labels_for(self.state | {"now": "2026-11-01T06:30:00Z"})
         after, image = labels_for(self.state | {"now": "2026-11-01T07:30:00Z"})
-        self.assertIn("01:30 CDT", before)
-        self.assertIn("01:30 CST", after)
+        self.assertIn("1:30 AM CDT", before)
+        self.assertIn("1:30 AM CST", after)
 
     def test_display_rechecks_outlook_freshness_and_carries_timers(self):
         status = {"snapshot": {}, "custody_outlook": self.outlook,
@@ -386,7 +386,7 @@ class TripAndHomeRenderTests(unittest.TestCase):
                   "display_start": (NOW - timedelta(hours=1)).isoformat(), "display_end": (NOW + timedelta(hours=1)).isoformat()}]
         state = self.state | {"view": "home", "personal_items": items, "household_context": {}}
         labels, image = labels_for(state)
-        self.assertIn("13:00", labels)
+        self.assertIn("1:00 PM", labels)
         self.assertIn("31 Oct 2026", labels)
         self.assertIn("FICTIONAL HAIRCUT", labels)
         with patch.object(render, "_text", wraps=render._text) as text:

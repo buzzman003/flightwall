@@ -46,6 +46,14 @@ def _flights(status, config):
 
 
 def _priority_flight(status, config, now):
+    from .flight_alerts import fresh_status, within_tracking_window
+    live_status = fresh_status(status.get("operating_status"), now)
+    if (config.get("flightaware_enabled") is True and live_status.get("status") == "fresh"
+            and live_status.get("phase") in {"departed_gate", "airborne", "landed"}):
+        matched = next((flight for flight, _, _ in _flights(status, config)
+                        if flight.get("id") == live_status.get("flight_id") and within_tracking_window(flight, now)), None)
+        if matched:
+            return matched
     def minutes(key):
         value = config.get(key, 60)
         return value if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1440 else 60
@@ -206,6 +214,13 @@ def build_rotation(status, config, now=None):
         add("nearby")
     if config.get("weather_enabled") is True and snapshot.get("demo") is False:
         add("weather")
+    from .flight_alerts import fresh_status, within_tracking_window
+    operating = fresh_status(status.get("operating_status"), now)
+    tracked = status.get("operating_flight")
+    if (config.get("flightaware_enabled") is True and snapshot.get("demo") is False
+            and isinstance(tracked, dict) and within_tracking_window(tracked, now)
+            and any(flight.get("id") == tracked.get("id") for flight, _, _ in _flights(status, config))):
+        add("flight_status", "flight_status:" + str(tracked.get("id") or "current"))
     if config.get("custody_outlook_enabled", True) and status.get("custody_outlook", {}).get("days"):
         add("custody_outlook")
     if config.get("local_visits_enabled", True):

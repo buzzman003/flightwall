@@ -31,8 +31,64 @@ def _section_fresh(weather, section, now):
             and _fresh(weather.get(section + "_updated_at"), now, FORECAST_MAX_AGE))
 
 
+def _weather_icon_kind(summary):
+    """A small visual aid for the supplied summary, never a new forecast."""
+    text = summary.casefold() if isinstance(summary, str) else ""
+    if re.search(r"\bthunderstorms?\b", text):
+        return "thunder"
+    if re.search(r"\b(rain|showers?|drizzle)\b", text):
+        return "rain"
+    if re.search(r"\b(snow|sleet|wintry|flurries)\b", text):
+        return "snow"
+    if re.search(r"\b(fog|mist|haze)\b", text):
+        return "fog"
+    if re.search(r"\bpartly\s+(cloudy|sunny)\b", text):
+        return "partly"
+    if re.search(r"\b(cloudy|overcast)\b", text):
+        return "cloud"
+    if re.search(r"\b(clear|sunny)\b", text):
+        return "sun"
+    return "unknown"
+
+
+def _weather_icon(draw, xy, kind):
+    """Original crisp 24x17 pixel symbols; no glow, font or raster assets."""
+    from .render import AMBER, CYAN, MUTED, WHITE, _text
+    x, y = xy
+
+    def sun():
+        draw.ellipse((x + 3, y + 3, x + 9, y + 9), fill=AMBER)
+        for a, b in (((6, 0), (6, 1)), ((6, 11), (6, 12)), ((0, 6), (1, 6)), ((11, 6), (12, 6)),
+                     ((1, 1), (2, 2)), ((10, 10), (11, 11)), ((1, 11), (2, 10)), ((10, 2), (11, 1))):
+            draw.line((x + a[0], y + a[1], x + b[0], y + b[1]), fill=AMBER)
+
+    if kind in {"sun", "partly"}:
+        sun()
+    if kind in {"cloud", "rain", "thunder", "snow", "fog", "partly"}:
+        cloud = WHITE if kind == "partly" else MUTED
+        draw.ellipse((x + 3, y + 5, x + 12, y + 11), fill=cloud)
+        draw.ellipse((x + 8, y + 2, x + 17, y + 10), fill=cloud)
+        draw.ellipse((x + 14, y + 5, x + 22, y + 11), fill=cloud)
+        draw.rectangle((x + 7, y + 8, x + 19, y + 11), fill=cloud)
+    if kind == "rain":
+        for dx in (6, 12, 18):
+            draw.line((x + dx, y + 13, x + dx - 1, y + 15), fill=CYAN)
+    elif kind == "thunder":
+        draw.polygon(((x + 12, y + 10), (x + 8, y + 14), (x + 12, y + 14),
+                      (x + 10, y + 17), (x + 17, y + 12), (x + 13, y + 12)), fill=AMBER)
+    elif kind == "snow":
+        for dx in (7, 16):
+            draw.line((x + dx - 1, y + 14, x + dx + 1, y + 14), fill=CYAN)
+            draw.line((x + dx, y + 13, x + dx, y + 15), fill=CYAN)
+    elif kind == "fog":
+        draw.line((x + 4, y + 13, x + 20, y + 13), fill=MUTED)
+        draw.line((x + 7, y + 16, x + 23, y + 16), fill=MUTED)
+    elif kind == "unknown":
+        _text(draw, (x + 9, y + 5), "?", MUTED)
+
+
 def render_weather(draw, image, state, config, now):
-    from .render import AMBER, CYAN, GREEN, LINE, MUTED, PANEL, WHITE, _dt, _header, _text, _tz
+    from .render import AMBER, CYAN, GREEN, LINE, MUTED, PANEL, WHITE, _dt, _header, _text, _tz, deck_footer_width
     zone = _tz(config)
     local_date = now.astimezone(zone).date()
     _header(draw, state, now, "WEATHER / TODAY + TOMORROW")
@@ -51,6 +107,7 @@ def render_weather(draw, image, state, config, now):
         draw.rectangle((x, 56, x + 236, 137), fill=PANEL, outline=LINE)
         _text(draw, (x + 8, 62), name.upper(), CYAN, 2)
         _text(draw, (x + 228, 65), date.strftime("%m/%d"), MUTED, align="right")
+        _weather_icon(draw, (x + 108, 60), _weather_icon_kind(card.get("summary")) if valid and not stale else "unknown")
         color = MUTED if stale else WHITE
         high = _temperature(card.get("high")) if valid else "--"
         low = _temperature(card.get("low")) if valid else "--"
@@ -98,7 +155,7 @@ def render_weather(draw, image, state, config, now):
     color = GREEN if risk == "low" else AMBER
     draw.rectangle((14, 145, 498, 224), fill=PANEL, outline=color)
     _text(draw, (22, 153), "OVERNIGHT", CYAN, 2)
-    window_label = "NOW-08:00 LOCAL" if now >= expected_start else "18:00-08:00 LOCAL"
+    window_label = "NOW-8 AM LOCAL" if now >= expected_start else "6 PM-8 AM LOCAL"
     _text(draw, (490, 156), window_label, MUTED, align="right")
     title = {"possible": "RAIN POSSIBLE", "low": "LOW PRECIP CHANCE", "unknown": "RAIN RISK UNKNOWN", "stale": "FORECAST STALE"}[risk]
     _text(draw, (22, 177), title, color, 2, max_width=296)
@@ -114,9 +171,10 @@ def render_weather(draw, image, state, config, now):
         _text(draw, (490, 42), reason, AMBER, align="right")
     draw.line((14, 232, 498, 232), fill=LINE)
     issued = _dt(weather.get("hourly_updated_at")) if usable else None
-    source = "NWS / AS OF " + issued.astimezone(zone).strftime("%m/%d %H:%M %Z") if issued else "NWS / FORECAST TIME UNAVAILABLE"
-    _text(draw, (15, 241), source, MUTED, max_width=380)
-    _text(draw, (498, 241), "WEATHER.GOV", MUTED, align="right")
+    source = "NWS / AS OF " + issued.astimezone(zone).strftime("%m/%d %I:%M %p %Z").replace(" 0", " ") if issued else "NWS / FORECAST TIME UNAVAILABLE"
+    _text(draw, (15, 241), source, MUTED, max_width=deck_footer_width(state))
+    if not state.get("deck_count"):
+        _text(draw, (498, 241), "WEATHER.GOV", MUTED, align="right")
 
 
 def _nearby_rows(state, config, now):
@@ -159,7 +217,7 @@ def _metadata(value, maximum=16):
 
 
 def render_nearby(draw, image, state, config, now):
-    from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text
+    from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, deck_footer_width
     _header(draw, state, now, "NEARBY AIRCRAFT / ADSB.LOL")
     rows, radius = _nearby_rows(state, config, now)
     draw.rectangle((14, 56, 310, 204), fill=PANEL, outline=LINE)
@@ -210,4 +268,5 @@ def render_nearby(draw, image, state, config, now):
     _text(draw, (15, 214), "ORIGIN / DESTINATION UNAVAILABLE", MUTED)
     _text(draw, (498, 214), str(len(rows)) + " FRESH", CYAN, align="right")
     draw.line((14, 232, 498, 232), fill=LINE)
-    _text(draw, (15, 241), "ADSB.LOL / RECEIVED POSITIONS / NOT ALL TRAFFIC", MUTED, max_width=484)
+    _text(draw, (15, 241), "ADSB.LOL / RECEIVED POSITIONS / NOT ALL TRAFFIC", MUTED,
+          max_width=deck_footer_width(state))

@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from PIL import Image, ImageDraw
 
 from .timers import COMPLETED_RETENTION
+from .time_format import format_time
 
 BASE_SIZE = (512, 256)
 TIMER_STRIP_HEIGHT = 36
@@ -189,7 +190,7 @@ def _city(code):
 
 def _clock(draw, state, now):
     zone = _tz({"timezone": state.get("display_timezone", "UTC")})
-    _text(draw, (496, 13), now.astimezone(zone).strftime("%H:%M %Z"), MUTED, align="right")
+    _text(draw, (496, 13), format_time(now.astimezone(zone), include_zone=True), MUTED, align="right")
     if state.get("demo", False):
         draw.rectangle((348, 9, 380, 22), outline=AMBER)
         _text(draw, (353, 12), "DEMO", AMBER)
@@ -203,6 +204,11 @@ def _header(draw, state, now, page, *, page_scale=1, page_tracking=0):
     _clock(draw, state, now)
     draw.line((14, 31, 497, 31), fill=LINE)
     _text(draw, (15, 40), page, CYAN, page_scale, tracking=page_tracking)
+
+
+def deck_footer_width(state):
+    count = state.get("deck_count")
+    return 280 if type(count) is int and 12 < count <= 256 else 360
 
 
 def _footer(draw, state, view, now, tz, personal_item=None):
@@ -246,15 +252,31 @@ def _footer(draw, state, view, now, tz, personal_item=None):
             status, color = f"{source} / SYNC {minutes}M AGO", MUTED
         else:
             status, color = "CONNECT YOUR FLIGHT CALENDAR", MUTED
-    _text(draw, (15, 241), status, color, max_width=360)
-    names = ("details", "map", "schedule")
-    if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch", "trip_summary", "trip_map", "home", "setup", "custody_outlook"}:
-        names += (view,)
-    elif state.get("personal_items") or view == "personal":
-        names += ("personal",)
-    for i, name in enumerate(names):
-        x = 486 - 13 * (len(names) - 1 - i)
-        draw.rectangle((x, 241, x + 5, 246), fill=CYAN if view == name else LINE)
+    _text(draw, (15, 241), status, color, max_width=deck_footer_width(state))
+
+
+def _deck_progress(draw, state):
+    """Show the actual eligible rotation, never a fixed list of view types.
+
+    Normal decks show every square. Very large decks have bounded pages with
+    an explicit index/total, retaining readable dots without covering content.
+    No keys, names or hidden-card counts are sent to the renderer.
+    """
+    count, index = state.get("deck_count"), state.get("deck_index")
+    if (type(count) is not int or type(index) is not int or not 1 <= count <= 256
+            or not 0 <= index < count):
+        return
+    page_start = index // 24 * 24
+    visible = min(24, count - page_start)
+    columns = min(12, visible)
+    left = 497 - columns * 8
+    draw.rectangle((300 if count > 12 else left - 4, 234, 498, 254), fill=BG)
+    if count > 12:
+        _text(draw, (left - 9, 242), f"{index + 1}/{count}", MUTED, align="right", max_width=88)
+    for offset in range(visible):
+        x = left + (offset % 12) * 8
+        y = 237 + (offset // 12) * 10 if count > 12 else 242
+        draw.rectangle((x, y, x + 4, y + 4), fill=CYAN if page_start + offset == index else LINE)
 
 
 def _arrow(draw, x, y, width=45, color=AMBER):
@@ -293,8 +315,8 @@ def _details(draw, state, config, now, flight, flights, tz):
     local_start, local_end = start.astimezone(tz), end.astimezone(tz)
     _text(draw, (26, 150), "DEPART / " + local_start.strftime("%Z"), CYAN)
     _text(draw, (270, 150), "ARRIVE / " + local_end.strftime("%Z"), CYAN)
-    _text(draw, (25, 166), local_start.strftime("%H:%M"), AMBER, 3)
-    _text(draw, (270, 166), local_end.strftime("%H:%M"), AMBER, 3)
+    _text(draw, (25, 166), format_time(local_start), AMBER, 3)
+    _text(draw, (270, 166), format_time(local_end), AMBER, 3)
     _text(draw, (239, 175), local_start.strftime("%d %b"), MUTED, align="right")
     _text(draw, (484, 175), local_end.strftime("%d %b"), MUTED, align="right")
     report = _dt(flight.get("report"))
@@ -303,11 +325,11 @@ def _details(draw, state, config, now, flight, flights, tz):
     if past:
         text = "SCHEDULED LEG ENDED"
     elif leave:
-        text = "BRIEF LEAVE " + leave.astimezone(tz).strftime("%d %b %H:%M %Z")
+        text = "BRIEF LEAVE " + format_time(leave.astimezone(tz), date_format="%d %b", include_zone=True)
     elif leave_conflict:
         text = "BRIEF CONFLICT / CHECK LEAVE TIME"
     elif report:
-        text = "REPORT " + report.astimezone(tz).strftime("%H:%M %Z")
+        text = "REPORT " + format_time(report.astimezone(tz), include_zone=True)
     elif active:
         text = "SCHEDULED LEG IN PROGRESS"
     else:
@@ -452,21 +474,21 @@ def _schedule(draw, state, config, now, flights, tz):
         _text(draw, (24, y), start.strftime("%d %b"), CYAN)
         _text(draw, (24, y + 13), str(flight.get("number", "")) + (" DH" if flight.get("deadhead") else ""), MUTED, max_width=132)
         _text(draw, (174, y + 4), f"{flight.get('origin', '---')} > {flight.get('destination', '---')}", WHITE, 2, max_width=181)
-        _text(draw, (376, y + 6), start.strftime("%H:%M"), AMBER)
-        _text(draw, (489, y + 6), end.strftime("%H:%M"), WHITE, align="right")
+        _text(draw, (376, y + 6), format_time(start), AMBER)
+        _text(draw, (489, y + 6), format_time(end), WHITE, align="right")
     _text(draw, (16, 223), f"{len(flights)} UPCOMING / CALENDAR SCHEDULE", MUTED)
 
 
 def _idle(draw, state, config, now, flights, tz):
     _header(draw, state, now, "OFF DUTY / FLIGHT CLOCK")
     local = now.astimezone(tz)
-    _text(draw, (256, 73), local.strftime("%H:%M"), WHITE, 7, align="center")
+    _text(draw, (256, 73), format_time(local), WHITE, 7, align="center")
     _text(draw, (256, 134), local.strftime("%A / %d %B / %Z"), CYAN, align="center")
     draw.line((116, 157, 396, 157), fill=LINE)
     if flights:
         f = flights[0]
         _text(draw, (256, 175), "NEXT " + f"{f.get('origin', '---')} > {f.get('destination', '---')}", AMBER, 2, align="center")
-        _text(draw, (256, 202), _dt(f["start"]).astimezone(tz).strftime("%a %d %b / %H:%M %Z"), MUTED, align="center")
+        _text(draw, (256, 202), format_time(_dt(f["start"]).astimezone(tz), date_format="%a %d %b /", include_zone=True), MUTED, align="center")
     else:
         _text(draw, (256, 177), "NO UPCOMING FLIGHTS", AMBER, 2, align="center")
         _text(draw, (256, 204), "CONNECT YOUR CALENDAR TO FILL THE BOARD", MUTED, align="center")
@@ -568,7 +590,7 @@ def _personal(draw, state, config, now, item):
               snack_color, 2, align="center", max_width=440)
         until = _dt(item.get("display_end")) or end
         if until:
-            _text(draw, (25, 209), "CLEARS AT " + until.astimezone(tz).strftime("%I:%M %p %Z").lstrip("0"), MUTED, max_width=300)
+            _text(draw, (25, 209), "CLEARS AT " + format_time(until.astimezone(tz), include_zone=True), MUTED, max_width=300)
         else:
             _text(draw, (25, 209), "TONIGHT'S MEAL", MUTED)
     else:
@@ -578,7 +600,7 @@ def _personal(draw, state, config, now, item):
         for x, label, value in ((26, "START", start), (270, "ENDS", end)):
             local = value.astimezone(tz) if value else None
             _text(draw, (x, 153), label + (" / " + local.strftime("%Z") if local else ""), CYAN)
-            _text(draw, (x - 1, 170), local.strftime("%I:%M %p").lstrip("0") if local else "--:--", AMBER, 3, max_width=215)
+            _text(draw, (x - 1, 170), format_time(local) if local else "--:--", AMBER, 3, max_width=215)
         if start and end and start <= now < end:
             status = "APPOINTMENT IN PROGRESS"
         elif start and start > now:
@@ -638,7 +660,7 @@ def _message(draw, state, config, now, card):
     profile = str(card.get("profile") or card.get("owner") or card.get("recipient") or "").upper()
     _header(draw, state, now, "MESSAGE FOR " + profile)
     timestamp = _dt(card.get("received_at") or card.get("date") or card.get("observed_at"))
-    label = timestamp.astimezone(_tz(config)).strftime("%d %b %H:%M %Z") if timestamp else "FILTERED EMAIL"
+    label = format_time(timestamp.astimezone(_tz(config)), date_format="%d %b", include_zone=True) if timestamp else "FILTERED EMAIL"
     _text(draw, (497, 40), label, AMBER, align="right", max_width=265)
     sender = card.get("sender_name") or card.get("sender") or card.get("source") or "YOUR INBOX"
     if isinstance(sender, dict):
@@ -712,7 +734,7 @@ def _layover(draw, state, config, now, card):
     end = _dt(card.get("end") or card.get("display_end"))
     if end:
         zone = _tz({"timezone": config.get("timezone") or card.get("timezone") or "UTC"})
-        _text(draw, (165, 94), "UNTIL " + end.astimezone(zone).strftime("%d %b %I:%M %p %Z").replace(" 0", " "), MUTED, max_width=325)
+        _text(draw, (165, 94), "UNTIL " + format_time(end.astimezone(zone), date_format="%d %b", include_zone=True), MUTED, max_width=325)
     draw.rectangle((15, 124, 496, 196), fill=PANEL)
     hotel = card.get("hotel") if card.get("hotel_user_provided") is True or config.get("hotel_details_enabled") is True else None
     if isinstance(hotel, dict):
@@ -762,14 +784,14 @@ def _local_visit(draw, state, config, now):
     _text(draw, (26, 122), "SCHEDULED ARRIVAL", CYAN)
     if arrival:
         local = arrival.astimezone(zone)
-        _text(draw, (26, 142), local.strftime("%I:%M %p").lstrip("0"), WHITE, 4, max_width=224)
+        _text(draw, (26, 142), format_time(local), WHITE, 4, max_width=224)
         _text(draw, (26, 180), local.strftime("%a %d %b / %Z"), MUTED, max_width=224)
     else:
         _text(draw, (26, 145), "TIME UNKNOWN", MUTED, 2, max_width=224)
     _text(draw, (279, 122), "NEXT DEPARTURE", CYAN)
     if departure:
         local = departure.astimezone(zone)
-        _text(draw, (279, 145), local.strftime("%I:%M %p").lstrip("0"), WHITE, 3, max_width=206)
+        _text(draw, (279, 145), format_time(local), WHITE, 3, max_width=206)
         _text(draw, (279, 177), local.strftime("%a %d %b / %Z"), MUTED, max_width=206)
     else:
         _text(draw, (279, 146), "UNKNOWN", AMBER, 2, max_width=206)
@@ -780,7 +802,7 @@ def _local_visit(draw, state, config, now):
     if leave:
         if departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
             _text(draw, (26, 192), f"STAY / {minutes // 60}H {minutes % 60:02d}M", MUTED, max_width=224)
-        _text(draw, (26, 204), "BRIEF LEAVE / " + leave.astimezone(zone).strftime("%a %d %b %H:%M %Z"), AMBER, max_width=354)
+        _text(draw, (26, 204), "BRIEF LEAVE / " + format_time(leave.astimezone(zone), date_format="%a %d %b", include_zone=True), AMBER, max_width=354)
         if conflict:
             _text(draw, (484, 204), "VERIFY", AMBER, align="right")
     elif conflict:
@@ -898,7 +920,7 @@ def _trip_summary(draw, state, config, now):
         _text(draw, (139, y + 7), f"{origin} > {destination}", WHITE, 2, max_width=180)
         _text(draw, (139, y + 28), f"{_city(origin)} > {_city(destination)}", MUTED, max_width=180)
         start, end = _dt(leg.get("start")), _dt(leg.get("end"))
-        times = start.astimezone(zone).strftime("%H:%M") + " > " + end.astimezone(zone).strftime("%H:%M") if start and end else "TIME UNKNOWN"
+        times = format_time(start.astimezone(zone)) + " > " + format_time(end.astimezone(zone)) if start and end else "TIME UNKNOWN"
         if start and end:
             overnight = (end.astimezone(zone).date() - start.astimezone(zone).date()).days
             if overnight:
@@ -916,12 +938,12 @@ def _trip_summary(draw, state, config, now):
             # The visit may end on a different day. Keep its full departure
             # date beside the inbound leg rather than only a stay duration.
             draw.rectangle((137, y + 22, 328, y + 42), fill=PANEL)
-            _text(draw, (139, y + 23), "DEP " + departure.astimezone(zone).strftime("%m/%d %H:%M %Z"), CYAN, max_width=188)
+            _text(draw, (139, y + 23), "DEP " + format_time(departure.astimezone(zone), date_format="%m/%d", include_zone=True), CYAN, max_width=188)
             if config.get("brief_leave_times_enabled") is True:
                 leave = _dt(visit.get("leave_at"))
                 conflict = visit.get("leave_conflict") is True
                 if leave:
-                    _text(draw, (139, y + 34), "LEAVE " + leave.astimezone(zone).strftime("%m/%d %H:%M %Z"), AMBER, max_width=188)
+                    _text(draw, (139, y + 34), "LEAVE " + format_time(leave.astimezone(zone), date_format="%m/%d", include_zone=True), AMBER, max_width=188)
                 elif conflict:
                     _text(draw, (139, y + 34), "LEAVE TIME CONFLICT", AMBER, max_width=188)
                 if conflict:
@@ -1007,7 +1029,7 @@ def _trip_map(draw, image, state, config, now):
 def _home(draw, state, config, now):
     _header(draw, state, now, "HOME / TODAY")
     local = now.astimezone(_tz(config))
-    _text(draw, (26, 73), local.strftime("%H:%M"), WHITE, 6)
+    _text(draw, (26, 73), format_time(local), WHITE, 4, max_width=204)
     _text(draw, (26, 127), local.strftime("%Z"), CYAN, 2)
     _text(draw, (26, 161), local.strftime("%A"), WHITE, 2, max_width=204)
     _text(draw, (26, 188), local.strftime("%d %b %Y"), MUTED, max_width=204)
@@ -1025,7 +1047,7 @@ def _home(draw, state, config, now):
         start = _dt(item.get("start"))
         label = str(item.get("kind", "APPOINTMENT")).upper()
         if start:
-            label += " / " + start.astimezone(_tz(config)).strftime("%H:%M %Z")
+            label += " / " + format_time(start.astimezone(_tz(config)), include_zone=True)
         _text(draw, (254, y + 8), label, CYAN, max_width=234)
         _draw_title(draw, item["title"], (254, y + 24), 234, 33, scales=(2,))
     if len(items) > 2:
@@ -1068,7 +1090,7 @@ def _custody_outlook(draw, state, config, now):
                 part_kind = part_kind if part_kind in names else "unknown"
                 start = _dt(part.get("start"))
                 label = {"home": "MOM", "away": "DAD", "unknown": "?"}[part_kind]
-                when = start.astimezone(zone).strftime("%H:%M") if start else "--:--"
+                when = format_time(start.astimezone(zone)) if start else "--:--"
                 _text(draw, (x + 6, y + 36 + part_index * 11), when + " " + label, colors[part_kind], max_width=78)
             if len(segments) > 3:
                 _text(draw, (x + 83, y + 64), "+", MUTED, align="right")
@@ -1234,6 +1256,9 @@ def render_frame(state, config, size=BASE_SIZE):
     elif view == "weather":
         from .extra_views import render_weather
         render_weather(draw, image, state, config, now)
+    elif view == "flight_status":
+        from .flight_status_view import render_operating
+        render_operating(draw, image, state, config, now)
     elif view == "personal":
         personal_item = _selected_personal(state, now)
         if personal_item and personal_item.get("kind") == "dinner" and config.get("kids_filter_enabled") is True:
@@ -1270,8 +1295,9 @@ def render_frame(state, config, size=BASE_SIZE):
             _layover(draw, state, config, now, card)
     else:
         _details(draw, state, config, now, flight, flights, tz)
-    if view not in {"weather", "nearby"}:
+    if view not in {"weather", "nearby", "flight_status"}:
         _footer(draw, state, view, now, tz, personal_item)
+    _deck_progress(draw, state)
     if not state.get("defer_display_overlays") and not state.get("defer_timer_overlay"):
         image = compose_display_overlays(image, state, now, state.get("timer_strip_progress"), state.get("shopping_ticker_progress"))
     if tuple(size) != BASE_SIZE:

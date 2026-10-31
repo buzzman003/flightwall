@@ -288,3 +288,16 @@ map and confirmed both VPS clocks. Preserve 0.4.4 while recording:
 
 Both are feedback, not authorization to interrupt the current app for another
 release today. Implement, test and review the layout in the next planned signed version.
+OWNER AUTHORIZED0.4.5 WHILE AWAY - OCTOBER31,2026
+
+This supersedes the earlier defer instruction for deck progress and AMPM.
+Implement both, automatic 15minuteweather, original crisp weathericons and
+operating-flight status/early-late cards. Preserve games/logins/config and
+current display; stage verified signed update for next normal Ports launch.
+AeroAPI account connection is a separate setup step. The code defaults to
+a $5 monthly app request budget; shipping it does not establish a key, paid
+call or live alert result.
+Future private setup must review current rates/90dayexpiry, provider billing,
+choose airline and enter key in the terminal; never chat or publicGitHub.
+Lisa consent/iPhone pairing, SMS sender and native-global-timer host remain
+pending separately; do not silently provision those accounts or phone access.

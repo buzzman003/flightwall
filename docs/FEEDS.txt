@@ -1,5 +1,5 @@
 OPTIONAL LIVE FLIGHTS, NEARBY TRAFFIC AND WEATHER
-Flight Wall 0.4.2 - October 31, 2026
+Flight Wall 0.4.5 source - October 31, 2026
 
 The weather card and nearby-map changes below are included in published 0.4.2.
 The owner's board now runs 0.4.2. After explicit approval of both location
@@ -40,18 +40,27 @@ YOUR OWN FLIGHT: FLIGHTAWARE AEROAPI (OPTIONAL, BILLED SEPARATELY)
 
    /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_enabled true
 
-   Defaults: one poll every 120 seconds, only from one hour before scheduled
-   departure until one hour after scheduled arrival. Requests for the flight
-   identifier and its position both count toward a local 240-request UTC-day cap.
-   This cap limits requests, not dollars; provider billing and allowance rules
-   still apply. Check your provider account for actual usage and costs.
+   0.4.5 defaults: status eligibility from four hours before scheduled departure
+   to six hours after scheduled arrival. Position queries begin one hour before
+   departure or once the provider reports departure. After initial association,
+   one request every120seconds alternates status/position (about4minutes each).
+   Arrival-gate/tracking-ended/blocked reports stop further requests for that leg.
+
+   All operating/watch calls share the240-request UTC-day limit and a separate
+   $5 monthly app reservation limit at checked nominal fees. Set a lower local
+   limit if desired; the code rejects values above$5. This is not an account-wide
+   spending control and does not include other apps, taxes, fees or credits.
+   Rates expire after90days pending review. See RELEASE-0.4.5.txt for details.
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_monthly_limit_usd 5
 
 5. To disable paid requests:
 
    /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_enabled false
 
-Matching uses airline/flight number, IATA origin and destination, and the closest
-scheduled departure within six hours. Ambiguous matches are skipped. Codeshares,
+Matching requires exactly one canonical airline/flight number, IATA route and
+scheduled-departure-window match within six hours. Ambiguous matches and
+contradictory pagination are skipped; a nearest match is never guessed. Codeshares,
 last-minute aircraft/flight changes, extreme delays and provider coverage can
 prevent a match. Positions more than five minutes old are hidden. A feed outage
 retains the calendar; it does not fabricate an aircraft moving along the route.
@@ -165,3 +174,17 @@ NWS API, pricing and forecast endpoints: https://www.weather.gov/documentation/s
 
 The installed app, authentication guide and remote setup are described in
 INSTALL.txt, CALENDAR.txt and REMOTE.txt beside this file.
+
+0.4.5 AUTOMATIC WEATHER AND OPERATING STATUS
+
+Weather refresh runs independently of card rotation while either the display
+or background service is running. No close/reopen is required for normal
+15-minute polling. Source forecast issuance may change less often than queries;
+the card preserves source/age and missing/stale data never means dry weather.
+AM/PM is presentation only; all stored aware timestamps and DST rules remain.
+
+The operating card distinguishes actual/estimated gate or runway times from
+provider-scheduled baselines, reports early/late minutes, and expires stale
+verdicts each frame. A cancelled/tracking-ended provider flag is not proof of
+airline cancellation. Check the airline for operating decisions. No account
+or key is provisioned by a release; no paid provider test has been performed.

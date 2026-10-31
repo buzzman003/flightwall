@@ -34,7 +34,7 @@ class ReleasePrivacyTests(unittest.TestCase):
                  "openai-usage.json", "flightaware-usage.json", "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                  "control-token.txt", "alexa-token.txt", "notification-token.txt", "customtoken.txt", "lisa.token",
                  "openai.key", "flightaware.key", "personal.lock", "timers.lock", "flight-watches.lock",
-                 "household-calendars.lock", "openai-usage.lock")
+                 "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock")
         for name in names:
             with self.subTest(name=name):
                 path = self.source / name
