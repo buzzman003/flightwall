@@ -138,6 +138,20 @@ class NativeGateTests(unittest.TestCase):
         self.assertEqual(gate.json_objects(log), [{"status": "activated"}, {"frames": 4, "shader": True}])
         self.assertEqual(gate.json_objects('not JSON { broken\n'), [])
 
+    def test_setup_acceptance_flow_obeys_real_origin_cookie_and_csrf_checks(self):
+        from flightwall.backend import Runtime
+        from flightwall.config import ConfigStore
+
+        case = gate.Installation(self.root)
+        ConfigStore(case.data).update({"control_port": case.port})
+        runtime = Runtime(case.data, case.install).start()
+        try:
+            gate.verify_setup(case, MODULE.parents[1])
+            self.assertEqual(ConfigStore(case.data).get()["rotation_seconds"], 30)
+            self.assertTrue((case.data / "setup-complete.json").is_file())
+        finally:
+            runtime.stop()
+
 
 if __name__ == "__main__":
     unittest.main()

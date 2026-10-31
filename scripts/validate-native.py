@@ -311,6 +311,22 @@ def assert_preserved(case, fixtures, recovery_hash):
     require(all((case.data / name).stat().st_mode & 0o777 == 0o600 for name in fixtures), "Private fixture modes changed")
 
 
+def verify_setup(case, source):
+    """Exercise the same browser origin, session and CSRF contract as setup UI."""
+    for route, filename in (("/setup", "index.html"), ("/setup/app.js", "app.js"), ("/setup/style.css", "style.css")):
+        require(case.request(route)[0] == (Path(source) / "assets" / "onboarding" / filename).read_bytes(),
+                "Native service serves stale/missing setup assets")
+    token = (case.data / "control-token.txt").read_text().strip()
+    _, headers = case.request("/setup/login", {"token": token}, {"Origin": case.base})
+    cookie = headers.get("Set-Cookie", "").split(";", 1)[0]
+    status = json.loads(case.request("/setup/status", headers={"Cookie": cookie})[0])
+    auth = {"Cookie": cookie, "X-Setup-CSRF": status["csrf"], "Origin": case.base}
+    case.request("/setup/settings", {"settings": {"rotation_seconds": 30}}, auth)
+    require(json.loads((case.data / "config.json").read_text())["rotation_seconds"] == 30, "Native setup save did not persist")
+    case.request("/setup/finish", {}, auth)
+    require((case.data / "setup-complete.json").is_file(), "Native setup Finish did not persist")
+
+
 def fresh_install(package, root, source, version):
     case = Installation(root)
     try:
@@ -334,18 +350,7 @@ def fresh_install(package, root, source, version):
         require(result.get("frames") == 4 and result.get("shader") is False, "Frozen software fallback failed")
         case.service("start")
         case.wait_health(version)
-        for route, filename in (("/setup", "index.html"), ("/setup/app.js", "app.js"), ("/setup/style.css", "style.css")):
-            require(case.request(route)[0] == (Path(source) / "assets" / "onboarding" / filename).read_bytes(),
-                    "Native service serves stale/missing setup assets")
-        token = (case.data / "control-token.txt").read_text().strip()
-        _, headers = case.request("/setup/login", {"token": token})
-        cookie = headers.get("Set-Cookie", "").split(";", 1)[0]
-        status = json.loads(case.request("/setup/status", headers={"Cookie": cookie})[0])
-        auth = {"Cookie": cookie, "X-Setup-CSRF": status["csrf"], "Origin": case.base}
-        case.request("/setup/settings", {"settings": {"brightness": .51}}, auth)
-        require(json.loads((case.data / "config.json").read_text())["brightness"] == .51, "Native setup save did not persist")
-        case.request("/setup/finish", {}, auth)
-        require((case.data / "setup-complete.json").is_file(), "Native setup Finish did not persist")
+        verify_setup(case, source)
         case.launch(shader=True)
         case.wait_health(version)
         return {"frozen_demo": True, "logical_png": [512, 256], "opengl_shader": True,

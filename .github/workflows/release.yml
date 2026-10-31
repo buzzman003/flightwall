@@ -105,6 +105,7 @@ jobs:
             -f scripts/Dockerfile.native-validation -t "flightwall-native-validation:$RELEASE_VERSION" .
           mkdir native-output
           docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
             --read-only --tmpfs /tmp:rw,exec,nosuid,size=2g \
             -v "$PWD:/workspace:ro" -v "$PWD/native-output:/validation-output:rw" \
             -e FLIGHTWALL_NATIVE_ISOLATED=1 --workdir /workspace \
