@@ -4,7 +4,7 @@ Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame +
 
 Shared data conventions (plain JSON dictionaries):
 
-0.4.4 source candidate: the logical board remains512x256. Only nearby
+0.4.4 published/active integration: the logical board remains512x256. Only nearby
 geographic pixels may be presented at TV resolution after the LED pass,
 following the same timer/ticker content bounds and brightness in both paths.
 The native GUI reads its own saved point locally; never add that point to
@@ -22,7 +22,7 @@ in the configured household zone, within its existing end-exclusive window.
 - Root owns app.py, config.py, main.py, pyproject/requirements, integration, tests and packaging finalization. No agent should modify another agent's files without messaging.
 - Default data root: `/userdata/system/configs/flightwall` on Batocera, override `FLIGHTWALL_DATA_DIR`. Install root `/userdata/roms/ports/.data/flightwall`; versioned releases under `releases/<version>`, root `current` symlink, updater stages `pending` for next safe launch. Stable launcher/config kept outside releases.
 - Remote endpoint on 127.0.0.1:8765, MCP + OAuth protected endpoints; network exposure only explicitly configured via HTTPS proxy such as Tailscale Serve/Funnel. No arbitrary shell/exec tool. Remote operations via callbacks from main app: status, validated settings updates, calendar refresh, update check. Service may run outside GUI for schedule caching/updater.
-- VERSION 0.4.2 is published and independently signature/inventory verified, with Linux/native gates passed. It is active on the owner's Batocera with startup/private-data/recovery preservation verified, and the owner confirmed the cleaner map. Explicitly approved NWS and ADSB.lol connections returned a fresh forecast and a valid empty aircraft response respectively; The owner confirmed the weather card; live storage/API timer expiry passed without cancellation. Visual TV-strip expiry remains unconfirmed. Reliable physical Echo invocation remains unresolved. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
+- Historical baseline VERSION 0.4.2 is published and independently signature/inventory verified, with Linux/native gates passed. It is active on the owner's Batocera with startup/private-data/recovery preservation verified, and the owner confirmed the cleaner map. Explicitly approved NWS and ADSB.lol connections returned a fresh forecast and a valid empty aircraft response respectively; The owner confirmed the weather card; live storage/API timer expiry passed without cancellation. Visual TV-strip expiry remains unconfirmed. Reliable physical Echo invocation remains unresolved. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
 
 Household cards (v0.2.0): PersonalStore persists appointments/dinner in a private
 JSON file outside releases, independent of read-only Google. Each card has id,

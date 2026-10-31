@@ -1,6 +1,6 @@
 FLIGHT WALL 0.4.4 - CLEAR MAPS, VPS TIMES AND DINNER NOTICE
 
-SOURCE CANDIDATE
+PUBLISHED, VERIFIED AND ACTIVE ON THE OWNER'S BATOCERA
 
 This supersedes the uninstalled0.4.3 build. A live read-only check found that
 Google wraps the actual overnight note in paragraph markup; this correction
@@ -8,9 +8,12 @@ normalizes bounded allowed rich text in memory before strict label parsing.
 Scripts, hidden content, unsupported tags/format and ambiguous times do not
 supply clocks. No HTML or original note is persisted.
 
-The installed 0.4.2 release remains unchanged until a signed 0.4.4 executable
-has passed the Linux/native workflow, been verified and activated at a normal
-Ports launch. Local edits do not update the Batocera executable or Alexa model.
+The signed 0.4.4 executable passed the Linux/native workflow, was independently
+verified and activated at the owner's normal Ports launch. All 43 original
+private files remain; eight protected credentials and five stable wrappers
+match backup, as does the original 0.3.0 recovery binary. Existing configuration
+values matched before the separate approved Brief setup. Local edits alone
+do not update Batocera or the Alexa model.
 
 * Trip/leg geographic layers no longer draw airport-code labels over routes.
   Date colors, endpoint markers and the dated city-pair legend remain.
@@ -32,7 +35,7 @@ Ports launch. Local edits do not update the Batocera executable or Alexa model.
   operationally correct departure-from-home time.
 * Dinner keeps its configured window (default14:30-19:00, end-exclusive).
   Each displayed frame uses the household local clock: green SNACKS OK before
-  17:00, red NO MORE SNACKS from17:00. Custody/privacy and appointments retain
+  17:00, red NO MORE SNACKS from 17:00. Custody/privacy and appointments retain
   their existing rules. Side dishes can be part of the spoken meal phrase.
 * The nearby map draws real bundled regional OSM shoreline, water, roads,
   US98 and runway geometry. It has no airport-name labels. The geographic
@@ -51,7 +54,14 @@ Ports launch. Local edits do not update the Batocera executable or Alexa model.
 
 VALIDATION
 
-Source tests and visual previews are recorded in docs/VALIDATION.txt. Native
-release gates use original0.3.0 and published0.4.2 executables, preserving the
-original0.3.0 recovery helper, private settings/credentials and unrelated games.
-No new physical TV, phone, paid-provider or Alexa speech success is implied.
+Linux: 688 tests and 403 subtests, zero skips/failures. Windows source/visual and
+physical deployment evidence are recorded in docs/VALIDATION.txt. Native
+release gates use original 0.3.0 and published 0.4.2 executables, preserving the
+original 0.3.0 recovery helper, private settings/credentials and unrelated games.
+The owner opened the app; active backend/public health report 0.4.4. The owner
+confirmed the detailed map and both VPS clocks on the physical TV. Dinner
+visual acceptance, Lisa pairing and Alexa speech reliability remain unverified.
+No paid-provider connection or Alexa model deployment was performed.
+
+The next-update feedback is saved: actual-card deck progress squares and
+12-hour AM/PM presentation. No additional app release was requested.

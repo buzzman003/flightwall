@@ -1,6 +1,47 @@
 FLIGHT WALL: VALIDATION RECORD
 
-0.4.4 LIVE-FORMAT CORRECTION - OCTOBER31,2026
+PUBLISHED AND ACTIVATED 0.4.4 - OCTOBER 31, 2026
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.4
+Build: https://github.com/buzzman003/flightwall/actions/runs/41247501592
+Source: e24b99db9971fd568633038806001602f4efff65
+
+Linux: 688 tests and 403 subtests passed with zero skips/failures. Native source/
+frozen OpenGL and software rendering, fresh installation, original 0.3.0 and
+published 0.4.2 executable upgrades and failed-start rollback passed. Original
+pinned0.3.0 recovery remains intact; maximum required glibc 2.36. Public downloads
+independently matched pinned Ed25519 signature, checksums, both native reports'
+full file inventories, source bytes and companion model/handler bytes.
+Update ZIP SHA256: 7be2c81a90e2d3de595be63af0ff9632820efe0a6a5fd4f5cd94197fb6141245
+Installer SHA256: 3ade101c93573d1ca091159616f3573b9c3c9fd83e2e81748f83e8c68a40f181
+
+A verified 43-file private backup preceded staging. The owner opened Ports;
+active current/health now 0.4.4, pending=false, awaiting_health=false. All 43
+existing private files remain; eight protected credential files, five stable
+wrappers and the original recovery binary match backup. All existing config
+values matched before new setup; no new defaults materialized then. Automatic
+update preference stayed unchanged. Public HTTPS health also reports 0.4.4.
+
+After that comparison, the app's own uniquely verified Buzz Flight Brief
+calendar was selected as secondary and brief_leave_times_enabled/report_safe
+were saved under explicit owner instruction. Other existing settings matched.
+The active TV backend supplies exactly one matched VPS outbound with a separate
+leave clock, full outbound date/time and conflict warning. Private notes were
+not retained. Weather reports ready; radius 5, preview 7, glow 0 and dot gap 0.1 remain.
+No paid FlightAware enabled. Scoped voice context works and voice credentials
+still receive 401 on private status/display. Public config excludes home pins.
+
+The owner confirmed that the new detailed map looks good and that both the
+dated VPS outbound and separate Brief leave clock are visible on the TV.
+Nearby aircraft were empty, so positive aircraft/metadata visual acceptance
+remains pending. The dinner panel needs a separate physical check. The
+additional dinner interaction-model samples are delivered but not deployed in
+the live Alexa console; the unchanged Lambda supports the existing intents.
+Physical Echo opening remains unresolved; no vendor-routing repair is claimed.
+Lisa's iPhone pairing and shopping/SMS delivery remain off. No new phone, paid
+provider, message send or ordinary-global-Alexa-timer integration is claimed.
+
+0.4.4 LIVE-FORMAT CORRECTION - OCTOBER 31, 2026
 
 A read-only check through the app's own existing Google credentials found
 that its actual VPS overnight note was returned with paragraph HTML. The
@@ -20,13 +61,6 @@ calendar ID or credential left the device. This is parser acceptance, not proof
 that the new frozen executable is active. The app's secondary calendar was
 not selected yet; configure it only after preservation verification.
 
-0.4.3 completed signed publication/native validation but was never staged or
-installed on this device. Its complete Linux/OpenGL/frozen upgrade gates passed;
-0.4.4 must pass the matching workflow again. Existing device remains0.4.2.
-An authorized Amazon support submission was blocked before form entry because
-Computer Use could not confidently verify Chrome's URL. Nothing was submitted;
-the private draft remains ready for a working session/manual submission.
-
 0.4.3 SOURCE CANDIDATE - OCTOBER 31, 2026
 
 Local Windows suite:626 tests and374 subtests passed,49 expected dependency/
@@ -37,7 +71,7 @@ The Linux workflow must independently run the complete latest inventory with
 zero skips, actual offscreen OpenGL/frozen rendering and both native upgrade
 paths before publication. No0.4.3 executable is installed by these source edits.
 
-Checked: route-label removal with retained legend; dinner before/exactlyat17:00
+Checked: route-label removal with retained legend; dinner before/exactlyat 17:00
 on both DST transition dates, cached-state changes and end-exclusive expiry;
 Brief strict labeled extraction, malformed/conflicting/DST cases, exact
 inbound/report/outbound association, cache allowlist and disabled-feature hiding;

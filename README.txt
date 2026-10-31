@@ -1,14 +1,25 @@
 FLIGHT WALL 0.4.4
 
-0.4.4 source adds clear route maps without airport labels over the geography,
-dated VPS outbound departures, optional narrowly parsed Buzz leave-home notes,
-and a dinner snack notice that changes at 17:00 in the household timezone.
-The nearby-aircraft geographic inset uses bundled OpenStreetMap water, roads
-and runways at presentation resolution, keeping LED titles and the 512x256
-board. No runtime map download or map subscription is required. See
-docs/RELEASE-0.4.4.txt for candidate validation and deployment status. It also
-normalizes bounded Google rich-text notes before the strict leave-time parser;
-the first 0.4.3 build was not installed on the owner's TV.
+The signed 0.4.4 release is published, independently verified and active on
+this owner's Batocera. Linux passed 688 tests and 403 subtests with no skips,
+plus native graphics, fresh install, both upgrade paths and rollback. The
+43-file private backup, protected credentials, stable wrappers and original
+recovery helper verified; existing settings were preserved before the newly
+approved Brief selection/leave-time settings were applied separately.
+
+0.4.4 removes airport labels over geographic route lines, adds dated VPS
+outbound departures and optional narrowly parsed Buzz leave-home notes, and
+shows the dinner snack notice from 17:00. The nearby geographic inset uses
+bundled OSM water, roads, US98 and runways at presentation resolution; LED
+titles and the 512x256 board remain. No map subscription or runtime map query.
+The actual rich-text Brief note passed exact parser/outbound matching, and
+the active backend supplies the chosen leave clock and separate departure.
+The owner confirmed the detailed map and both dated VPS clocks on the TV.
+The new dinner snack panel still needs a separate physical visual check.
+Physical Echo opening remains unresolved; no routing repair is claimed.
+See docs/RELEASE-0.4.4.txt and docs/VALIDATION.txt for separate evidence.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.4
+
 The prior published/installed release evidence follows:
 
 The signed 0.4.2 Linux release is published and independently verified. Linux

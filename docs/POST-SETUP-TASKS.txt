@@ -248,33 +248,43 @@ identifiers and billing history out of public documentation. Deployment/billing
 changes require their own authorization; this task file enables no such changes.
 Official AWS Free Tier policy: https://aws.amazon.com/free/free-tier-faqs/
 
-NEXT UPDATE - OWNER REQUEST OCTOBER31,2026
+NEXT UPDATE - OWNER REQUEST OCTOBER 31, 2026
 
 0.4.3 source candidate removes geographic airport labels, adds the full VPS
 outbound date/clock to its arriving schedule row, optional narrow Buzz leave
 notes, per-frame17:00 red no-snacks panel and a detailed regional geographic
-inset at TV presentation resolution. Preserve glow0 and existing user settings.
+inset at TV presentation resolution. Preserve glow 0 and existing user settings.
 Owner chose report_safe for the conflicting Brief leave calculation; enable
 only after a signed/native-verified deployment, retain the conflict warning.
 Never bake that private clock or calendar ID into source/release artifacts.
 
-Before deployment: complete Linux zero-skip/native gates and verify signature,
-then consistent private backup/staging and next normal Ports launch. Check TV
-map, departuredate/leaveclock, dinnercutoff and service handoff with owner.
-Alexa discovery remains its own unresolved account/vendor problem. A private
-support request is drafted but unsent; sending it needs explicit instruction.
-Shopping discussion reopened: independent Flight Wall list/ticker is supported;
-Alexa native-list reading is not. Lisa's iPhone uses OwnTracks via her own
-consent/invitation; no pairing, geofence/SMS service or automatic send is implied.
-See INTEGRATION-OPTIONS.txt for current providers, constraints and source links.
+0.4.4 CORRECTION AND ACTIVATION
 
-0.4.4 CORRECTION / NEXT SAFE DEPLOYMENT
+The actual Google API note contains paragraph markup. Bounded text-only
+normalization passed live parser/exact-outbound matching. Signed 0.4.4 is now
+active with 43-file preservation verified. The uniquely verified Buzz source
+was selected after preservation checks and the owner-chosen report_safe policy
+enabled. The owner confirmed the detailed map and both VPS clocks on the TV.
+Weather remains ready and radius 5/preview 7/glow 0/gap 0.1 are preserved. The dinner
+panel needs a physical visual check. Echo invocation remains unresolved;
+additional dinner model samples have not been deployed.
 
-The actual Google API note contains paragraph markup; normalized connector
-text concealed that. Bounded HTML-to-text handling passed live parser/exact
-outbound matching. Supersede uninstalled0.4.3 with0.4.4; do not reuse a published
-version. After signed/nativeverification and preservationchecks, select the
-uniquely verified Buzz secondarycalendar and enable briefleave/report_safe.
-Preserve glow0, weather/nearbyfeeds, radius5 and all existing credentials.
-Amazon support submission explicitly authorized but no form submitted: browser
-policy could not establish the current URL confidently. Draft remains private.
+OWNER FEEDBACK FOR A LATER UPDATE - OCTOBER 31, 2026
+
+Do not build another application release now. Owner is happy with the detailed
+map and confirmed both VPS clocks. Preserve 0.4.4 while recording:
+
+* Replace the fixed view-type squares at bottom right with deck progress. Use
+  one square per card currently available in the actual rotation, ordered from
+  left to right; highlight the current card so a complete pass and repeat are
+  apparent. Six/seven eligible cards should show six/seven squares. Include
+  repeated pages/individual cards as actually rotated, not merely view types.
+  Derive count/index only from currently eligible cards; privacy-hidden cards
+  must never contribute a visible count. Reconcile dynamic card changes safely.
+* Display user-facing clocks in 12-hour AM/PM format instead of military time,
+  including flight/report/leave/arrival/departure clocks and the board clock.
+  Keep Central zone/DST abbreviations and dates clear. This is presentation only:
+  retain timezone-aware timestamps, storage and exact scheduling semantics.
+
+Both are feedback, not authorization to interrupt the current app for another
+release today. Implement, test and review the layout in the next planned signed version.
