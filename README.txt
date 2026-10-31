@@ -3,9 +3,10 @@ FLIGHT WALL 0.4.1
 This source checkout accompanies the published, signed 0.4.1 Linux release.
 The Linux build and native upgrade checks passed; deployment status and
 remaining physical/Alexa checks are recorded in docs/VALIDATION.txt.
-The owner's Batocera installation still runs 0.4.0 pending safe next-launch
-activation of 0.4.1. Real flights and the larger display fit were confirmed
-on the TV with 0.4.0.
+The owner's Batocera installation has activated 0.4.1; authenticated SSH
+verified its running GUI and healthy startup. Owner visual confirmation on
+the TV and reliable physical Echo invocation remain pending. Real flights
+and the larger display fit were previously confirmed on the TV with 0.4.0.
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
 
 Your calendar-driven flight board and household display, delivered as a

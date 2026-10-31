@@ -4,7 +4,7 @@ Public validation record. Source checks, historical native-build checks and
 physical-device checks are identified separately. A source result does not
 establish that a matching signed Linux executable has been delivered.
 
-PUBLISHED 0.4.1 DINNER UPDATE / DEPLOYMENT PENDING - OCTOBER 31, 2026
+PUBLISHED AND ACTIVATED 0.4.1 / ECHO ROUTING UNRESOLVED - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.1
 Successful build: https://github.com/buzzman003/flightwall/actions/runs/41234785760
@@ -61,10 +61,37 @@ skipped the real OpenGL check. Those Windows results were not the release gate.
   cleanup cancelled both disposable cards and preserved unrelated data. This
   verifies the tested simulator NLU and live save path, not physical Echo
   recognition or reliable outside-skill direct invocation.
-* The actual Batocera board still runs the 0.4.0 GUI. The staging preflight
-  correctly refused while the GUI was active, before creating its backup or
-  mutating releases. The owner was asked to return to the games menu. No 0.4.1
-  staging or physical activation has completed; those checks remain pending.
+* The first staging preflight correctly refused while the 0.4.0 GUI was active,
+  before creating its backup or mutating releases. After the owner returned to
+  the games menu, a private 41-file pre-upgrade backup was verified and the
+  signed update was staged. The helper's 20-second wait for service health
+  timed out; independent SSH checks then confirmed the healthy 0.4.0 background
+  service and the still-pending update. The owner's later normal Ports launch
+  activated 0.4.1 successfully.
+* The actual Batocera current release and health endpoint now report 0.4.1,
+  with ok=true, a running GUI, pending=false, awaiting_health=false and version
+  floor 0.4.1. Five stable launch/service wrappers matched the private backup,
+  and the pinned 0.3.0 recovery binary matched its original installer checksum.
+  These authenticated process/startup checks do not replace owner confirmation
+  of the visible TV output, which remains pending.
+* All 41 original private data files remained after activation. Seven checked
+  credential/client/token/artwork files matched their pre-upgrade hashes.
+  Original configuration values were preserved except the manifest URL now
+  points to 0.4.1. Twelve previously absent 0.4.0 default keys were persisted,
+  each matching DEFAULTS exactly; automatic update polling remained disabled.
+  No private file contents, credential hashes or backup identifiers are public.
+* Normal-TLS public HTTPS health returned ok=true and 0.4.1. The dedicated
+  voice credential received HTTP 200 from voice-context and timers GET routes,
+  and HTTP 401 from private status, display and MCP GET routes. This confirms
+  the upgraded board API and credential isolation, not Echo invocation.
+* Physical Echo invocation remains unresolved: "Alexa, ask Flight Wall for
+  dinner help" received "I'm not quite sure how to help you with that", and
+  "Alexa, open Flight Wall skill" received "I can't find that skill". Fresh AWS
+  invocation logs were not inspected because the authenticated session had
+  expired, so these replies alone do not prove whether Lambda was invoked.
+  Inspection of a direct Skills -> Your Skills Routine action was requested
+  and remains pending. The successful in-session simulator checks above do
+  not establish a reliable physical opening phrase.
 
 NATIVE ALEXA TIMER FEASIBILITY FOLLOW-UP - OCTOBER 31, 2026
 
@@ -77,7 +104,9 @@ Known project records contain no provisioned Home Assistant host or connection.
 See NATIVE-ALEXA-TIMERS.txt for the source contract, limitations and prerequisites.
 This was read-only research and local documentation work, not a connected
 integration, broader Amazon permission grant or new application release.
-The installed signed 0.4.0 app and its tested custom timers remain unchanged.
+At that research checkpoint, the installed signed 0.4.0 app and its tested
+custom timers were unchanged. The later 0.4.1 activation above does not add a
+native timer bridge; no Home Assistant connection has been provisioned.
 
 DESKTOP / IFTTT FEASIBILITY AND LAUNCH FOLLOW-UP - OCTOBER 31, 2026
 

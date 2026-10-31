@@ -36,8 +36,14 @@ correctly through the live board connection. Independent reads verified the
 meal dates and 14:30-19:00 Central windows across the daylight-saving change.
 Exact-ID cleanup removed both disposable cards and preserved unrelated data.
 These checks do not establish physical Echo routing or reliable direct phrases.
-The board remains on 0.4.0: staging correctly refused while the GUI was running,
-before backup or release mutation. Staging and activation are pending.
+The board has now activated 0.4.1. Authenticated SSH verified the running GUI,
+healthy startup, cleared pending/awaiting-health flags and 0.4.1 version floor.
+The original 0.3.0 recovery helper remains pinned. A verified private backup and
+post-update comparison confirmed data and credential preservation; see
+VALIDATION.txt for the precise configuration differences. Owner TV confirmation
+is still pending. Physical dinner-help and explicit skill-open attempts still
+failed; fresh Lambda logs were unavailable after the AWS login session expired.
+An explicitly selected Skills action in an Alexa Routine remains unverified.
 
 This release does not add native Alexa timer mirroring, Home Assistant, email
 export, IFTTT or shopping geofences. Shopping work is paused by the owner.

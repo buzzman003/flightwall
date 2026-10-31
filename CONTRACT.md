@@ -11,7 +11,7 @@ Shared data conventions (plain JSON dictionaries):
 - Root owns app.py, config.py, main.py, pyproject/requirements, integration, tests and packaging finalization. No agent should modify another agent's files without messaging.
 - Default data root: `/userdata/system/configs/flightwall` on Batocera, override `FLIGHTWALL_DATA_DIR`. Install root `/userdata/roms/ports/.data/flightwall`; versioned releases under `releases/<version>`, root `current` symlink, updater stages `pending` for next safe launch. Stable launcher/config kept outside releases.
 - Remote endpoint on 127.0.0.1:8765, MCP + OAuth protected endpoints; network exposure only explicitly configured via HTTPS proxy such as Tailscale Serve/Funnel. No arbitrary shell/exec tool. Remote operations via callbacks from main app: status, validated settings updates, calendar refresh, update check. Service may run outside GUI for schedule caching/updater.
-- VERSION 0.4.0 is published as a signed Linux release and activated on the owner's Batocera installation. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
+- VERSION 0.4.1 is published as a signed Linux release and activated on the owner's Batocera installation, with running GUI and startup health verified over authenticated SSH. Owner TV confirmation and reliable physical Echo invocation remain pending. Development, native-release and physical-device checks remain separately identified in docs/VALIDATION.txt.
 
 Household cards (v0.2.0): PersonalStore persists appointments/dinner in a private
 JSON file outside releases, independent of read-only Google. Each card has id,
