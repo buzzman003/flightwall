@@ -3,10 +3,11 @@ Updated October 31, 2026
 
 CURRENT SCOPE
 
-Local 0.4.0 source implements the ten-day custody outlook and the expanded
-features described in RELEASE-0.4.0.txt. See NEXT-VERSION-PLAN.txt for design
-requirements and VALIDATION.txt for evidence. Source changes do not update a
-Batocera executable or an Alexa deployment by themselves.
+The signed 0.4.0 release implements the ten-day custody outlook and the expanded
+features described in RELEASE-0.4.0.txt. Its Linux build, native acceptance and
+public download/signature checks are complete. See NEXT-VERSION-PLAN.txt for the
+design record and VALIDATION.txt for evidence. Physical board installation and
+matching Alexa deployment remain separate from publishing the release.
 
 TEN-DAY CUSTODY OUTLOOK
 
@@ -20,21 +21,23 @@ establish physical presence or unlock private cards.
 
 RELEASE AND DEVICE CHECKS
 
-1. Run the required Linux tests and older-glibc native build; audit frozen assets
-   and native compatibility. Windows dummy-display checks do not replace OpenGL.
-2. Build/sign/publish using the existing Ed25519 workflow only after the relevant
-   checks pass. Keep VERSION and flightwall.__version__ identical and newer than
-   the last published release; never reuse a published version.
-3. Verify a real 0.3.0-to-0.4.0 executable upgrade, next-launch activation,
-   startup rollback and preservation of credentials/settings/recovery helper.
-4. Check the ten-day outlook, display fit, timers, ticker, trip views and motion
+Completed for 0.4.0: 550 Linux tests and 283 subtests, native compatibility and
+frozen assets, real OpenGL/software rendering, fresh installation, genuine
+0.3.0-to-0.4.0 upgrade, rollback, private-fixture/recovery preservation, signing
+and public delivery. Future code releases must use a higher matching version
+and pass the same gates. Never replace or reuse published 0.4.0 assets.
+
+1. Install the verified update at a safe Ports launch, preserving private DATA
+   and the existing recovery helper. Provision initial trust locally only if
+   needed; do not replace an existing pinned key as an ordinary update step.
+2. Check the ten-day outlook, display fit, timers, ticker, trip views and motion
    on the physical TV. Deploy the matching Alexa handler/model and verify its
    new intents on an actual Echo.
-5. Validate opted-in phones with real locked/background outings and stationary
+3. Validate opted-in phones with real locked/background outings and stationary
    freshness. The iPhone invitation still needs its real-device consent/import/
    permissions/report checks. Keep shopping/private cards off until their own
    opt-in and configuration requirements are satisfied.
-6. For store SMS, verify store centers and accuracy, configure sender/recipient
+4. For store SMS, verify store centers and accuracy, configure sender/recipient
    privately, then perform an explicitly agreed delivery/receipt and arrival
    test, including once-per-day suppression. Native Alexa-list export remains
    an unverified optional adapter; no inbox access or recurring send is implied.

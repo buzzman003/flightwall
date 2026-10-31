@@ -1,8 +1,10 @@
 FLIGHT WALL 0.4.0 DEVELOPMENT PLAN - OCTOBER 31, 2026
 
-This plan describes the 0.4.0 source candidate. See VALIDATION.txt for completed
-checks and RELEASE-0.4.0.txt for delivery gates. Private configuration and the
-original recovery helper must survive every update.
+This is the retained design record for the now-published signed 0.4.0 release.
+See VALIDATION.txt for completed Linux/native checks and POST-SETUP-TASKS.txt for
+remaining physical deployment, phone and provider setup. Private configuration
+and the original recovery helper must survive every update. Publication does
+not connect optional accounts or enable consent-dependent integrations.
 
 PLANNED BEHAVIOR
 
