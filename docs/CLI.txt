@@ -1,0 +1,104 @@
+LOCAL SETUP COMMANDS
+
+The browser setup at /setup is the normal starting point. These commands are
+available for local setup, recovery and users who prefer a terminal. On Batocera:
+
+    FW=/userdata/roms/ports/.data/flightwall/flightwall
+
+The installed wrapper supplies the installation/data directories automatically.
+For a source checkout use python -m flightwall. Global options such as --data-dir
+must appear before the command name.
+
+SETUP ADDRESS AND OWNER TOKEN
+
+    "$FW" setup-info
+    "$FW" setup-info --show-token
+
+The first command prints the setup URL and local token-file path without creating
+or displaying an owner token. The second explicitly creates the token if needed,
+then prints it in your own terminal. It keeps an existing token. Never paste this
+token into chat or a support log. Start the display/background service before
+opening the URL. /SETUP is also accepted for the uppercase TV link.
+
+GOOGLE ACCOUNTS AND CALENDAR ROLES
+
+Read-only authorization and calendar selection are separate steps. The optional
+--person argument uses separate files under accounts/chris or accounts/lisa.
+Choose the correct person's Google account in the actual Google consent screen.
+The profile name organizes the saved authorization; it cannot identify the person
+who is sitting at the browser.
+
+The terminal authorization flow needs a Google OAuth Desktop app client JSON and
+a reachable loopback callback, as described in INSTALL.txt. The browser wizard
+uses its own setup flow; do not substitute a Web client JSON for this CLI's
+Desktop client. For a headless Batocera host, use the documented SSH forwarding
+of the callback port and open the printed authorization URL on your own computer.
+
+    "$FW" authorize --person chris --credentials /path/to/desktop-client.json --no-browser
+    "$FW" calendars --person chris
+    "$FW" select-calendar --person chris --role flight --id YOUR_FC_VIEW_CALENDAR_ID
+    "$FW" select-calendar --person chris --role secondary --id YOUR_BUZZ_CALENDAR_ID
+
+Both flight roles use Chris's account. If you use names instead of IDs, the
+default primary name is FC View and the default secondary is Buzz Flight Brief.
+Names must match exactly after case/outer-space normalization and must identify
+one calendar; an explicit ID avoids duplicate-name ambiguity. Primary selection
+sets the display timezone from that calendar. Secondary selection keeps the
+existing display timezone. Either flight selection leaves demo mode.
+
+Lisa can authorize her own account independently and supply the family calendar:
+
+    "$FW" authorize --person lisa --credentials /path/to/desktop-client.json --no-browser
+    "$FW" calendars --person lisa
+    "$FW" select-calendar --person lisa --role family --id YOUR_FAMILY_CALENDAR_ID
+
+The family role can use either person's account. It enables the kids-calendar
+filter while preserving the display timezone and flight/demo selection. It does
+not turn arbitrary calendar titles into presence: only the supported exact
+Mom/Dad labels are interpreted. See HOUSEHOLD-SETUP.txt for the household rules.
+
+    "$FW" sync
+
+Sync uses the current separate accounts/roles after household setup. An untouched
+legacy installation continues to use the original calendar client. Commands
+without --person retain the old Chris authorization/list/primary-selection
+behavior. Successful legacy reauthorization also refreshes the migrated Chris
+credentials, so an old saved scoped token does not keep replacing the new login.
+No command writes to Google Calendar.
+
+PHONE PRESENCE PAIRING
+
+Only run pairing with the selected person's approval:
+
+    "$FW" presence-pair chris
+    "$FW" presence-pair chris --show-token
+    "$FW" presence-pair lisa --show-token
+
+Every presence-pair invocation rotates that person's token and resets their
+presence to Unknown. The secret is hidden unless --show-token is present. These
+commands do not enable presence, generate an owner control token, or pair the
+other person. Configure the person's phone with the newly generated token and
+send a fresh observation. Use browser setup for the normal consent/pairing flow.
+See PRESENCE.txt for Shortcuts, OwnTracks, heartbeat expiry and revocation.
+
+OPTIONAL API KEYS
+
+    "$FW" store-secret flightaware
+    "$FW" store-secret openai
+
+The prompt hides the key as you type. For a private file you already prepared,
+add --file /path/to/private-key.txt. The key is stored atomically with owner-only
+permissions and is never echoed by the command. Saving a key does not enable its
+feature. OpenAI API billing is separate from a ChatGPT subscription. All OpenAI
+features remain optional. Never put a literal key on a command line or into chat.
+
+DIAGNOSTICS
+
+    "$FW" diagnose
+
+The output includes version/setup flags and sanitized per-person Google status.
+The legacy google_authorized Boolean means a token file exists in either the
+legacy or separate account location. It is not proof that Google currently
+accepts that token. google_profiles shows credentials_present, verified and
+connected Booleans for each person; verify an account with calendars --person
+PERSON when needed. Diagnostics omit account addresses, calendar IDs and tokens.

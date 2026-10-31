@@ -1,0 +1,46 @@
+#!/bin/sh
+# Batocera user service. Install without an extension as "flightwall".
+set -eu
+INSTALL_DIR=${FLIGHTWALL_INSTALL_DIR:-/userdata/roms/ports/.data/flightwall}
+DATA_DIR=${FLIGHTWALL_DATA_DIR:-/userdata/system/configs/flightwall}
+PIDFILE="$DATA_DIR/service.pid"
+is_running() {
+    [ -f "$PIDFILE" ] || return 1
+    IFS= read -r PID < "$PIDFILE"
+    case "$PID" in ''|*[!0-9]*) return 1;; esac
+    kill -0 "$PID" 2>/dev/null || return 1
+    [ -r "/proc/$PID/cmdline" ] || return 1
+    EXECUTABLE=$(tr '\000' '\n' < "/proc/$PID/cmdline" | head -n 1)
+    case "$EXECUTABLE" in "$INSTALL_DIR"/releases/*/FlightWall) ;; *) return 1;; esac
+    tr '\000' '\n' < "/proc/$PID/cmdline" | grep -Fxq 'service'
+}
+case "${1:-}" in
+start)
+    if is_running; then echo 'Flight Wall service is already running.'; exit 0; fi
+    mkdir -p "$DATA_DIR/logs"
+    chmod 700 "$DATA_DIR" "$DATA_DIR/logs"
+    export FLIGHTWALL_INSTALL_DIR="$INSTALL_DIR" FLIGHTWALL_DATA_DIR="$DATA_DIR"
+    nohup "$INSTALL_DIR/service-runner.sh" >>"$DATA_DIR/logs/service.log" 2>&1 </dev/null &
+    PID=$!
+    printf '%s\n' "$PID" > "$PIDFILE"
+    echo "Flight Wall service launched (PID $PID)."
+    ;;
+stop)
+    if is_running; then
+        kill "$PID"
+        ATTEMPT=0
+        while is_running && [ "$ATTEMPT" -lt 10 ]; do
+            sleep 1
+            ATTEMPT=$((ATTEMPT + 1))
+        done
+        if is_running; then
+            echo 'Flight Wall has not stopped yet; leaving its PID file for diagnosis.' >&2
+            exit 1
+        fi
+    fi
+    rm -f "$PIDFILE"
+    ;;
+restart) "$0" stop; "$0" start;;
+status) if is_running; then echo "Running (PID $PID)"; else echo 'Stopped'; exit 1; fi;;
+*) echo "Usage: $0 {start|stop|restart|status}" >&2; exit 2;;
+esac

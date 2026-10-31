@@ -1,0 +1,16 @@
+#!/bin/sh
+# CLI wrapper. All user arguments, including --data-dir, are preserved.
+set -eu
+INSTALL_DIR=${FLIGHTWALL_INSTALL_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
+DATA_DIR=${FLIGHTWALL_DATA_DIR:-/userdata/system/configs/flightwall}
+if [ -z "${FLIGHTWALL_DATA_DIR:-}" ] && [ -f "$INSTALL_DIR/data-path" ]; then
+    IFS= read -r DATA_DIR < "$INSTALL_DIR/data-path"
+fi
+test -x "$INSTALL_DIR/current/FlightWall" || { echo 'Flight Wall is not installed correctly: current/FlightWall is missing.' >&2; exit 1; }
+export FLIGHTWALL_INSTALL_DIR="$INSTALL_DIR" FLIGHTWALL_DATA_DIR="$DATA_DIR"
+# The bundled Debian OpenSSL defaults to /usr/lib/ssl, which Batocera removes.
+if [ -z "${SSL_CERT_FILE:-}" ] && [ -r /etc/ssl/certs/ca-certificates.crt ]; then
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+    export SSL_CERT_FILE
+fi
+exec "$INSTALL_DIR/current/FlightWall" --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" "$@"

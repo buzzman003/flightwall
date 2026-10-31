@@ -1,0 +1,9 @@
+ARG BUILD_IMAGE
+FROM ${BUILD_IMAGE}
+# The build image supplies Python/PyInstaller and the exact Debian 12 runtime.
+# Explicit Mesa software rendering makes absence of a host GPU irrelevant.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-dri libegl1 libglx-mesa0 \
+    && rm -rf /var/lib/apt/lists/*
+ENV SDL_VIDEODRIVER=offscreen SDL_AUDIODRIVER=dummy LIBGL_ALWAYS_SOFTWARE=1 \
+    PYGAME_HIDE_SUPPORT_PROMPT=1

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Lisa's iPhone · Flight Wall</title>
+  <link rel="stylesheet" href="/setup/lisa/style.css">
+  <script src="/setup/lisa/app.js" defer></script>
+</head>
+<body>
+<main>
+  <header><span class="mark" aria-hidden="true">FW</span><p class="eyebrow">FLIGHT WALL · YOUR PHONE</p>
+    <h1>A little more<br>in sync.</h1>
+    <p>Hi Lisa. Connect your iPhone so your household wall can know when you're Home or Away.</p>
+  </header>
+  <p id="notice" role="status" aria-live="polite">Opening your private invitation…</p>
+  <section id="install" hidden>
+    <p class="step">STEP 1 OF 3</p><h2>Get OwnTracks</h2>
+    <p>This free app sends your location to your household Flight Wall. Install it, open it once, then return here.</p>
+    <a class="button secondary" href="https://apps.apple.com/us/app/owntracks/id692424691" target="_blank" rel="noreferrer noopener">Open the App Store</a>
+    <button id="installed" type="button">OwnTracks is installed</button>
+  </section>
+  <section id="consent" hidden>
+    <p class="step">STEP 2 OF 3</p><h2>Your choice</h2>
+    <p>OwnTracks sends location fixes to your household computer to work out Home/Away. Flight Wall keeps your latest state, not a location history.</p>
+    <p>This step enables your phone presence only. Shopping texts and private cards each need their own setup and approval.</p>
+    <p>You can stop sharing in OwnTracks or turn off its location access in iPhone Settings at any time. If you already paired this phone, continuing replaces that pairing.</p>
+    <label class="consent"><input id="approve" type="checkbox"><span>I am Lisa, and I approve pairing my own iPhone for Home/Away.</span></label>
+    <button id="pair" type="button" disabled>Create my phone connection</button>
+    <button class="quiet" id="later" type="button">I'll do this later</button>
+  </section>
+  <section id="connect" hidden>
+    <p class="step">STEP 3 OF 3</p><h2>Connect OwnTracks</h2>
+    <div id="credential">
+      <p>Your phone credential is shown here once, for one minute. Use either the file or the manual settings.</p>
+      <button id="download" type="button">Download OwnTracks settings</button>
+      <p class="small">Open the downloaded .otrc file with OwnTracks and review its changes. Current OwnTracks versions require you to enable external configuration in the app first. If you prefer to leave that off, use the manual settings below.</p>
+      <details><summary>Enter the settings manually</summary>
+        <p>In OwnTracks connection settings, choose <strong>HTTP</strong>, then enter:</p>
+        <label>URL<input id="endpoint" readonly autocomplete="off"></label>
+        <button class="small-button" id="copy-url" type="button">Copy URL</button>
+        <label>Username<input value="lisa" readonly autocomplete="off"></label>
+        <label>Password<input id="password" type="password" readonly autocomplete="off"></label>
+        <button class="small-button" id="copy-password" type="button">Copy password</button>
+        <p class="small">Enable authentication. Set tracker ID to LI. Keep certificate verification on and remote configuration off.</p>
+      </details>
+      <button class="quiet" id="hide-secret" type="button">Settings imported — hide credential</button>
+    </div>
+    <p id="credential-expired" hidden>The one-time credential has been hidden. If you didn't save it in OwnTracks, ask Chris for a new invitation.</p>
+    <h3>Allow background updates</h3>
+    <ol>
+      <li>In iPhone <strong>Settings → Privacy &amp; Security → Location Services → OwnTracks</strong>, choose <strong>Always</strong> when available and enable <strong>Precise Location</strong>. iOS may ask in two steps after first opening the app.</li>
+      <li>Allow OwnTracks to use cellular data and Background App Refresh. Low Power Mode can pause background refresh; keep it off for this initial test.</li>
+      <li>In OwnTracks, choose <strong>Significant</strong> monitoring. This saves battery, but updates depend on movement and are not immediate.</li>
+      <li>Send/publish your current location from OwnTracks, then return here and check the connection.</li>
+    </ol>
+    <button id="check" type="button">I sent a location — check connection</button>
+    <p id="connection-status" role="status" aria-live="polite">Waiting for a real report from your iPhone.</p>
+    <button class="quiet" id="close" type="button">Close phone setup</button>
+  </section>
+  <footer>This invitation opens only your phone setup. Keep its link and credential private.</footer>
+</main>
+</body>
+</html>

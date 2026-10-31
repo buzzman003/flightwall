@@ -1,0 +1,77 @@
+FLIGHT WALL 0.4.0 DEVELOPMENT PLAN - OCTOBER 31, 2026
+
+This plan describes the 0.4.0 source candidate. See VALIDATION.txt for completed
+checks and RELEASE-0.4.0.txt for delivery gates. Private configuration and the
+original recovery helper must survive every update.
+
+PLANNED BEHAVIOR
+
+1. TV fit / LED size: preserve the 512x256 logical canvas and software fallback.
+   Replace integer-only scaling with aspect-fit by default and retain integer
+   mode. At 1080p this uses 1920x960 instead of 1536x768, making dots 25% larger.
+   Preserve aspect ratio; do not crop flight content to fill a 16:9 TV.
+2. One to five labeled Flight Wall timers via Alexa, persisted deadlines,
+   centered top strip, readable countdowns and a smooth whole-content inset.
+   Expired timers show DONE until dismissed; no flashing or punitive behavior.
+   Ordinary Alexa timers are not assumed accessible to the custom skill.
+3. Ten-day Mom's House / Dad's House outlook from the existing task file.
+   Preserve exact title rules, timezone/DST, mixed days, conflicts and Unknown.
+4. Local-airport flight/layover highlights in America/Chicago (Central with
+   daylight saving). VPS: arrival, known layover duration and next departure.
+   PNS/ECP: arrival highlights; no invented departure or layover duration when
+   the roster has no matching onward leg. Keep real operating-flight priority.
+5. Alexa public flight-watch requests by airline, number and date; support
+   names and DL/AA/UA/G4/F9. Allegiant is G4; Frontier is F9. Never expose the
+   private operating roster via voice routes. Fresh FlightAware data requires
+   a separately configured owner account/key and spending limits; scheduled
+   information is not live tracking. Failed or ambiguous matches stay unknown.
+6. Concise Alexa opening prompt, detailed help only when asked, short task
+   prompts. Carry forward the shipped Title-slot-type correction. Preserve
+   current dinner window and appointment confirmation/end-time behavior.
+7. Opt-in Lisa shopping alerts on the first qualifying store arrival each
+   America/Chicago day, across Walmart, ALDI, Sam's Club and Publix in Destin/
+   Fort Walton Beach. Use the private Flight Wall shopping list and SMS delivery.
+   Any future native Alexa list import needs a separately verified adapter;
+   the retired native list API cannot be treated as usable.
+   No scraping, guessed store pins, automatic contacts/messages or live sends.
+   Verify stores/coordinates and account for phone accuracy and battery tradeoffs.
+   Keep only fresh current fix/state and minimal once-per-day delivery state,
+   not location history. Require Lisa's own consent and configured sender.
+8. A mobile Lisa-only onboarding invitation the owner can send: expiring scoped
+   link, iPhone OwnTracks install/import guidance, explicit phone consent,
+   private pairing and battery-aware steps. No administrator token in invitation,
+   no access to Chris's settings/accounts. Do not put her phone number in source.
+
+VALIDATION / DELIVERY
+
+Use synthetic data in tests and previews; never include private credentials,
+phone numbers, calendar IDs, artwork or home pins. Keep code-update storage,
+signature verification, monotonic versions and recovery semantics unchanged.
+Run relevant unit/integration/UI checks, then the required Linux pytest and
+older-glibc build before any signed publish. Windows test results do not replace
+Linux/native validation. Do not replace Batocera libraries to accommodate a build.
+Keep the current working installation until the matching signed release passes
+the delivery gates.
+
+IMPLEMENTATION UPDATE
+
+The candidate now includes the requested source features and has passed the
+Windows suite recorded in VALIDATION.txt. It includes a private Flight Wall
+shopping list with easy Alexa add commands and a continuous slim bottom ticker.
+A native Alexa daily-email/hidden-calendar bridge is still an
+unverified alternative, not a configured import.
+
+For relevance during long breaks, a five-day lead-in introduces trip cards
+and date-colored/numbered route maps. Household views lead outside that window;
+operating flight focus is preserved. The
+map shows a real date range rather than inventing a roster rotation. See
+RELEASE-0.4.0.txt for implemented behavior and remaining release gates.
+
+REMAINING DEVICE AND PROVIDER VALIDATION
+
+- Verify automatic Away/Home with each opted-in phone locked, including
+  stationary freshness, real departures/returns and expiry to Unknown.
+- Validate the iPhone invitation on a real consenting phone. Shopping delivery
+  and private cards remain off until their separate opt-in conditions are met.
+- Verify the deployment account's plan, service limits and long-term hosting
+  before depending on Alexa. Account and billing details remain private.

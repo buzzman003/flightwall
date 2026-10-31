@@ -1,0 +1,87 @@
+FLIGHT WALL 0.4.0 - FEATURES AND RELEASE GATES
+
+STATUS
+
+This document describes the source and its mandatory release gates. Published
+packages and their Linux/native validation reports are available only through
+https://github.com/buzzman003/flightwall/releases after those gates pass.
+Source changes alone are not a signed Linux installer. Do not upload the changed
+Lambda/model to the live skill before the matching board update.
+
+WHAT CHANGES
+
+* Fit the full 2:1 LED canvas to the TV by default: at 1080p, 1920x960 rather
+  than 1536x768. This enlarges the dots by 25%; small top/bottom bars preserve
+  the required canvas shape. Whole-pixel scaling remains selectable.
+* Keep flight-heavy views near flying days. Five days before the next flight,
+  introduce a concise trip card and date-colored route map. Outside that
+  lead-in, household cards and the local clock take precedence. Flight focus
+  still interleaves longer flight/map views around each real operating leg.
+* Number the legs within each date. Three-leg legend pages keep long trips
+  readable. Maps show all routes for up to twelve legs; larger previews clearly
+  label page routes. The preview is an actual five-day date range, not a guessed
+  roster rotation. The owner can adjust the lead-in from one to fourteen days.
+* Highlight scheduled VPS arrival, known stay and matching outbound. Show PNS
+  and ECP arrivals. Missing/conflicting outbound data stays unknown. Every TV
+  clock/time uses the configured household zone, including America/Chicago.
+* Show a ten-day Mom's House / Dad's House outlook. Changes during a day remain
+  visible; gaps/conflicts/stale data are Unknown and never grant private access.
+* Up to five labeled TV timers, with persisted deadlines and an animated top
+  strip. DONE remains visible until dismissed. These are Flight Wall timers,
+  not a synchronization of ordinary Alexa/Echo alarms.
+* A private Flight Wall shopping list, short Alexa add/remove/read/show commands,
+  confirmed clear, and an 18-pixel scrolling ticker along the bottom (~7%).
+  Example candidate phrase: "Alexa, ask Flight Wall to add olives."
+  The exact Echo speech/model still needs deployment and real-device testing.
+* Brief Alexa opening prompt; expanded instructions only on Help. Dinner and
+  appointment rules remain unchanged. Public-flight requests accept airline,
+  number and date (DL, AA, UA, G4 Allegiant, F9 Frontier). They never expose the
+  operating roster. Actual live tracking needs the owner's FlightAware API
+  setup; an unconfigured watch explicitly says so and does not invent a marker.
+* An optional store-arrival SMS engine with a single daily send attempt across
+  all stores, explicit Lisa consent, conservative location accuracy and no GPS
+  history. Disabled until verified store pins and an SMS sender are configured.
+* A one-use Lisa iPhone invitation: OwnTracks guidance, separate consent and
+  credential, import/manual configuration, and fresh-report verification. The
+  owner copies the link and sends it directly; the app does not text invitations.
+
+SHOPPING SOURCE CHOICE
+
+The implemented source is the private Flight Wall list. A native Alexa-list
+bridge through email or a separate grocery calendar is unverified and is not
+included. Amazon's native List Management API was retired July 1, 2024.
+
+Amazon documents scheduled Routines with a custom spoken action. This does not
+establish unattended native-list sharing or a usable export format. No daily
+routine, inbox access, calendar export or automatic email import is configured.
+A daily copy
+would not contain changes made later that day. Do not treat a share link as
+the grocery items, claim every-add sync, or scrape private Amazon sessions.
+
+Before implementing an import adapter, verify an actual export with grocery
+items, removals, timestamps and a stable format. Use a dedicated authorized
+mailbox/source or selected grocery calendar; Calendar consent is not Gmail
+consent. A hidden calendar alone does not make Alexa export anything.
+
+Official references checked October 31, 2026:
+https://developer.amazon.com/en-US/docs/alexa/ask-overviews/deprecated-features.html#shopping-lists
+https://digprjsurvey.amazon.co.uk/csad/help/node/GLXY7RFX3L5GH2VR
+
+RELEASE GATES
+
+1. Run the required Linux pytest suite and real SDL offscreen OpenGL checks.
+   The configured GitHub workflow now runs pytest, including function-based
+   tests, and requires a real OpenGL context rather than skipping that check.
+2. Build the matching Linux x86_64 binary using scripts/build-linux.sh and
+   Debian 12/glibc 2.36. Audit native compatibility and frozen assets.
+3. Test a real executable 0.3.0 -> 0.4.0 upgrade, next-launch activation,
+   rollback, credentials/settings retention and original pinned recovery helper.
+4. Configure the owner's release repository/host and signing key outside the
+   source tree. Build/sign/publish through the existing Ed25519 workflow; never
+   replace the trusted key through a release or reuse a published version.
+5. Only then install at a safe Ports launch and deploy the matching Alexa
+   handler/model. Verify TV fit, physical controls and actual spoken requests.
+
+See VALIDATION.txt for completed checks and their limits. Provider accounts,
+SMS recipients, deployment credentials and signing keys are configured privately;
+none are supplied by the public source package.

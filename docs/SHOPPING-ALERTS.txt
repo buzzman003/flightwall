@@ -1,0 +1,201 @@
+FLIGHT WALL SHOPPING ARRIVALS -- DEVELOPMENT NOTES
+Research date: October 31, 2026
+
+Status
+------
+This is disabled next-version source work, not an activated household service.
+No SMS was sent, no sending account was provisioned, and no real phone location
+was read for these tests.
+Lisa's own phone consent/pairing and an approved delivery recipient are required.
+The implemented source is a Flight Wall shopping list with Alexa commands.
+It is a separate list and does not import
+or synchronize the old Alexa list. SMS remains disabled until Lisa opts in and
+the private sending account/recipient are configured.
+
+The Alexa list integration is a real unresolved dependency
+-------------------------------------------------------
+Amazon removed third-party List skills and List Management REST API access to
+native Alexa Shopping and To-Do lists on July 1, 2024. Its current deprecated
+features page still documents the removal. Native Alexa list use continues in
+Amazon's own interfaces. A custom Flight Wall skill cannot fetch that native list
+using the retired API. No cookies, private endpoints, screen scraping, or account
+credentials are used as a substitute.
+https://developer.amazon.com/en-US/docs/alexa/ask-overviews/deprecated-features.html#shopping-lists
+
+Native Alexa sharing actions do not imply third-party list API access.
+Unattended routine execution of a list-sharing command, without recipient
+confirmation or follow-up dialogue, has not been verified by this project.
+
+Amazon documents custom routine actions as voice commands typed into a routine,
+with a Preview step to test the exact phrase. This is a possible manual app test,
+not evidence that list-email sharing works as an unattended action. Creating or
+previewing a real sharing action may send a message, so it has not been done here.
+https://digprjsurvey.amazon.co.uk/csad/help/node/GLXY7RFX3L5GH2VR
+
+The official external custom-trigger path requires a published Alexa skill and
+Amazon's permission for its developer preview. These prerequisites must be
+verified for any deployment using that path. Proactive Events provides Alexa
+Notifications; it is not an API for running a native list-sharing command or
+sending an arbitrary email/SMS to an Alexa contact. A routine action that invokes
+a Flight Wall custom task is also the opposite direction to the trigger needed.
+https://developer.amazon.com/en-US/docs/alexa/routines/get-started-custom-triggers-for-routines.html
+https://developer.amazon.com/en-US/docs/alexa/smapi/proactive-events-api.html
+https://developer.amazon.com/en-US/docs/alexa/custom-skills/integrate-custom-task-with-alexa-routines.html
+
+Consequently no supported automatic Flight Wall arrival -> Alexa list sharing
+connection has been verified. Native location routines may be worth evaluating
+with the owner later, but their support for the sharing action and one combined
+daily limit across multiple stores has not been demonstrated. Do not claim this
+work delivers the owner's native Alexa list automatically.
+
+Available source/transport separation
+-------------------------------------
+flightwall.shopping.ShoppingAlerts accepts a list-source adapter with source_id
+and get_items(), and a sender with ready() and send(message, request_id=...).
+The configured source "flightwall" reads the owner-selected ShoppingListStore.
+Legacy source "alexa" deliberately reports list_source_unavailable. The optional
+"manual" adapter is also a separate local list, not Alexa synchronization.
+No SMS provider is activated through this document. A future native-action dispatcher would
+need its own reviewed implementation and owner test; none is simulated here.
+
+TwilioSmsSender is an optional implemented transport to a fixed HTTPS endpoint.
+It does not create an account, obtain a number, register a sender or spend money
+unless an explicitly enabled alert has all private configuration and consent.
+It uses API-key authentication and a Messaging Service SID; the customer controls
+the service's allowed sender and recipient. Registration, trial restrictions,
+recipient consent, costs and account-specific permissions need setup with the
+actual sending account. A trial cannot be treated as production readiness. US
+long-code sending requires the relevant A2P registration; another sender type
+may have different verification requirements. One API message may comprise
+multiple billed SMS segments, especially with Unicode or longer lists.
+https://www.twilio.com/docs/messaging/api/message-resource
+https://www.twilio.com/docs/usage/tutorials/how-to-use-your-free-trial-account
+https://www.twilio.com/docs/messaging/compliance/a2p-10dlc
+
+Runtime contract and defaults
+-----------------------------
+  shopping_enabled = false
+  shopping_lisa_opt_in = false
+  shopping_list_source = "flightwall"
+  shopping_stores = "[]"             (bounded JSON string or parsed list)
+  presence_enabled = existing setting (also must be true)
+
+The runtime may call consume_location("lisa", payload, now) only after Lisa's
+dedicated phone credential is authenticated and PresenceStore accepts that new
+observation. Never call it from admin manual-presence changes or an unauthenticated
+route. Lisa phone pairing/consent and shopping consent are separate decisions.
+No trigger comes from Google sign-in, rosters, calendar events or an inferred
+absence. Existing private-card and guest-mode display rules remain in force.
+The shopping engine does not expose shopping text or Lisa's location on the TV
+or maintenance status. It does not change those display gates.
+
+Enabled geofences are owner-reviewed private configuration, with fields:
+  id, latitude, longitude, radius_m, verified=true
+There is a maximum of 100 circles, with radii between 30 and 1000 metres. The
+suggested starting radius is 50m, but it is not a promise of GPS precision.
+A fresh OwnTracks location must include lat, lon, acc and tst. It must be less
+than five minutes old and no more than two minutes in the future. An observation
+enters only when its distance plus reported accuracy fits inside a store circle.
+It exits only when its distance minus accuracy is outside every circle. An
+uncertain fix neither enters nor exits; out-of-order fixes do not change state.
+Manual states and OwnTracks transition events alone do not trigger shopping.
+
+Only coordinates for the current calculation exist in memory; they are never
+written by this module. Arrival state contains the latest accepted timestamp,
+an inside/outside bit, pending arrival date, last dispatch date and status.
+It does not contain the store visited, a location trail, message body, recipient,
+phone identifier, credentials or provider response. status() exposes only flags,
+source availability and last dispatch date/status, not Lisa's inside/outside bit.
+
+The first confirmed inside fix counts as an arrival, even if the engine has no
+earlier outside fix. Uncertain fixes preserve the last reliable inside/outside
+state. A source/sender becoming ready on the same visit may use that pending
+arrival, but a new calendar day while remaining inside is not a new arrival.
+Leaving and re-entering after midnight permits the next daily attempt.
+
+The daily bucket is America/Chicago, including daylight-saving transitions,
+shared by every configured store. A cross-process lock and atomic private state
+write reserve the day before any outbound SMS request. This means AT MOST ONE
+AUTOMATIC DISPATCH ATTEMPT per local day, not guaranteed exactly-once delivery.
+A timeout, process crash or unconfirmed provider result consumes that day's
+attempt rather than risk a duplicate. A queued/accepted API response is not a
+delivery receipt. There is no automatic retry or destructive state reset.
+Corrupt state fails closed and needs local attention; do not delete state just
+to make an alert retry. Suppressing a later attempt can mean no SMS that day.
+
+The sender allows one five-second HTTPS POST to api.twilio.com, disables redirect
+and environment-proxy following, validates identifiers/recipient syntax, limits
+the response read, and never echoes provider errors or credentials. Messages
+are limited to 1400 characters. An oversized list is rejected, never silently
+truncated. Local state and list writes are atomic; reservation writes are fsynced.
+
+Private files and update preservation
+------------------------------------
+DATA/shopping/state.json  Minimal current arrival/daily dispatch state
+DATA/shopping/.lock       Cross-process dispatch lock
+DATA/shopping/list.json   Only for an explicitly selected local manual list
+DATA/shopping/flightwall-list.json  Owner-selected Flight Wall list and dedup ledger
+DATA/shopping/.list.lock  Cross-process list-mutation lock
+DATA/shopping/sms.json    Dedicated SMS credentials and Lisa-approved recipient
+
+DATA is /userdata/system/configs/flightwall on Batocera. These files belong
+outside release directories and must not be bundled, logged, pasted in chat or
+committed. sms.json keys are account_sid, api_key_sid, api_key_secret,
+messaging_service_sid and to_number. It must not contain the Flight Wall control,
+phone or Alexa voice token. The public store research contains no household data.
+
+ShoppingListStore(data_dir) provides add(payload, now=None), remove(payload,
+now=None), clear(payload, now=None), snapshot(), and get_items(). Add takes item;
+remove takes exactly one of item or id; clear requires confirmation=true. All
+mutations allow source (manual or alexa) and request_id. Item names are normalized,
+case-insensitive for duplicate/remove matching, and bounded to 120 characters;
+the list holds at most 100 items. snapshot() returns items with id/name/source/
+created_at plus updated_at. get_items() returns the names for the SMS adapter.
+Only the authenticated household display/control or dedicated voice list routes
+should expose this content. A generic maintenance status must not dump it.
+
+Request IDs are hashed into a private ledger, with action/content hashes and
+original result snapshots. The ledger retains up to 1000 requests for 30 days;
+at capacity new requests are rejected rather than forgetting retry protection.
+A repeated remove/add/clear cannot mutate a later list state. In particular,
+retrying clear never clears items added after the first clear. Reusing a request
+ID for different content is rejected. File locking and atomic writes preserve
+concurrent Alexa/admin changes. Mutations return changed, duplicate, item and
+short speech fields. No item or request ID appears in diagnostics or public assets.
+
+Stores and remaining field verification
+--------------------------------------
+assets/stores/emerald-coast-research.json contains retailer-sourced public address
+research. Eight Walmart/Sam's Club/Publix addresses were confirmed on official
+retailer pages. Four ALDI candidates have primary-source links but still require
+current locator/opening verification; the official locator returned a JavaScript
+shell in this research session. A new-store job listing is not proof of opening.
+This is not a claim that every requested store in the region is covered.
+
+Every geofence is disabled. No coordinate was guessed from a street address.
+Before enabling any store, verify its current retailer listing, exact map center
+and usable arrival footprint, then test on Lisa's opted-in phone. Surrounding
+municipalities such as Mary Esther, Niceville and Miramar Beach are not silently
+included merely because their stores are near Fort Walton Beach or Destin.
+
+A 50m circle can be smaller than a big-box store and may miss its parking lot.
+Poor indoor GPS or a phone's power-saving interval can also prevent an accurate
+inside report. For example, a 400m displacement filter and a 1200s interval
+cannot guarantee a 50m store arrival. Choose settings with the consenting
+phone user and validate them on that device. Do not silently
+change either phone's battery settings. An uncertain or stale fix sends nothing.
+
+Validation performed and outstanding
+-----------------------------------
+Synthetic tests cover opt-in, wrong phone/type, freshness, GPS uncertainty,
+duplicate reports, multiple stores, restart/concurrency, Chicago midnight/DST,
+same-visit midnight, corrupt state, reservation crash/timeout, revoked consent,
+native Alexa source refusal, message bounds, and mocked fixed-host HTTPS.
+No test calls a live messaging service or uses real household coordinates.
+
+Required before activation: choose/verify a supported way to obtain or share the
+owner's list; complete Lisa's own opt-in and phone pairing; configure an approved
+sender/recipient privately; verify store centers; perform one explicitly agreed
+real delivery and receipt test; test one real store arrival and the combined
+same-day suppression; include the code in a newly versioned signed Linux build
+through the existing release workflow. Local Windows edits are not that build.

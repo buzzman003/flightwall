@@ -1,0 +1,63 @@
+FLIGHT WALL — FIRST DEMO ON BATOCERA
+
+This release targets an x86_64 PC running Batocera 42, such as your
+Ryzen 5 2400GE HP mini PC. You keep Batocera and your games. No USB drive
+flashing, Raspberry Pi programming, LED panels, Google account, or paid
+flight-data subscription is needed to try the display.
+
+1. Download flightwall-batocera-0.3.0.tar.gz from this conversation onto
+   your regular computer. Keep the whole archive together.
+
+2. On the Batocera TV screen, open MAIN MENU > NETWORK SETTINGS and note
+   its IP address. The examples below use 192.168.1.50. Replace that
+   address with yours. Put both computers on your home network.
+
+3. On Windows, open PowerShell and run:
+
+   scp -O "$env:USERPROFILE\Downloads\flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+   ssh root@192.168.1.50
+
+   On macOS or Linux, open Terminal and run:
+
+   scp -O "$HOME/Downloads/flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+   ssh root@192.168.1.50
+
+   Use your Batocera root password; the factory default is linux if you
+   have never changed it. Password typing is invisible. On your first
+   SSH connection, confirm the host-key prompt for your own Batocera.
+
+4. You are now typing commands ON BATOCERA. Paste these lines:
+
+   If upgrading from 0.1.0 or 0.2.0, close Flight Wall on the TV first. Existing
+   settings and Google authorization are preserved. The upgrade activates
+   on the next Ports launch, with startup recovery kept available.
+
+   cd /userdata/system
+   tar -xzf flightwall-batocera-0.3.0.tar.gz
+   sh /userdata/system/flightwall-batocera-0.3.0/install.sh
+
+5. On the TV, choose MAIN MENU > GAME SETTINGS > UPDATE GAMELISTS.
+   Open PORTS and start Flight Wall. If Ports is still absent, restart
+   EmulationStation or reboot Batocera once.
+
+The app opens with a setup card and clearly labeled demonstration flights.
+The setup card stays until Finish setup with my saved choices in the browser
+wizard. Regular views default to 15 seconds; real flight focus uses longer
+flight slots. The route map shows the planned route. Aircraft positions only
+appear when a real live-data provider is configured and returns a fix.
+
+For household Google accounts, phones and optional personal content, continue
+with docs/HOUSEHOLD-SETUP.txt. Use docs/INSTALL.txt for services, Tailscale and
+troubleshooting. Remote connection instructions are docs/REMOTE.txt.
+Personal dinner/appointment cards and Alexa setup are docs/ALEXA-SETUP.txt.
+Keyboard Tab changes views; 1-5 choose available views; Space resumes the
+automatic rotation. G toggles guest mode; Escape returns to Batocera.
+
+This is a working software package with automated and Linux checks.
+Your actual Batocera video driver, TV, and account authorization still
+need the first on-device test. If launch fails, run:
+
+   sh /userdata/roms/ports/.data/flightwall/diagnose.sh
+
+Keep the resulting diagnostic text. Do not send Google JSON files,
+refresh tokens, control tokens, or your full private calendar to chat.

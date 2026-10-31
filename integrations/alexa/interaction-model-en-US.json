@@ -1,0 +1,219 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "flight wall",
+      "intents": [
+        {
+          "name": "AddDinnerIntent",
+          "slots": [
+            {"name": "Meal", "type": "AMAZON.SearchQuery"},
+            {"name": "Date", "type": "AMAZON.DATE"}
+          ],
+          "samples": [
+            "we are having {Meal} for dinner",
+            "we're having {Meal} for dinner",
+            "we will have {Meal} for dinner",
+            "dinner is {Meal}",
+            "set dinner to {Meal}",
+            "put {Meal} on the dinner board",
+            "set dinner for {Date}",
+            "dinner is on {Date}"
+          ]
+        },
+        {
+          "name": "AddAppointmentIntent",
+          "slots": [
+            {"name": "Title", "type": "APPOINTMENT_TITLE"},
+            {"name": "Date", "type": "AMAZON.DATE"},
+            {"name": "Time", "type": "AMAZON.TIME"},
+            {"name": "Duration", "type": "AMAZON.DURATION"}
+          ],
+          "samples": [
+            "add an appointment",
+            "schedule an appointment",
+            "we have {Title} on {Date} at {Time}",
+            "we have a {Title} appointment on {Date} at {Time}",
+            "we have an appointment for {Title} on {Date} at {Time}",
+            "add {Title} on {Date} at {Time}",
+            "add a {Title} appointment on {Date} at {Time}",
+            "add an appointment for {Title} on {Date} at {Time}",
+            "schedule {Title} on {Date} at {Time}",
+            "add {Title} on {Date} at {Time} for {Duration}",
+            "add a {Title} appointment on {Date} at {Time} for {Duration}",
+            "add {Title} on {Date}",
+            "add {Title} at {Time}"
+          ]
+        },
+        {
+          "name": "SetAppointmentTitleIntent",
+          "slots": [{"name": "Title", "type": "APPOINTMENT_TITLE"}],
+          "samples": [
+            "add an appointment called {Title}",
+            "the appointment is called {Title}",
+            "it's called {Title}",
+            "it is called {Title}",
+            "the title is {Title}"
+          ]
+        },
+        {
+          "name": "SetDateIntent",
+          "slots": [
+            {"name": "Date", "type": "AMAZON.DATE"},
+            {"name": "Time", "type": "AMAZON.TIME"}
+          ],
+          "samples": [
+            "on {Date}",
+            "the date is {Date}",
+            "change the date to {Date}",
+            "on {Date} at {Time}",
+            "the appointment is on {Date} at {Time}"
+          ]
+        },
+        {
+          "name": "SetTimeIntent",
+          "slots": [{"name": "Time", "type": "AMAZON.TIME"}],
+          "samples": ["at {Time}", "the time is {Time}", "change the time to {Time}"]
+        },
+        {
+          "name": "SetDurationIntent",
+          "slots": [{"name": "Duration", "type": "AMAZON.DURATION"}],
+          "samples": ["for {Duration}", "it lasts {Duration}", "change the duration to {Duration}"]
+        },
+        {
+          "name": "DinnerHelpIntent",
+          "samples": ["dinner help", "help with dinner", "how do I add dinner"]
+        },
+        {
+          "name": "StartTimerIntent",
+          "slots": [
+            {"name": "TimerLabel", "type": "TIMER_LABEL"},
+            {"name": "TimerDuration", "type": "AMAZON.DURATION"}
+          ],
+          "samples": [
+            "start a timer", "set a timer",
+            "start a {TimerLabel} timer for {TimerDuration}",
+            "set a {TimerLabel} timer for {TimerDuration}",
+            "start a timer for {TimerDuration} called {TimerLabel}",
+            "set a timer for {TimerDuration}",
+            "start the {TimerLabel} timer"
+          ]
+        },
+        {
+          "name": "SetTimerLabelIntent",
+          "slots": [{"name": "TimerLabel", "type": "TIMER_LABEL"}],
+          "samples": ["call the timer {TimerLabel}", "the timer is called {TimerLabel}", "the timer label is {TimerLabel}"]
+        },
+        {
+          "name": "SetTimerDurationIntent",
+          "slots": [{"name": "TimerDuration", "type": "AMAZON.DURATION"}],
+          "samples": ["run the timer for {TimerDuration}", "the timer duration is {TimerDuration}"]
+        },
+        {
+          "name": "ListTimersIntent",
+          "samples": ["list timers", "what timers are running", "show timers", "how much time is left on my timers"]
+        },
+        {
+          "name": "CancelTimerIntent",
+          "slots": [
+            {"name": "TimerLabel", "type": "TIMER_LABEL"},
+            {"name": "TimerNumber", "type": "AMAZON.NUMBER"}
+          ],
+          "samples": ["cancel a timer", "cancel the {TimerLabel} timer", "dismiss the {TimerLabel} timer",
+                      "cancel timer number {TimerNumber}", "dismiss timer number {TimerNumber}"]
+        },
+        {
+          "name": "TrackFlightIntent",
+          "slots": [
+            {"name": "Airline", "type": "AIRLINE"},
+            {"name": "FlightNumber", "type": "AMAZON.NUMBER"},
+            {"name": "Date", "type": "AMAZON.DATE"}
+          ],
+          "samples": ["track a flight", "watch a flight", "add a flight to the board",
+                      "track {Airline} flight {FlightNumber} on {Date}",
+                      "watch {Airline} flight {FlightNumber} on {Date}",
+                      "track {Airline} {FlightNumber} on {Date}",
+                      "track {Airline} flight {FlightNumber}", "track flight {FlightNumber}"]
+        },
+        {
+          "name": "SetFlightAirlineIntent",
+          "slots": [{"name": "Airline", "type": "AIRLINE"}],
+          "samples": ["the airline is {Airline}", "use airline {Airline}"]
+        },
+        {
+          "name": "SetFlightNumberIntent",
+          "slots": [{"name": "FlightNumber", "type": "AMAZON.NUMBER"}],
+          "samples": ["the flight number is {FlightNumber}", "flight number {FlightNumber}"]
+        },
+        {
+          "name": "ShowShoppingListIntent",
+          "samples": ["shopping list", "show shopping list", "show my shopping list", "show the shopping list",
+                      "list shopping items", "open the shopping list"]
+        },
+        {
+          "name": "ReadShoppingListIntent",
+          "samples": ["read the shopping list", "what is on the shopping list", "what is on my list"]
+        },
+        {
+          "name": "AddShoppingItemIntent",
+          "slots": [{"name": "Item", "type": "AMAZON.SearchQuery"}],
+          "samples": ["add {Item}", "add {Item} to the list", "add {Item} to the shopping list",
+                      "put {Item} on the shopping list"]
+        },
+        {
+          "name": "RemoveShoppingItemIntent",
+          "slots": [{"name": "Item", "type": "AMAZON.SearchQuery"}],
+          "samples": ["remove {Item}", "remove {Item} from the list", "remove {Item} from the shopping list",
+                      "delete {Item} from the shopping list"]
+        },
+        {
+          "name": "ClearShoppingListIntent",
+          "samples": ["clear the shopping list", "clear my shopping list", "clear shopping list"]
+        },
+        {"name": "AMAZON.YesIntent", "samples": []},
+        {"name": "AMAZON.NoIntent", "samples": []},
+        {"name": "AMAZON.HelpIntent", "samples": []},
+        {"name": "AMAZON.CancelIntent", "samples": []},
+        {"name": "AMAZON.StopIntent", "samples": []},
+        {"name": "AMAZON.RepeatIntent", "samples": []},
+        {"name": "AMAZON.FallbackIntent", "samples": []}
+      ],
+      "types": [
+        {
+          "name": "TIMER_LABEL",
+          "values": [
+            {"name": {"value": "pasta"}}, {"name": {"value": "tea"}},
+            {"name": {"value": "laundry"}}, {"name": {"value": "oven"}},
+            {"name": {"value": "homework"}}, {"name": {"value": "exercise"}},
+            {"name": {"value": "break"}}, {"name": {"value": "meeting"}}
+          ]
+        },
+        {
+          "name": "AIRLINE",
+          "values": [
+            {"name": {"value": "Delta", "synonyms": ["Delta Air Lines", "Delta Airlines", "D. L."]}},
+            {"name": {"value": "American", "synonyms": ["American Airlines", "A. A."]}},
+            {"name": {"value": "United", "synonyms": ["United Airlines", "U. A."]}},
+            {"name": {"value": "Allegiant", "synonyms": ["Allegiant Air", "G. four"]}},
+            {"name": {"value": "Frontier", "synonyms": ["Frontier Airlines", "F. nine"]}},
+            {"name": {"value": "Air Arabia", "synonyms": ["G. nine"]}}
+          ]
+        },
+        {
+          "name": "APPOINTMENT_TITLE",
+          "values": [
+            {"name": {"value": "dentist", "synonyms": ["dental appointment", "dental cleaning"]}},
+            {"name": {"value": "doctor", "synonyms": ["doctor appointment", "checkup"]}},
+            {"name": {"value": "eye exam", "synonyms": ["eye doctor"]}},
+            {"name": {"value": "haircut", "synonyms": ["hair appointment"]}},
+            {"name": {"value": "car service", "synonyms": ["oil change", "car appointment"]}},
+            {"name": {"value": "school meeting", "synonyms": ["parent teacher meeting"]}},
+            {"name": {"value": "meeting"}},
+            {"name": {"value": "annual physical"}},
+            {"name": {"value": "lunch"}},
+            {"name": {"value": "veterinarian", "synonyms": ["vet appointment"]}}
+          ]
+        }
+      ]
+    }
+  }
+}

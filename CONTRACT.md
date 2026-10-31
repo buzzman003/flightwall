@@ -1,0 +1,92 @@
+# Flight Wall implementation contract
+
+Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame + optional OpenGL LED postprocessing, logical 512x256. No emulator shader assumption. Python 3.12 development, frozen Linux build. Config/state separate from versioned app. App launcher in Ports. Offline demo works without credentials, with visible DEMO labels. FC View via read-only Google OAuth; no user secrets included in distribution.
+
+Shared data conventions (plain JSON dictionaries):
+
+- config keys: `calendar_name` (FC View), `calendar_id` (empty), `airline` (empty until selected), `demo` (true until Google setup), `timezone` (UTC), `rotation_seconds` (15), `logical_width` (512), `logical_height` (256), `brightness` (0.7), `glow` (0.25), `dot_gap` (0.22), `led_effect` (true), `show_deadheads` (true), `takeover_hours` (18), `sleep_start` (23:00), `sleep_end` (06:00), `sleep_enabled` (false), `nearby_enabled` (false), `flightaware_enabled` (false), `flightaware_poll_seconds` (120), `updates_enabled` (false), `update_manifest_url` (empty), `update_public_key` (empty), `update_interval_minutes` (15), `public_url` (empty), `control_port` (8765).
+- Each flight: `id`, `number` (string, may have airline prefix), `origin` and `destination` (IATA codes), `start` and `end` (RFC3339 with offset), `deadhead` (bool), optional `report` RFC3339, `source` calendar name. Do not pass crew/raw private descriptions to renderer or public logs.
+- Snapshot: `flights` list, `last_sync` RFC3339 or null, `error` sanitized string or null, `source` string, `demo` bool. All dates timezone-aware.
+- Renderer state: snapshot plus `now` RFC3339, `view` (`details`, `map`, `schedule`, `nearby`), optional `live` (position details explicitly from real provider; never fabricate a live marker). `render_frame(state, config, size=(512,256)) -> PIL.Image.Image RGB`. `selected_flight` supplied by app or renderer selects upcoming/in-progress flight. Output must label scheduled interpolation as schedule estimate, not live. Offline map geometry bundled.
+- Root owns app.py, config.py, main.py, pyproject/requirements, integration, tests and packaging finalization. No agent should modify another agent's files without messaging.
+- Default data root: `/userdata/system/configs/flightwall` on Batocera, override `FLIGHTWALL_DATA_DIR`. Install root `/userdata/roms/ports/.data/flightwall`; versioned releases under `releases/<version>`, root `current` symlink, updater stages `pending` for next safe launch. Stable launcher/config kept outside releases.
+- Remote endpoint on 127.0.0.1:8765, MCP + OAuth protected endpoints; network exposure only explicitly configured via HTTPS proxy such as Tailscale Serve/Funnel. No arbitrary shell/exec tool. Remote operations via callbacks from main app: status, validated settings updates, calendar refresh, update check. Service may run outside GUI for schedule caching/updater.
+- VERSION 0.4.0 source candidate; last published and installed version 0.3.0. Development/test verification must be distinguished from physical Batocera testing.
+
+Household cards (v0.2.0): PersonalStore persists appointments/dinner in a private
+JSON file outside releases, independent of read-only Google. Each card has id,
+kind, title, start/end/display_start/display_end RFC3339, timezone, source.
+Appointment visible local midnight through end; default duration60minutes.
+Dinner visible14:30–19:00 for its local date. End is exclusive. Runtime status
+includes currently visible personal_items. TV inserts one personal view into
+the usual rotation and cycles the selected card on each visit. Real household
+cards stay real while flights may still be in demo mode. Config personal_enabled
+controls display, alexa_enabled is local-only and defaults false.
+
+Alexa custom skill runs via AWS Lambda with configured SkillID and a dedicated
+voice-only token. Public HTTPS proxy required. Voice credential can create/cancel
+cards and obtain only timezone/default windows; it cannot read the flight roster,
+Google credentials or normal control APIs. Request IDs provide retry deduplication.
+No actual Amazon/AWS account is configured by the build environment.
+
+Household integration (v0.3.0): HouseholdCalendars owns verified per-profile
+read-only calendar roles and exact custody intervals. Runtime.display_status
+contains only currently eligible cards; Runtime.status is maintenance/MCP and
+strips Lisa messages, private artwork and health cards. GUI uses the dedicated
+static-admin /api/v1/display route and build_rotation individual slots. Recheck
+privacy/expiry on every frame, including paused views and backend outages.
+
+Household context uses explicit fresh Home/Away for each adult plus custody
+Home/Away. Never infer presence from flights, Google sign-in or missing phone
+reports. Lisa private requires LisaHOME ChrisAWAY kidsAWAY and explicit enabled
+consent. Guest mode hides all messages plus Lisa private cards. Flight focus
+uses actual non-demo flight windows independently of presence: default60s
+flight views interleaved with15s regular views, from60min before to60min after.
+
+PresenceStore accepts OwnTracks HTTP Basic or per-person bearer credentials,
+retains state only, and expires to Unknown. Notifications use independent
+per-profile credentials. MessageFeeds requests approved snippets only, never
+attachments/full mail bodies, and enforces Chris rental/lawyer restrictions.
+SourceContent retains chosen design/artwork cards and dated PubMed/ClinicalTrials
+metadata. Health is not AI-generated. Optional OpenAI design generation sends
+only configured interests with store:false and a local daily cap.
+
+The authenticated /setup wizard owns scoped Google Web OAuth + PKCE, separate
+Gmail consent, CSRF-protected browser sessions and individual phone pairing.
+Desktop CLI OAuth remains available. Credentials, consent, household caches,
+images and API keys stay in private DATA outside versioned releases. Exact
+home addresses and real calendar IDs must never ship in artifacts.
+
+Next-version integration (0.4.0 source, not yet a Linux release):
+
+- Display remains 512x256 with aspect-fit default and optional integer scaling.
+  Timers use a centered top strip, shopping a right-to-left bottom ticker.
+  Both animate the full content inset without bypassing per-frame privacy.
+  Stored scheduling zones remain intact; all TV times use config.timezone.
+- Outside flight focus, trip_summary/trip_map appear only within the configured
+  flight_preview_days (default 5). They show the next five calendar days of
+  upcoming legs, explicitly dated; no inferred rotation identifier. Three-leg
+  legend pages preserve every leg. Demo still shows its labeled flight views.
+  Without a near trip, home and eligible household views lead the rotation.
+- Custody outlook uses ten local calendar days, exact parsed Mom/Dad intervals,
+  local-midnight DST boundaries, and Unknown for conflicts/gaps/stale sync.
+  VPS/PNS/ECP visit cards are roster highlights, never presence observations.
+  Only an immediate matching operating outbound establishes a VPS duration;
+  an intervening deadhead breaks that inference.
+- timers.json, flight-watches.json, shopping/ and phone-invites/ belong in DATA.
+  Voice routes explicitly allow timers, Flight Wall shopping-list actions and
+  creation of public airline/date watches. They never expose private calendars,
+  mail, credentials or arbitrary settings. Clearing the list requires consent.
+- Public watches share the operating-feed paid request budget and yield to
+  operating requests. Disabled/unconfigured/ambiguous/stale results are labeled
+  honestly. No provider connection is implied by saving a watch request.
+- Shopping alerts require explicit Lisa opt-in, a paired fresh report, verified
+  store fences and configured SMS sender. At most one send attempt is reserved
+  per America/Chicago day across all stores; uncertain sends are not retried.
+  No coordinate history or real contacts ship. Generic maintenance status gets
+  only shopping count/visibility; TV and voice list routes have explicit access.
+- Lisa invitations use one-time expiring fragment tokens, hashes on disk and a
+  separate session/CSRF. Lisa alone consents to phone pairing. Invite sessions
+  cannot access admin settings, Chris's state, private cards, or mail. Pairing
+  does not imply a verified phone report; background reliability needs a real
+  locked-phone outing. No SMS, private cards or Gmail consent is implied.

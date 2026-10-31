@@ -1,0 +1,73 @@
+FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
+Updated October 31, 2026
+
+CURRENT SCOPE
+
+Local 0.4.0 source implements the ten-day custody outlook and the expanded
+features described in RELEASE-0.4.0.txt. See NEXT-VERSION-PLAN.txt for design
+requirements and VALIDATION.txt for evidence. Source changes do not update a
+Batocera executable or an Alexa deployment by themselves.
+
+TEN-DAY CUSTODY OUTLOOK
+
+Show today and the next nine days with clear Mom's House / Dad's House labels.
+Preserve exact-title matching, calendar time zones, DST, end-exclusive intervals,
+recurrences and conservative handling of gaps/overlaps. Mixed days must show the
+change; missing, conflicting or stale data stays Unknown. Keep the 512 x 256
+logical display readable. Real operating flights retain priority and longer
+flight/map views near departures and arrivals. Forecast custody dates do not
+establish physical presence or unlock private cards.
+
+RELEASE AND DEVICE CHECKS
+
+1. Run the required Linux tests and older-glibc native build; audit frozen assets
+   and native compatibility. Windows dummy-display checks do not replace OpenGL.
+2. Build/sign/publish using the existing Ed25519 workflow only after the relevant
+   checks pass. Keep VERSION and flightwall.__version__ identical and newer than
+   the last published release; never reuse a published version.
+3. Verify a real 0.3.0-to-0.4.0 executable upgrade, next-launch activation,
+   startup rollback and preservation of credentials/settings/recovery helper.
+4. Check the ten-day outlook, display fit, timers, ticker, trip views and motion
+   on the physical TV. Deploy the matching Alexa handler/model and verify its
+   new intents on an actual Echo.
+5. Validate opted-in phones with real locked/background outings and stationary
+   freshness. The iPhone invitation still needs its real-device consent/import/
+   permissions/report checks. Keep shopping/private cards off until their own
+   opt-in and configuration requirements are satisfied.
+6. For store SMS, verify store centers and accuracy, configure sender/recipient
+   privately, then perform an explicitly agreed delivery/receipt and arrival
+   test, including once-per-day suppression. Native Alexa-list export remains
+   an unverified optional adapter; no inbox access or recurring send is implied.
+
+PRESERVATION REQUIREMENT
+
+Credentials, logins, caches, artwork, calendar roles and mutable settings stay
+in /userdata/system/configs/flightwall, outside versioned releases. Back up this
+data privately before an upgrade; never place it in release files, source
+control, a public website or chat. Preserve logins during app updates while
+recognizing that provider expiry/revocation may independently require sign-in.
+Keep the original pinned known-good recovery helper and trusted public key.
+
+ALEXA FOLLOW-UP
+
+The original 0.3.0 interaction model reused Title with inconsistent slot types.
+Amazon's build requires a reused slot name to have the same type and meaning.
+The 0.4.0 source model corrects this. Preserve appointment confirmation and
+validate standard/unlisted titles, follow-up title prompts and live speech.
+Custom slots may accept unlisted values; do not promise SearchQuery-equivalent
+recognition without verification.
+https://developer.amazon.com/en-US/docs/alexa/custom-skills/create-the-interaction-model-for-your-skill.html#intent-and-slot-name-requirements
+
+The explicit phrase "Alexa, open Flight Wall skill" passed a real Echo check
+for 0.3.0. Simpler variants had inconsistent routing; the cause is unproven.
+Use disposable synthetic cards when checking speech, and remove only their
+verified IDs. Source/simulator tests do not prove arbitrary spoken-title support.
+
+DEPLOYMENT LONGEVITY
+
+Review the actual hosting account's plan, quotas, expiry and billing choices
+before relying on long-term Alexa availability. A free allowance does not by
+itself establish indefinite hosting. Keep account balances, contact details,
+identifiers and billing history out of public documentation. Deployment/billing
+changes require their own authorization; this task file enables no such changes.
+Official AWS Free Tier policy: https://aws.amazon.com/free/free-tier-faqs/

@@ -1,0 +1,637 @@
+FLIGHT WALL 0.3.0 — HOUSEHOLD SETUP FOR CHRIS AND LISA
+
+START HERE AFTER INSTALLING THE APP
+
+This guide connects your own accounts and phones to the household display.
+Install the Batocera package first using QUICKSTART.txt or INSTALL.txt.
+Upgrading from 0.1.0 or 0.2.0 preserves the private data directory and original
+recovery helper. Open Flight Wall from Ports once after installing an upgrade,
+let its screen appear, and then use the new setup page.
+
+The first launch includes a setup card and labeled demo flights. The setup
+card remains until you choose Finish setup with my saved choices. You can
+finish without connecting every optional service and return later.
+
+No household account, phone, address, API key, or calendar ID is supplied in
+the download. ChatGPT's connected calendars do not authorize this standalone
+app. Google and phone connections below require your own explicit setup.
+
+The setup page has eight sections:
+
+  1. The everyday view           Home timezone and display timing
+  2. Your Google accounts       Separate Calendar and optional Gmail consent
+  3. Flights & family days      Verified flight and Mom/Dad calendar choices
+  4. Who's home                 Private home pin and each adult's own phone
+  5. Messages that matter       Selected rental/lawyer or personal previews
+  6. Lisa's private space       Optional source cards, research and artwork
+  7. Helpful connections        Optional OpenAI API, ChatGPT and Codex
+  8. Trip details               Chosen hotel/layover details
+
+Names and screen order can vary slightly as the app evolves. Save each section
+before moving on. Closing the page does not automatically save an edited form.
+
+
+PART 1 — OPEN THE OWNER'S SETUP PAGE
+
+1. Connect to Batocera from a normal computer. Replace this example IP:
+
+   ssh root@192.168.1.50
+
+   In that Batocera terminal, set this shortcut:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   "$FW" --version
+
+   Use 0.3.0 or a later release supporting household setup. If an upgrade is
+   still selected as 0.2.0, open and close it from Ports to activate the staged
+   update. Keep the old releases and recovery helper for rollback.
+
+2. The setup page is available while the display app or background service
+   is running. For setup while the TV app is closed, close the Ports app,
+   then start the optional service:
+
+   batocera-services enable flightwall
+   batocera-services start flightwall
+
+   Enabling it makes it start on subsequent boots. Starting it runs it now.
+   These commands do not automatically open the TV display over your games.
+
+3. To configure locally before publishing an HTTPS address, open another
+   terminal on your NORMAL COMPUTER and keep this tunneled SSH session open:
+
+   ssh -L 8765:127.0.0.1:8765 root@192.168.1.50
+
+   In that same computer's browser, visit:
+
+   http://localhost:8765/setup
+
+   This HTTP exception is only for a localhost SSH tunnel. An unencrypted
+   http://192.168... LAN URL is not the setup login path. If you changed the
+   board's control_port, use that same port on both sides of the tunnel and
+   in the browser URL. For example, control_port 9000 needs:
+
+   ssh -L 9000:127.0.0.1:9000 root@192.168.1.50
+   http://localhost:9000/setup
+
+4. On your own Batocera/SSH terminal, display the local administrator token:
+
+   "$FW" remote-info --show-token
+
+   Enter its control_token value in the page's Setup token password field.
+   Do not put it in the browser address, Google client JSON, phone presence
+   settings, screenshots, or a chat. This is the owner's administrator token.
+   It is different from the Alexa and phone-pairing tokens.
+
+5. Choose Open household setup. The browser uses a private session after
+   login; it does not keep sending that administrator token in page URLs.
+   Sign out when finished, especially on a shared computer. An expired
+   session requires another local sign-in; your saved settings remain.
+
+6. Google browser sign-in and phones reporting from outside the home need
+   your configured HTTPS address. Follow INSTALL.txt Part 9 to install
+   Tailscale static binaries and enable the flightwall_tailscale service.
+   Private Tailscale Serve works for your own connected devices, while
+   Tailscale Funnel provides a public HTTPS address for ordinary phones,
+   Alexa Lambda, and a cloud-hosted ChatGPT connector.
+
+   With Funnel chosen, the relevant command on Batocera is:
+
+   TS=/userdata/system/configs/flightwall/tailscale/bin/tailscale
+   TS_SOCKET=/userdata/system/configs/flightwall/tailscale/tailscaled.sock
+   "$TS" --socket="$TS_SOCKET" funnel --bg http://127.0.0.1:8765
+
+   Use your actual control port if different. Approve HTTPS/Funnel in your
+   own Tailscale account. Forward all paths to the app, including /setup,
+   /setup/oauth/callback, /mcp, and the phone endpoints. No SSH/router
+   port-forwarding rule is needed. Installing Tailscale alone is not sharing.
+
+7. Note the actual HTTPS origin printed by Tailscale. Close the TV app and
+   set that origin on Batocera, replacing this placeholder hostname:
+
+   batocera-services stop flightwall
+   "$FW" config --set public_url https://YOUR_DEVICE.YOUR_TAILNET.ts.net
+   batocera-services start flightwall
+
+   public_url is the origin only, with no /setup or /mcp suffix. Open the
+   actual HTTPS address followed by /setup and sign in there. HTTP localhost
+   and public HTTPS have separate browser sessions. Test /health using a
+   phone on cellular data before relying on external phone reports.
+
+   For the Google browser flow below, public_url must already be configured
+   and the callback reachable over HTTPS. The older Desktop CLI method in
+   CALENDAR.txt remains an alternative for Calendar authorization.
+
+
+PART 2 — SET THE EVERYDAY VIEW
+
+1. Choose The everyday view. For your Destin home, set Home time zone to:
+
+   America/Chicago
+
+   This is an IANA timezone and follows Central daylight-saving transitions.
+   Flight events keep their actual timestamp offsets. Home-local dates,
+   dinner windows, and household display timing use your chosen timezone.
+
+2. Use these starting values:
+
+   Seconds per regular view:       15
+   Flight focus, seconds:          60
+   Focus before a flight, minutes: 60
+   Focus after a flight, minutes:  60
+
+   Regular family cards run for about 15 seconds each. During a real flight's
+   hour before departure, scheduled flight itself, and hour after arrival,
+   longer flight details/map slots alternate with the shorter family cards.
+   Your phone can be in airplane mode: a real roster can control this timing
+   without claiming you are physically home or away.
+
+   When Chris is known Away, nearby traffic is suppressed and eligible
+   current layover cards can appear. Schedule-based maps remain planned
+   routes; aircraft positions require a configured actual live-data source.
+
+3. Guest mode hides message previews and Lisa's private cards. Turn it on
+   before visitors can see the screen. You can also press G in the TV app.
+   Turning it off does not override each person's consent, fresh presence,
+   or the kids rule. Guest mode changes display visibility, not the Google
+   permissions you previously granted.
+
+4. Save the everyday view. Existing installations retain their prior timing
+   until you choose new values; an upgrade does not replace your preferences.
+
+
+PART 3 — PREPARE GOOGLE'S BROWSER SIGN-IN ONCE
+
+You need your own Google Cloud project because this standalone display uses
+its own Google authorization. The app does not receive your Google password.
+
+1. On your normal computer, open https://console.cloud.google.com/ and create
+   or select a project you control, such as Flight Wall Personal.
+
+2. Enable Google Calendar API. Only if someone chooses Gmail previews later,
+   also enable Gmail API. Calendar permission by itself never enables Gmail.
+
+3. In Google Auth Platform / OAuth consent screen, complete Branding and
+   Audience using your own contact information. An ordinary personal Google
+   account uses External. Add Chris as a test user, and add Lisa only if she
+   will connect her own account to this project. Google Workspace policy can
+   require administrator approval for an organization's account.
+
+4. An External project left in Testing normally gives these Calendar/Gmail
+   refresh tokens a seven-day lifetime. For continuing personal use, review
+   Google's requirements and switch the audience publishing status to In
+   production when appropriate, then authorize again. An unverified-project
+   warning may still appear. Production does not promise permanent tokens
+   or override a managed account's policy. Do not publish the app's secrets.
+
+5. Open Clients / Credentials and create an OAuth client of type:
+
+   Web application
+
+   This is the right client type for the browser wizard. The Desktop app JSON
+   used with the older SSH callback is not interchangeable with this client.
+
+6. In the wizard's Your Google accounts section, copy the exact redirect
+   URI shown on the screen. Its shape is:
+
+   https://YOUR_ACTUAL_HOST/setup/oauth/callback
+
+   Add that exact value under the Web client's Authorized redirect URIs.
+   Match HTTPS, hostname, and path exactly. If asked for an origin, the origin
+   is the HTTPS hostname without a path. Download the Web client JSON to your
+   normal computer. It contains a client secret: upload it only through your
+   own authenticated setup form, not into this conversation or a release.
+
+7. The same project/Web client JSON can be used for your household profiles
+   if the accounts are allowed by that project's audience settings. The app
+   saves each person/service separately. Each person still approves their own
+   Google sign-in; sharing a client JSON is not sharing a Google login/token.
+
+
+PART 4 — CONNECT ONLY THE GOOGLE SERVICES YOU WANT
+
+1. Open Your Google accounts. Start with Chris's Read-only Calendar row.
+   Chris reviews/checks the consent box, chooses the downloaded Web client
+   JSON, and selects Save client JSON. Then choose Continue to Google.
+
+2. At Google, choose the account that can read your FC View and Buzz Flight
+   Brief calendars. Do not assume the browser's default signed-in account
+   is the correct one. Approve only the requested read access:
+
+   Calendar event reading
+   Calendar-list reading
+
+   The app cannot add/edit/delete calendar events through these scopes.
+   Google must already show the calendar/subscription to that account.
+
+3. After Google redirects back, choose Return to setup. Reopen Flights &
+   family days and choose List Chris's calendars to verify actual API access.
+   Stored authorization is not proof that an account still works indefinitely;
+   the fresh list/check is the useful verification.
+
+4. If Lisa's custody calendar is already shared with Chris and appears in
+   Chris's verified list, use that shared calendar through Chris. Lisa does
+   not need to connect a second Google account for the same readable source.
+
+5. If Lisa needs her own unshared calendar, she can use Lisa's Read-only
+   Calendar row, review her consent box, upload the Web client JSON, and
+   continue to Google with her OWN account. This is optional and calendar-only
+   by default. Then choose List Lisa's calendars in the calendar section.
+
+6. Keep the Read-only Gmail rows disconnected unless that person wants mail
+   previews. Gmail is a separate consent and a separate stored token. To use
+   it, enable Gmail API in the project, let the person choose their own Gmail
+   row and consent box, upload its Web client JSON, and complete its Google
+   sign-in. Later, select senders in Messages that matter before enabling
+   previews. Google grants a read-only Gmail scope; the app's additional
+   filters decide which selected summaries it retrieves and displays.
+
+7. Existing 0.1/0.2 Chris Calendar authorization is preserved/migrated into
+   the Chris profile. If it still works, list calendars and keep it instead
+   of reconnecting unnecessarily. Reauthorization or a different client type
+   is an explicit choice. Lisa and Gmail are never enabled by that migration.
+
+
+PART 5 — CHOOSE THE FLIGHT AND CUSTODY CALENDARS
+
+1. Open Flights & family days. Use List Chris's calendars and, only if you
+   connected her own account, List Lisa's calendars. The lists come from your
+   actual authorized accounts. The app does not select a calendar merely
+   because its name resembles Family, Kids, or a person's name.
+
+2. Select FC View for Chris's primary flight calendar. Select Buzz Flight
+   Brief as the optional second flight calendar if you want both sources.
+   Use the choices actually returned for your account. Save these calendars.
+   A verified primary choice switches from demo data to the real roster.
+
+3. For Account that can read the custody calendar, choose Chris if Lisa's
+   shared calendar is readable through him. Otherwise choose Lisa's own
+   authorized profile. Select the actual calendar containing the custody
+   entries, then choose Check Mom / Dad labels.
+
+4. Confirm the preview recognizes the intended entries:
+
+   Mom's House / Mom’s House -> kids Home at this household
+   Dad's House / Dad’s House -> kids Away from this household
+
+   Exact Mom and Dad aliases are supported too, with case/edge whitespace
+   normalized. An unrelated Family/Kids calendar or an event merely mentioning
+   Mom is not automatically a custody schedule. Verify that this Mom/Home
+   mapping describes the home where you installed the board.
+
+5. Enable the kids rule using this verified custody calendar and save. When
+   enabled, dinner cards appear during their dinner window only while the
+   selected schedule says the kids are Home. The dinner default remains
+   14:30 to 19:00 in the home timezone. A local appointment appears from its
+   local day's midnight until its actual end, normally one hour after its
+   start; there is no extra post-appointment hour.
+
+6. The default custody freshness limit is 30 minutes. No covering event,
+   overlapping Mom/Dad entries, an expired cache, or a failed/unavailable
+   source makes the kids state Unknown. Missing Mom is not interpreted as
+   Dad. Unknown does not unlock Lisa's private cards or kids-filtered dinner.
+   Fix the calendar/source or refresh it rather than overriding that signal
+   with a guess. The custody state is a schedule, not the child's GPS.
+
+
+PART 6 — SET YOUR HOME PIN AND PAIR EACH PERSON'S PHONE
+
+1. Open Who's home. While physically at home, use this phone's current
+   position or enter your chosen home latitude/longitude yourself. Review
+   the location before saving. Using a browser at an airport would save the
+   wrong home pin. No real home address/pin is shipped in this app.
+
+2. Start with a home radius of 200 meters and a presence expiry of 90 minutes.
+   Save home settings. The home pin stays in the private data directory; it
+   is not included in public status or program releases. Nearby traffic, if
+   separately enabled, also uses your chosen home coordinates.
+
+3. Chris selects his own phone type and reviews the phone consent box.
+   Select Save phone choice & generate pairing credential. Copy the one-time
+   pairing details into Chris's own phone setup. They disappear from the page
+   after one minute. Repeat separately with Lisa on her own consent panel.
+
+   Pairing selects a person; it does not install a background phone app.
+   A browser location permission supplies that one browser observation, not
+   continuous presence. Do not reuse the administrator or Alexa token here.
+
+4. For either iPhone or Android, install OwnTracks from its official app
+   store/source and configure HTTP mode. No MQTT broker or device topic is
+   needed for this app. Use these connection settings:
+
+   Chris endpoint: https://YOUR_ACTUAL_HOST/api/v1/presence/chris
+   Lisa endpoint:  https://YOUR_ACTUAL_HOST/api/v1/presence/lisa
+
+   HTTP Basic authentication username: chris OR lisa, exactly matching
+                                      that endpoint's last component
+   HTTP Basic authentication password: that person's new presence token
+
+   In OwnTracks versions that group credentials under Identification, use
+   those Username/Password fields and enable authentication. Keep the URL
+   free of usernames/passwords. Other clients can use the supplied Bearer
+   header instead. Always use HTTPS for external phone reports.
+
+5. On iPhone, allow OwnTracks the location/background permissions it requests
+   for your chosen reporting mode; check iOS Location Services for Always
+   and Precise Location where available. On Android, allow the required
+   background/all-the-time location and the app's background battery access.
+   Review these choices on each person's own phone. Menu names vary by OS.
+
+6. If you use an OwnTracks region, call the relevant region Home. Enter/leave
+   transitions for other names do not mean arriving/leaving Home. Ordinary
+   location reports can instead be compared with the private board geofence;
+   their phone coordinates are used for that calculation then discarded by
+   the board. The board stores latest Home/Away/Unknown and observation time,
+   not a route history. OwnTracks itself has its own local app/history choices.
+
+7. Enable opted-in phone presence and save. Send an initial report from each
+   phone, then refresh connection status. Test a real departure and return.
+   Also test while the phone is locked and stationary for longer than the
+   expiry interval. Phone OS background limits matter: entering an endpoint
+   into setup is not proof that reports will continue.
+
+8. Arrival/departure alone is not a stationary heartbeat. Use an appropriate
+   OwnTracks monitoring/periodic reporting mode and verify its behavior on
+   the actual phone. If reports stop, presence becomes Unknown after the
+   configured interval. An iPhone Shortcut can manually report Home/Away or
+   link to Arrive/Leave automations as documented in PRESENCE.txt; periodic
+   iOS automation is not guaranteed. Do not change Unknown into Home merely
+   because a phone was last seen home yesterday.
+
+9. Private Lisa cards require ALL of the following at once:
+
+   Lisa explicitly enabled her private feature;
+   Lisa's fresh phone state is Home;
+   Chris's fresh phone state is Away;
+   The verified, fresh custody schedule says the kids are Away;
+   Guest mode is off.
+
+   Unknown/stale data for any required person or custody source hides the
+   private cards. Phone presence reports where a phone is, not proof of who
+   is standing beside the TV. Guest mode remains the explicit visitor control.
+
+10. Pairing again rotates only that person's presence token, clears their
+    state to Unknown, and invalidates their old token. Update that person's
+    phone with the new credential, then send a fresh report. Presence and
+    notification tokens are different. See PRESENCE.txt for timestamp errors,
+    explicit Shortcut JSON, token revocation, and the complete phone reference.
+
+
+PART 7 — OPTIONAL RENTAL, LAWYER, AND PERSONAL MESSAGE PREVIEWS
+
+1. Read MESSAGES.txt for the full mail/phone integration details. Start with
+   Messages that matter in setup. Leave every optional source off until the
+   corresponding person wants it. These cards do not send replies.
+
+2. For Chris, connect his Gmail separately if desired. Supported rental mail
+   sources are Airbnb, VRBO and HomeAway. Add approved lawyer sender addresses
+   or the specific law firm's domain. Use an exact address for a lawyer using
+   Gmail/Outlook/etc.; an entire public mail domain is not a lawyer filter.
+   Then approve/save Chris's selections and enable household message cards.
+
+3. Chris's eligible previews require fresh Chris Home presence and guest mode
+   off. Short previews are limited by the app, normally 180 characters. An
+   authorization failure, changed filters, or unsupported sender should not
+   turn into a general inbox display.
+
+4. Lisa can leave Gmail entirely disconnected. If she wants mail previews,
+   she connects her own Gmail row and chooses only the senders/domains she
+   wants. She approves her own choices in this section. Lisa's messages also
+   require her full private-room conditions from Part 6.
+
+5. Phone notifications are a separate optional bridge. Each person chooses
+   permitted notification app names, approves their choices, and generates
+   their own phone notification credential. This token is not the presence
+   token. Its endpoint is /api/v1/notifications/chris or /lisa.
+
+6. Android can use a compatible owner-installed notification listener or an
+   automation app such as Tasker to send selected notifications by HTTPS.
+   That phone-side tool needs its own notification-access permissions. The
+   board does not install or configure it automatically. Chris's current
+   phone bridge accepts only Airbnb/VRBO/HomeAway; Lisa chooses her own
+   permitted source apps. Follow MESSAGES.txt's small JSON payload and send
+   only the selected sender/short preview with a fresh timestamp.
+
+7. An ordinary iPhone app cannot generally read other apps' notifications or
+   bulk-forward the Messages database in the background. A compatible manual
+   Share/Shortcut input can forward something the person explicitly supplies,
+   where iOS allows it. There is no universal automatic iPhone SMS/iMessage
+   reader in this application. Use selected Gmail or a supported explicit
+   phone-side bridge; selecting iPhone in setup does not bypass that limit.
+
+
+PART 8 — LISA'S OPTIONAL PRIVATE RESEARCH, INSPIRATION AND ARTWORK
+
+1. Lisa opens Lisa's private space herself. These features start off. She
+   chooses whether to enable private cards, research, and/or inspiration,
+   reviews the consent box, and saves her selections. No health topic is
+   prefilled or inferred from another account.
+
+2. For research, Lisa enters a topic/search query she wants sent to the
+   selected research services and enables source cards. The implementation
+   retrieves real publication/study metadata from PubMed and ClinicalTrials.gov:
+
+   Source title and URL;
+   Publication date or study-update date;
+   Publication/study metadata and last-checked time.
+
+   These are source cards, not generated clinical recommendations. Publication
+   dates and last-checked times mean different things; an old publication does
+   not become a new medical result because it was checked today. Open the
+   original source to read the full context. Cards missing source/date/freshness
+   checks are not eligible for the private research rotation.
+
+3. A saved research query is not read back into the page's text field. Blank
+   means keep the saved query. Use the explicit clear option to remove it.
+   Clearing/disabling a feature stops it from unlocking display cards. All
+   research display still requires Lisa Home, Chris Away, kids Away, guest
+   off, and Lisa's explicit opt-in. No OpenAI key is required for source research.
+
+4. Lisa can add her own short inspiration/source card, choose public HTTPS
+   RSS/Atom source URLs, or upload a PNG/JPEG artwork image in the same panel.
+   The uploaded image limit is 5 MB and 16 megapixels; the app prepares a
+   512 x 256 display copy and removes image metadata. It does not download
+   arbitrary artwork from a private account. Your own images are an easy
+   starting point.
+
+5. Optional inspiration topics are separate from research terms. They are
+   sent to OpenAI only if Lisa separately enables that feature in Helpful
+   connections. Her mail, custody schedule, phone coordinates, health query,
+   and flight roster are not included in that inspiration request by this
+   integration. Saved source/artwork cards do not require an OpenAI API key.
+
+
+PART 9 — OPTIONAL OPENAI, CHATGPT AND CODEX CONNECTIONS
+
+1. The board works without an OpenAI API key. If you want the optional
+   inspiration generation feature, use an API key from your own OpenAI API
+   account at https://platform.openai.com/api-keys. Create a key for your own
+   API project and enter it in Helpful connections > Optional OpenAI API.
+   API billing is separate from a ChatGPT subscription. Set/check your own
+   API billing controls before using paid API calls.
+
+2. Choose Save key privately. The field clears afterward and the page reports
+   that a key is saved, without returning it. It is stored owner-only on the
+   board in openai.key, outside releases. Do not paste it into a chat or source
+   repository. The Test API connection button makes one small request containing
+   only "Reply with OK." Successful testing confirms API access, not all future
+   model permissions or free usage. A missing/invalid key leaves basic features
+   available and does not create substitute household data.
+
+3. Lisa separately chooses her inspiration topics, approves sending only those
+   topics, and enables optional OpenAI inspiration. Generate one optional card
+   to verify the request. It keeps the same private display conditions as her
+   other inspiration cards. API access does not authorize Calendar or Gmail.
+
+   Generated inspiration keeps the latest 12 generated ideas, with at most
+   100 saved cards total. Older generated ideas are removed first, preserving
+   your chosen manual cards/artwork.
+   The default daily generation limit is five; the small Test API connection
+   request is separate from that generation limit. If manual cards fill their
+   capacity, generation refuses before making another billed request.
+
+4. ChatGPT uses the MCP URL shown in this section, ending in /mcp. Follow
+   REMOTE.txt to create the supported connector and approve its browser OAuth
+   connection. Available connector features depend on your account/workspace.
+   The token for that approval is the local administrator/control token, entered
+   only into your own app's HTTPS approval page. An OpenAI API key does not
+   connect ordinary ChatGPT conversations to this device automatically.
+
+5. Codex code changes need your own connected source repository and signed
+   release workflow. Follow UPDATE-CHANNEL.txt and UPDATES.txt to provision
+   the release host/public verification key. Existing bounded app tools can
+   change supported settings, refresh data and check signed updates; they
+   do not grant an arbitrary remote shell. New code activates at the next
+   safe Ports launch after the configured signed channel stages it.
+
+
+PART 10 — OPTIONAL HOTEL AND LAYOVER DETAILS
+
+1. In Trip details, enable the hotel cards you choose to show. Enter an airport,
+   hotel name, optional city, and actual layover start/end including offsets.
+   For example, a synthetic layover could use:
+
+   Airport: MEM
+   Hotel:   Your selected hotel
+   Start:   2026-11-03T15:00:00-06:00
+   End:     2026-11-04T08:00:00-06:00
+
+   Replace these with the real details you want on your household display.
+   These fields do not look up a hotel booking or contact a hotel.
+
+2. With hotel details explicitly enabled, supported flight-calendar Hotel/
+   Layover entries can provide narrowly labeled hotel metadata. The parser
+   accepts supported timed/labeled records; it does not guess a booking from
+   arbitrary crew notes or show entire descriptions. When disabled, normal
+   flight synchronization does not request descriptions for this purpose.
+
+3. Layover cards need a known Chris Away report and a current layover window.
+   Missing/ambiguous hotel details remain absent. The board does not infer
+   accommodation from a route or invent a hotel if the source has none.
+
+
+PART 11 — FINISH AND CHECK THE REAL HOUSEHOLD BEHAVIOR
+
+1. Save your chosen sections and choose Finish setup with my saved choices.
+   This removes the first-run setup card. You can come back to /setup later;
+   finishing does not automatically connect an unchecked optional service.
+
+2. Sign out. Open Flight Wall from Ports. Check the home clock, current real
+   flights, dinner/appointment visibility and verified Mom/Dad mapping.
+
+3. Test phone Home/Away from both actual devices. Then verify these cases:
+
+   Chris Home: only his chosen eligible message previews can appear.
+   Chris Away: nearby traffic is suppressed; current chosen layovers can appear.
+   Lisa Home + Chris Away + kids Away + Lisa opt-in: eligible private cards.
+   Unknown/stale required signal: private Lisa cards remain hidden.
+   Guest mode on: message previews and Lisa's private cards disappear.
+
+   Test an actual phone departure, return, locked/stationary period, and a
+   period without reports. A mock/manual state does not prove background
+   geofencing on a phone works. The app's fail-closed behavior is intentional.
+
+4. Test real Google list/sync access rather than relying only on an "authorized"
+   badge. Confirm a real matching Mom/Dad event currently covers the time.
+   Verify a genuine calendar flight has the right airport/date/offset before
+   enabling other optional content. Cached data shows its actual sync/error state.
+
+5. Existing Alexa dinner/appointment setup still uses its separate voice token
+   and Lambda skill. Read ALEXA-SETUP.txt for its account steps. Alexa does not
+   gain access to the new private mail/research/calendar setup just because
+   the board now has those optional features.
+
+
+PART 12 — RECOVERY, BACKUPS AND LIMITS
+
+Cannot open /setup:
+  Verify the app/service is running, your localhost SSH tunnel or configured
+  HTTPS origin is correct, and /health works. Do not use an unencrypted LAN
+  URL to send administrator credentials. Check public_url locally if the host
+  changed. Reopen a fresh signed-in setup session after a service restart.
+
+Google says redirect_uri_mismatch:
+  Use a Web application JSON with the exact HTTPS /setup/oauth/callback URI
+  displayed by the wizard. Desktop JSON belongs to the separate CLI method.
+  Verify Google Calendar API is enabled, the correct Google account is allowed,
+  and it can actually read the selected calendar. Gmail requires Gmail API and
+  its own consent; reconnect only the affected person/service.
+
+Phone state is Unknown:
+  Confirm per-person endpoint, exact Basic username, current pairing token,
+  presence enabled, current timestamps and real background reports. An initial
+  pairing or home pin does not make a person Home. See PRESENCE.txt.
+
+Private cards are absent:
+  Check all required consent/privacy signals and guest mode. Review the exact
+  custody source and its freshness. Missing data should stay Unknown rather
+  than opening a private card. See MESSAGES.txt for source selection failures.
+
+Saved secret field looks empty:
+  Some fields deliberately do not return a stored secret/query. Check the
+  saved-status label. Blank normally keeps existing saved private topics;
+  use a provided clear control to remove one. Never attach your data directory
+  to a support chat to diagnose a blank field.
+
+Upgrade/backups:
+  Data normally lives under /userdata/system/configs/flightwall. This includes
+  accounts/chris and accounts/lisa authorization, presence and notification
+  tokens, personal.json, household caches, optional artwork/content, and any
+  OpenAI key. Program releases live separately. Back up private data only to
+  your own trusted storage; it contains credentials and personal information.
+  Do not put it inside release archives, public repositories, or update hosts.
+
+  The installer preserves this data and the original update-helper link.
+  Existing 0.1/0.2 Chris credentials can be migrated without enabling Lisa or
+  Gmail. Do not delete the old release directory that supplies the helper.
+  Actual OAuth tokens remain subject to Google expiry/revocation and policy.
+
+What still requires your real setup:
+  Your Google project and account approvals; selecting the actual shared
+  custody calendar; each person's phone consent and background location test;
+  optional Android forwarding; real API billing/key setup; and the device's
+  HDMI/GPU behavior. This download does not perform those account/device
+  actions. There is no general iPhone SMS/iMessage API, automatic proof of
+  household occupancy, automatic medical recommendation, or preconnected
+  ChatGPT backchannel in the installer.
+
+Further references:
+  INSTALL.txt — Batocera transfer, Ports, services and Tailscale
+  CALENDAR.txt — Google details and Desktop CLI fallback
+  PRESENCE.txt — OwnTracks/Shortcuts, report formats and freshness
+  MESSAGES.txt — approved mail/notification filters and payloads
+  REMOTE.txt — actual ChatGPT/Codex MCP authentication
+  UPDATE-CHANNEL.txt / UPDATES.txt — signed code releases
+  ALEXA-SETUP.txt — optional private Alexa dinner/appointment skill
+
+Official sources:
+https://developers.google.com/identity/protocols/oauth2/web-server
+https://developers.google.com/identity/protocols/oauth2#expiration
+https://developers.google.com/workspace/calendar/api/auth
+https://developers.google.com/workspace/gmail/api/auth/scopes
+https://owntracks.org/booklet/tech/http/
+https://owntracks.org/booklet/guide/apps/
+https://owntracks.org/booklet/guide/app/android/
+https://owntracks.org/booklet/tech/json/
+https://tailscale.com/docs/features/tailscale-funnel
+https://pubmed.ncbi.nlm.nih.gov/
+https://clinicaltrials.gov/data-api/api

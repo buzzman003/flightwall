@@ -1,0 +1,233 @@
+FLIGHT WALL: VALIDATION RECORD
+
+Public validation record. Source checks, historical native-build checks and
+physical-device checks are identified separately. A source result does not
+establish that a matching signed Linux executable has been delivered.
+
+LOCAL 0.4.0 SOURCE VALIDATION - OCTOBER 31, 2026
+
+* Full Windows Python 3.12 source suite: 491 passed, 48 platform-dependent
+  skips, 273 subtests passed. SDL used its dummy driver on this Windows host;
+  this is not the required Linux offscreen-OpenGL release validation. The
+  retained Linux shell/install/recovery, symlink, POSIX and real shader checks
+  must pass in the Linux release environment. Windows skips remain explicit;
+  Linux permission assertions were retained. Result: .local-install/
+  next-version-pytest-final.txt (private development output, not in releases).
+* One additional uncertain-pair regression was added after full-suite
+  collection and passed separately: a failed response after phone credential
+  rotation cannot issue a second credential on retry. The complete invitation
+  suite and release-privacy follow-up passed 23 tests and 51 subtests.
+* Synthetic HTTP Lambda-to-Runtime integration verified timer creation/retry/
+  list/cancel; Flight Wall shopping add/retry/show/confirmed clear; and a public
+  flight request which truthfully reports tracking unconfigured. Dedicated
+  voice credentials remained rejected by admin display/status/MCP routes.
+* Synthetic tests cover ten-day custody gaps/conflicts/DST, five-day lead-in,
+  trip pagination, deadhead interruptions in VPS layovers, same-date dinner
+  replacement, shopping deduplication, once-per-Chicago-day SMS reservation,
+  accuracy/consent guards, and public provider identity/day/ambiguity/budgets.
+  No real paid-provider request or SMS was sent.
+* Real loopback HTTP invitation tests cover owner login/CSRF, one-use fragment
+  tokens, Lisa-only sessions, explicit consent, revocation, query rejection,
+  and exclusion of admin settings, home pins and other people's data. Actual
+  iPhone installation/import/location permissions remain untested.
+* Real Chrome setup QA passed at 1280, 390 and 320 pixel widths with no
+  horizontal overflow. TV-fit save/reload used the real local setup router
+  and configuration store. Invitation controls and Lisa consent/retry/expiry
+  flows used synthetic phone API responses on an isolated local test server.
+  A disabled retry-button bug was corrected and retested, including duplicate
+  click prevention, concealed credentials and an honest waiting-for-report
+  state. No real phone pairing, HTTPS deployment or location was claimed.
+  The temporary server was stopped and browser test tabs were closed.
+* A Windows concurrency race in pre-lock initialization was reproduced and
+  removed. Ten separate six-instance personal-card saves produced exactly one
+  card per request. Shopping/invite concurrency regressions also passed.
+  Linux locking/private-file modes remain intact; Windows filesystem behavior
+  is not evidence of Batocera permission validation.
+* Synthetic display previews were inspected for timer/ticker placement, date-
+  colored trip maps, paged legends, trip rows, local visits, custody and home.
+  Header/card times now use the configured household timezone. Real TV fit,
+  motion, controller use and frozen OpenGL still need the next-release check.
+* Signed-release inventory checks reject misplaced phone/SMS credentials,
+  shopping lists, invitations and other private runtime files. Four packaging
+  tests and 51 subtests passed. Source packaging uses an explicit allowlist and
+  excludes .local-install, credentials, caches, venv and all private DATA paths.
+* The GitHub release workflow now runs pytest (including function-based tests)
+  and requires an actual offscreen OpenGL context. At the source-check snapshot
+  recorded here, that release workflow had not yet run.
+* Both source version files report 0.4.0. No Linux binary was built, signed,
+  published, installed or activated; no deployed Alexa model/Lambda changed.
+  These source checks do not replace a native release or upgrade validation.
+
+Outstanding 0.4.0 gates: Linux pytest/native build/compatibility audit, real
+0.3.0-to-0.4.0 executable upgrade and rollback, signed delivery, TV/Echo tests,
+real consenting iPhone reports, verified store coordinates and SMS setup. Native
+Alexa list export through daily email or a hidden calendar remains unverified;
+no such import or recurring message has been enabled. See RELEASE-0.4.0.txt.
+
+PHYSICAL BATOCERA 0.3.0 VALIDATION - OCTOBER 31, 2026
+
+* The unchanged original installer matched published SHA-256
+  086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08
+  on Windows and after transfer to Batocera. The archive remained intact.
+* After completion of the operating-system update and reboot, authenticated
+  SSH verified x86_64 Batocera 43.1, kernel 6.18.16, on an HP ProDesk 405 G4
+  Desktop Mini with Ryzen 5 PRO 2400GE. Installation proceeded only after
+  checking for a stable games menu and absence of an active/pending updater.
+* Fresh native installation reported 0.3.0. The executable Ports launcher,
+  current release and original pinned recovery helper were checked. SSH
+  host-key verification remained enabled; credentials were entered privately.
+* The actual HDMI TV displayed the setup card and labeled DEMO flights.
+  Later real flight display and roster timing were confirmed on that TV.
+  This establishes basic startup/data display, not a complete graphics,
+  fullscreen-fit, motion or controller audit.
+* Real app Google Calendar authorization and calendar-list retrieval passed.
+  Selected flight/custody roles were verified using the app's parser. Public
+  validation omits account identifiers, calendar names, contents, counts,
+  custody state and connection timestamps. Calendar access does not establish
+  Gmail consent or phone presence.
+* Loopback setup access and a configured public HTTPS route passed. Cellular
+  health reachability was confirmed. Unauthenticated private status, display
+  and MCP routes rejected access. This does not establish a ChatGPT connector.
+* One opted-in Android manually published an actual OwnTracks location report
+  that the app accepted and classified. This does not validate stationary or
+  locked/background reporting, departure/arrival accuracy or a real iPhone.
+* The deployed 0.3.0 Alexa integration completed synthetic dinner and confirmed
+  appointment writes through its real HTTPS path. Actual Echo spoken launch,
+  dinner and appointment flows also passed; only inspected disposable cards
+  were removed after checks. Voice credentials could not access admin routes.
+  "Alexa, open Flight Wall skill" worked on the tested Echo. Shorter invocation
+  variants had inconsistent routing; broader speech coverage remains unproven.
+* A real model build exposed inconsistent types for the reused Title slot.
+  Matching the Title types permitted that deployment to build. The corrected
+  versioned source model still needs its own build and speech validation.
+* Actual TV/background-service handoff passed: one GUI-owned listener while
+  Ports was open; one background-owned listener after a normal exit to games.
+  Local/public health remained available and the pinned recovery was preserved.
+
+Account setup journals, billing details, contact data, provider identifiers,
+private network addresses and household observations are excluded from this
+public record. None of the 0.3.0 physical checks proves 0.4.0 native behavior.
+
+HISTORICAL 0.3.0 LINUX SOURCE AND NATIVE VALIDATION
+
+The Linux suite counts and build checks below are earlier validation; they
+were not rerun for this installation of the unchanged published executable.
+
+The download contains a native Linux x86_64 application with its own Python
+runtime, plus source and setup instructions. This is implemented software,
+not just display mockups. Fresh installations use labeled fictional flights.
+
+The final v0.3.0 source suite passed 370 tests and 183 subtests. JavaScript
+syntax and shell-script syntax checks passed. These counts do not include
+real Google app sign-in, phone background operation or account deployments.
+
+0.3.0 HOUSEHOLD CHECKS
+
+* Separate Chris/Lisa Calendar clients, private legacy migration, actual-list
+  verification, role-binding isolation, primary/secondary flight deduplication,
+  recurring all-day custody intervals, timezone/DST, exact Mom/Dad labels,
+  overlapping events and stale/failed sync returning Unknown.
+* Narrow optional hotel parsing from explicitly labeled timed layover entries.
+  Raw descriptions, crew lists and hotel contacts are not persisted. Manual
+  hotel input and inferred flight gaps do not invent hotel names.
+* Presence storage/HTTP routes: iPhone/Android-compatible OwnTracks HTTP Basic,
+  scoped bearer alternatives, geofence accuracy, replay/order/future checks,
+  expiration, token rotation, concurrency and GPS-coordinate disposal.
+* Independent notification credentials and Gmail read-only fixtures. Rental/
+  lawyer filters, Lisa sender choices, metadata-first retrieval, approved short
+  snippets, bounded cache expiry and conservative reply hints. No email sends.
+* Real HTTP/MCP privacy integration: the TV's admin-only display route can show
+  eligible private cards; maintenance/status/MCP excludes Lisa's messages,
+  artwork and health cards. Phone/Alexa/OAuth credentials cannot read that
+  private display route or use each other's restricted endpoints.
+* Real GUI control-loop checks for 60/15-second slot timing, postflight flight
+  selection, fair card rotation, paused card expiry, stale custody transitions,
+  backend outages, and immediate guest hiding even when saving fails.
+* Explicit known Home/Away requirements. An actual flight roster can control
+  flight focus without inferring physical presence during airplane mode.
+* Artwork re-encoding, EXIF removal, bounded PNG/JPEG input, no arbitrary image
+  paths, source-cache corruption, dated research freshness and source links.
+* ClinicalTrials.gov/PubMed parsing with synthetic responses. Cards carry
+  registration/publication metadata and actual source dates from those
+  fixtures; no fabricated clinical news or generated treatment claims.
+* Optional OpenAI design requests use store:false and only configured design
+  interests. Tests cover private-data exclusion, a shared daily generation cap,
+  corrupt-counter handling, no call when disabled/full, and retention of the
+  latest twelve generated ideas without removing manually chosen artwork.
+  No paid API request was made. The explicit small connection-test request is
+  separate from the generation cap and is described on its button/form.
+* Browser setup: per-person consent, calendar-only defaults, separate Gmail
+  scopes, state/PKCE callbacks, one-time OAuth state, staged client uploads,
+  token-rotation session revocation, CSRF/Origin checks and secret redaction.
+* Actual Chromium desktop/mobile walkthrough: login, saved settings, unverified
+  calendar guard, Lisa consent rejection/approval, finish marker, screenshots,
+  no JavaScript errors and no horizontal mobile overflow. Google/provider
+  endpoints were not contacted by this browser walkthrough.
+* Backward-compatible terminal commands and scoped account/role selection.
+
+NATIVE BUILD AND INSTALLATION CHECKS
+
+* Debian 12 frozen Linux executable: diagnostics, offline PNG export and real
+  OpenGL GUI launch with shader=True. All three browser setup assets are
+  bundled and served by the native executable, without Node/npm on the device.
+* All 17 embedded application modules match the tested source after normalizing
+  build filenames; HTML/JavaScript/CSS hashes match the source assets exactly.
+* ELF audit of 238 native objects: maximum required GLIBC version 2.36, below
+  Batocera 42's documented 2.40 baseline. The bundle includes 75 license notices.
+* Fresh isolated native installation: browser setup cookie login, CSRF-protected
+  settings save, Finish setup and background service/GUI handoff.
+* Actual previous 0.2.0 installer/executable upgraded to 0.3.0: next-launch
+  activation and health check, original pinned recovery helper, private legacy
+  and Chris/Lisa Google fixtures, phone/notification tokens, chosen content,
+  artwork, trusted update key and existing brightness all preserved. No real
+  credentials were used in these checks; all private fixtures were synthetic.
+
+EXISTING FUNCTIONALITY RECHECKED
+
+* Appointment/dinner persistence, local date/timezone/DST, exact end-time expiry,
+  one-hour default appointments, 14:30-19:00 dinners, same-date replacement,
+  retry IDs, cancellation and concurrent independent processes.
+* Actual loopback HTTP integration from the Alexa Lambda handler to the wall.
+  Skill ID validation, appointment confirmation, ambiguous values, timezone,
+  safe plain-text speech and dedicated voice-token isolation. These tests do
+  not build a real Amazon voice model or test an Echo's speech recognition.
+* Calendar title parsing, reports, deadheads, cancellations, overnight flights,
+  OAuth refresh, pagination and private caches. Supported title examples are
+  synthetic; unsupported real roster formats still need a redacted example.
+* Official MCP SDK initialization/tools plus synthetic OAuth discovery,
+  registration, consent, PKCE and token exchange. Test transports do not prove
+  a public HTTPS deployment or actual ChatGPT custom-app connection.
+* OpenGL framebuffer orientation, LED cell gaps and letterboxing through SDL
+  offscreen/Mesa, including 1080p presentation; software fallback preserved.
+* Signed update integrity, archive safety, version floor, partial staging,
+  next-launch activation, pinned recovery helper and startup rollback.
+* Live/nearby flight-provider fixtures, wrong-day/route matches and stale fixes.
+
+REMAINING DEVICE AND PROVIDER CHECKS
+
+* The 0.4.0 Linux suite, frozen build, compatibility audit, actual executable
+  upgrade/rollback and signed-delivery gates remain distinct from Windows tests.
+* Every deployment needs its own graphics-driver, TV, gamepad and account checks.
+  Reconfirm actual flight/custody data after selecting calendars. Authorization
+  in ChatGPT does not authorize this app; provider revocation/expiry can require
+  a new app sign-in independently of an update.
+* Each opted-in phone needs locked/background, stationary, departure/arrival,
+  accuracy, battery-policy and expiry-to-Unknown tests. iPhone does not expose
+  a general inbox/all-notification feed; selected Android notifications need
+  a separately configured phone automation.
+* Optional FlightAware, OpenAI or SMS integrations need configured accounts,
+  entitlement, spending controls and explicitly approved live tests. A ChatGPT
+  subscription does not include separately billed API usage. No live paid API
+  or SMS request was made for the source checks recorded here.
+* Actual ChatGPT custom-MCP support and account connection require separate
+  verification. Public internet reachability alone is not a connector or shell.
+* The new Alexa model/handler requires a matching board release, real model build
+  and Echo checks for timers, shopping commands and public-flight watches.
+  Review deployment-account service limits and longevity privately.
+* Research feeds need current relevant sources for the selected topic. Cards
+  are reading leads, not medical advice or evidence of individual suitability.
+
+The application does not know who is standing in front of the TV. Phone reports
+and scheduled custody events control display choices, not access to the room.
+Use guest mode when appropriate. Start with DEMO, verify your own flights, then
+opt into integrations one at a time using HOUSEHOLD-SETUP.txt.

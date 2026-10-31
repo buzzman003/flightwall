@@ -1,0 +1,263 @@
+name: Build and publish signed Flight Wall update
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Pull requests never receive signing credentials. Publishing runs only on main.
+permissions:
+  contents: read
+
+concurrency:
+  group: flightwall-release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out trusted main commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare test environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends binutils libegl1 libgl1-mesa-dri libglx-mesa0 libx11-6 libxext6 libxrender1 libxi6 libxrandr2 libxcursor1 libasound2t64 libpulse0 fonts-dejavu-core
+          python3 -m venv .ci-venv
+          .ci-venv/bin/python -m pip install --disable-pip-version-check -r requirements-build.txt
+          .ci-venv/bin/python -c 'import pygame, OpenGL.GL, mcp; print("Required native/SDK test dependencies import successfully")'
+
+      - name: Validate matching numeric release versions
+        id: version
+        run: |
+          .ci-venv/bin/python - <<'PY'
+          import os
+          from pathlib import Path
+          from flightwall import __version__
+          from flightwall.updater import version_tuple
+          version = Path('VERSION').read_text(encoding='ascii').strip()
+          version_tuple(version)
+          if version != __version__:
+              raise SystemExit('VERSION and flightwall/__init__.py __version__ must match. Bump both for each new release.')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('version=' + version + '\n')
+          PY
+
+      - name: Run automated tests
+        env:
+          SDL_VIDEODRIVER: offscreen
+          SDL_AUDIODRIVER: dummy
+          FLIGHTWALL_REQUIRE_OPENGL: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          PYGAME_HIDE_SUPPORT_PROMPT: '1'
+        run: |
+          .ci-venv/bin/python -m pytest -q --junitxml=linux-tests.xml
+          .ci-venv/bin/python - <<'PY'
+          import xml.etree.ElementTree as ET
+          suites = ET.parse('linux-tests.xml').getroot().iter('testsuite')
+          if any(int(suite.get(field, '0')) for suite in suites for field in ('failures', 'errors', 'skipped')):
+              raise SystemExit('Linux release tests must pass without skipped native, OpenGL, or security checks.')
+          PY
+
+      - name: Obtain the immutable original executable upgrade baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir baseline
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          repo = os.environ['GITHUB_REPOSITORY']
+          pages = json.loads(subprocess.check_output(['gh', 'api', '--paginate', '--slurp', f'repos/{repo}/releases']))
+          candidates = [release for page in pages for release in page
+                        if (release.get('draft') is True or release.get('prerelease') is True) and
+                        (release.get('tag_name') == 'validation-baseline-0.3.0' or
+                         release.get('name') == 'Original 0.3.0 installer — validation baseline')]
+          if len(candidates) != 1:
+              raise SystemExit('Exactly one original 0.3.0 validation-baseline draft or prerelease is required.')
+          assets = [asset for asset in candidates[0].get('assets', []) if asset.get('name') == 'flightwall-batocera-0.3.0.tar.gz']
+          if len(assets) != 1 or assets[0].get('size') != 46842226 or type(assets[0].get('id')) is not int:
+              raise SystemExit('The original baseline asset is missing or has unexpected metadata.')
+          with Path('baseline/flightwall-batocera-0.3.0.tar.gz').open('xb') as output:
+              subprocess.run(['gh', 'api', f"repos/{repo}/releases/assets/{assets[0]['id']}", '-H', 'Accept: application/octet-stream'], stdout=output, check=True)
+          PY
+          printf '%s\n' '086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08  baseline/flightwall-batocera-0.3.0.tar.gz' | sha256sum --check --strict
+
+      - name: Build Linux x86_64 application using Debian 12
+        env:
+          FLIGHTWALL_PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: sh scripts/build-linux.sh
+
+      - name: Package the complete candidate installer and companion files
+        run: .ci-venv/bin/python scripts/package.py
+
+      - name: Require frozen Linux, graphics, installation, upgrade and rollback acceptance
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          docker build --build-arg "BUILD_IMAGE=flightwall-builder:$RELEASE_VERSION" \
+            -f scripts/Dockerfile.native-validation -t "flightwall-native-validation:$RELEASE_VERSION" .
+          mkdir native-output
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+            --read-only --tmpfs /tmp:rw,exec,nosuid,size=2g \
+            -v "$PWD:/workspace:ro" -v "$PWD/native-output:/validation-output:rw" \
+            -e FLIGHTWALL_NATIVE_ISOLATED=1 --workdir /workspace \
+            "flightwall-native-validation:$RELEASE_VERSION" \
+            python scripts/validate-native.py --release "releases/$RELEASE_VERSION" \
+              --installer "artifacts/flightwall-batocera-$RELEASE_VERSION.tar.gz" \
+              --baseline baseline/flightwall-batocera-0.3.0.tar.gz --source /workspace \
+              --output /validation-output/native-validation.json
+          cp native-output/native-validation.json native-validation.json
+
+      - name: Package unsigned frozen application for publishing job
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: tar -C releases -czf unsigned-linux.tar.gz "$RELEASE_VERSION"
+
+      - name: Transfer unsigned application
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unsigned-flightwall-${{ steps.version.outputs.version }}
+          path: |
+            unsigned-linux.tar.gz
+            native-validation.json
+            linux-tests.xml
+            artifacts/*
+          retention-days: 2
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      RELEASE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - name: Check out release tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Require configured release signing key
+        env:
+          FLIGHTWALL_SIGNING_KEY: ${{ secrets.FLIGHTWALL_SIGNING_KEY }}
+          SIGNING_KEY_FILE: ${{ runner.temp }}/flightwall-release-signing.pem
+        run: |
+          python3 - <<'PY'
+          import os
+          key = os.environ.get('FLIGHTWALL_SIGNING_KEY', '')
+          if not key.strip():
+              raise SystemExit('Missing FLIGHTWALL_SIGNING_KEY Actions secret. Follow docs/UPDATE-CHANNEL.txt; never commit a private key.')
+          fd = os.open(os.environ['SIGNING_KEY_FILE'], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+          with os.fdopen(fd, 'w', encoding='ascii') as output:
+              output.write(key.rstrip() + '\n')
+          PY
+
+      - name: Require a new version and unused release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'This version already has a release. Bump VERSION and flightwall/__init__.py before pushing again.' >&2
+            exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$RELEASE_VERSION" >/dev/null 2>&1; then
+            echo 'This version tag already exists. Choose a new higher numeric version.' >&2
+            exit 1
+          fi
+
+      - name: Download frozen application
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: unsigned-flightwall-${{ needs.build.outputs.version }}
+
+      - name: Sign and independently verify update files
+        env:
+          SIGNING_KEY_FILE: ${{ runner.temp }}/flightwall-release-signing.pem
+        run: |
+          mkdir unsigned
+          tar -xzf unsigned-linux.tar.gz -C unsigned
+          python3 -m venv .sign-venv
+          .sign-venv/bin/python -m pip install --disable-pip-version-check cryptography==46.0.3
+          .sign-venv/bin/python scripts/validate-native.py --release "unsigned/$RELEASE_VERSION" --verify-report native-validation.json
+          .sign-venv/bin/python scripts/make_release.py build \
+            --source "unsigned/$RELEASE_VERSION" \
+            --version "$RELEASE_VERSION" \
+            --url "https://github.com/$GITHUB_REPOSITORY/releases/download/v$RELEASE_VERSION/flightwall-release.zip" \
+            --private-key "$SIGNING_KEY_FILE" \
+            --output signed
+          mv "signed/FlightWall-$RELEASE_VERSION-linux-x86_64.zip" signed/flightwall-release.zip
+
+      - name: Verify exact signed archive contents and export public verification material
+        env:
+          SIGNING_KEY_FILE: ${{ runner.temp }}/flightwall-release-signing.pem
+        run: |
+          .sign-venv/bin/python - <<'PY'
+          import base64, hashlib, importlib.util, json, os, shutil, tempfile
+          from pathlib import Path
+          from cryptography.hazmat.primitives import serialization
+          from flightwall.updater import safe_extract, verify_manifest
+          spec = importlib.util.spec_from_file_location('native_gate', 'scripts/validate-native.py')
+          gate = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(gate)
+          signed = Path('signed')
+          key = serialization.load_pem_private_key(Path(os.environ['SIGNING_KEY_FILE']).read_bytes(), password=None)
+          public = key.public_key()
+          manifest = json.loads((signed / 'manifest.json').read_text())
+          verify_manifest(manifest, public)
+          with tempfile.TemporaryDirectory() as temporary:
+              release = Path(temporary) / 'release'
+              safe_extract(signed / 'flightwall-release.zip', release, os.environ['RELEASE_VERSION'])
+              gate.verify_report(release, Path('native-validation.json'))
+          (signed / 'flightwall-signing-public.pem').write_bytes(public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+          (signed / 'public-key.txt').write_text(base64.b64encode(public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode() + '\n')
+          shutil.copy2('native-validation.json', signed / 'native-validation.json')
+          shutil.copy2('linux-tests.xml', signed / 'linux-tests.xml')
+          for path in sorted(Path('artifacts').iterdir()):
+              if path.is_file() and path.name != 'SHA256SUMS.txt':
+                  shutil.copy2(path, signed / path.name)
+          with (signed / 'SHA256SUMS.txt').open('w') as output:
+              for path in sorted(signed.iterdir()):
+                  if path.is_file() and path.name != 'SHA256SUMS.txt':
+                      with path.open('rb') as stream:
+                          checksum = hashlib.file_digest(stream, 'sha256').hexdigest()
+                      output.write(checksum + '  ' + path.name + '\n')
+          PY
+
+      - name: Publish complete release and advance latest channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.txt <<'NOTES'
+          Signed Linux x86_64 Flight Wall update and complete offline installer.
+          The app verifies manifest.json against the public key provisioned locally on your display.
+          The update ZIP is for existing installations; use the versioned Batocera tar.gz for first install.
+          Updates activate at the next safe Ports launch and preserve calendar credentials/settings.
+          Release gates require all Linux tests, real frozen OpenGL/software rendering, a fresh install,
+          a genuine original 0.3.0 executable upgrade and failed-start rollback with synthetic private data.
+          See native-validation.json and linux-tests.xml. These are not physical TV/phone or live Alexa checks.
+          NOTES
+          gh release create "v$RELEASE_VERSION" \
+            signed/* \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Flight Wall $RELEASE_VERSION" --notes-file release-notes.txt --draft
+          gh release edit "v$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+      - name: Remove temporary private signing key
+        if: always()
+        env:
+          SIGNING_KEY_FILE: ${{ runner.temp }}/flightwall-release-signing.pem
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          Path(os.environ['SIGNING_KEY_FILE']).unlink(missing_ok=True)
+          PY

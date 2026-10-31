@@ -1,0 +1,171 @@
+LISA'S IPHONE INVITATION -- NEXT-VERSION SOURCE
+Reviewed October 31, 2026
+
+This is implemented next-version source and synthetic validation, not a live
+phone connection. These tests sent no invitation and rotated no real phone
+credential. A versioned and signed Linux build must pass the release workflow
+before this source is deployed; each phone user must consent independently.
+
+Owner flow
+----------
+The administrator signs in to household setup with its existing control-token
+session. POST /setup/phone/invite is an admin-only, CSRF-protected action. It calls
+PhoneInviteRouter.create(body), accepting only person=lisa, phone_type=iphone,
+and optional expires_minutes from 15 through 1440 (default 60).
+
+The result contains id, url, expires_at, person, one_use. The URL has the form:
+  https://YOUR-CONFIGURED-HOST/setup/lisa#invite=ONE-USE-SECRET
+
+The owner sends that link to Lisa himself through his chosen app. This code does
+not read Alexa contacts, obtain her phone number, send SMS/email, or store her
+contact details. The fragment is not sent in the initial HTTP request. The page
+removes it from browser history before exchanging it in a same-origin JSON POST.
+It is still a bearer invitation: whoever receives the original link could open
+Lisa's limited phone setup. Send it directly and do not publish or paste it in chat.
+
+Only the SHA-256 token hash is persisted, in private
+  DATA/phone-invites/lisa.json
+with a private lock in that directory. The invitation is bound to the configured
+HTTPS origin and current administrator control-token hash. New invitations replace
+old invitations and invalidate their scoped browser sessions. Admin credential
+rotation, public-origin changes, expiry or explicit invite revocation also
+invalidate access. No raw invitation, admin, session or phone secret is retained
+in this invitation state. The actual phone bearer credential stays in the
+existing private PresenceStore, outside releases, as required for authentication.
+
+POST /setup/phone/invite/revoke is also admin-only and CSRF-protected. It calls
+revoke({id}). Revoking/expiring an invitation closes that setup access; it does
+not silently unpair a phone that Lisa already finished configuring. To stop
+reporting, Lisa can set OwnTracks to manual or turn off its iOS location access.
+The administrator can replace the existing Lisa phone credential through normal
+authorized pairing if it must be invalidated. No invitation expiry deletes games,
+calendar authentication, household settings, or other people's phone credentials.
+
+Lisa's limited page
+-------------------
+GET /setup/lisa and its app.js/style.css are public static assets. They contain
+no home pin, calendar data, credentials, contact details or other profile state.
+POST /setup/lisa/exchange consumes the invitation once and grants only a separate
+FlightWallLisaSetup cookie: Secure, HttpOnly, SameSite=Strict, Path=/setup/lisa.
+Its in-memory session lasts at most 30 minutes and cannot outlive the invitation.
+It cannot authenticate the normal admin setup routes. Restarting the service
+forgets browser sessions while keeping already-consumed invitations consumed.
+The owner must issue a new invitation if that happens before pairing completes.
+
+The page first helps Lisa install OwnTracks. It then asks Lisa explicitly to
+approve pairing her own iPhone for Home/Away. POST /setup/lisa/pair requires her
+scoped session, same origin, separate X-Lisa-CSRF nonce, and this exact consent:
+  {owner_consent:true, consenting_person:"lisa", phone_type:"iphone"}
+
+The one-use pairing operation rotates only Lisa's presence credential, records
+her phone-presence consent, and saves only presence_enabled=true and
+lisa_phone_type=iphone. It does not enable shopping SMS, private cards, Gmail,
+notifications, or administrative access. A pairing reservation is persisted
+before credential rotation so an ambiguous retry cannot rotate the phone twice.
+If the connection fails mid-step, ask the owner for a new invitation.
+
+The pairing response is displayed once for one minute, with an OwnTracks .otrc
+download and manual connection fields. The downloaded file contains the new
+phone credential and must be deleted after successful import. The page does not
+write secrets to localStorage/sessionStorage, analytics, query strings or logs.
+Closing/reloading loses the one-time display; status never reveals it again.
+
+The file uses OwnTracks' documented configuration format:
+  _type=configuration, mode=3 (HTTP), url=the HTTPS Lisa presence endpoint,
+  auth=true, username=lisa, password=her dedicated phone credential, tid=LI,
+  deviceId=iphone, monitoring=1 (Significant), days=0,
+  allowinvalidcerts=false, remoteConfiguration=false,
+  allowRemoteLocation=false, cmd=false.
+No home waypoint, coordinates or administrator credential is included.
+
+Current OwnTracks iOS release notes state external config files/URLs are disabled
+by default and must be explicitly enabled in the app. That flag cannot be enabled
+by an imported file. The UI explains the choice to enable/review the downloaded
+configuration or use manual HTTP settings instead; it does not bypass the app's
+guard. The import interaction and current iOS labels need a real iPhone test.
+
+Verification and privacy
+------------------------
+GET /setup/lisa/status returns only person, csrf, paired, verified, state and
+observed_at. paired means a credential was created, not that the phone connected.
+verified is true only when the current Lisa credential still matches this pairing
+and PresenceStore has a real owntracks-location report newer than pairing, less
+than five minutes old, and no more than two minutes in the future. Manual states,
+transition-only events, old reports, replaced credentials, missing data, disabled
+presence and read failures never count as verification. The page does not show
+Chris, children, GPS coordinates, private content or Google connection state.
+This proves a recent report reached Flight Wall, not that background reporting
+works reliably. An actual locked-phone Away/Home outing test remains necessary.
+
+The page describes iOS location permissions as a user choice: Always for
+background reporting, Precise Location for meaningful Home/Away, cellular data,
+and Background App Refresh. iOS can request permissions in stages. Low Power
+Mode can pause background refresh, so the initial test should be performed with
+it off. Significant monitoring avoids constant movement-mode GPS, but the iOS
+movement-based update timing is not a fixed heartbeat. It may not report a 50m
+store arrival. Do not promise automatic shopping arrivals based only on this
+setup, or silently copy another phone's battery preferences to the iPhone.
+
+The selected days=0 requests that OwnTracks keep no local location history.
+Flight Wall's PresenceStore retains the current normalized state, not GPS history.
+The app's general privacy policies and iOS permission choices still apply.
+
+Integration
+-----------
+In OnboardingRouter.__init__, import PhoneInviteRouter locally after SetupError
+is defined and create PhoneInviteRouter(self). Dispatch its handle(handler,
+method,path) before the ordinary setup-session requirement. The child router
+claims only /setup/lisa and its subpaths. Parent admin routes must call create
+and revoke only after normal admin cookie/CSRF checks. The child reuses the
+parent's origin validation, bounded JSON body parsing, no-store/no-referrer/CSP
+response headers, setup_save callback and consent-record helper. It does not
+create an administrator session or return the control token.
+
+All assets and APIs use the configured public HTTPS origin. Plain localhost is
+permitted only to read the static page for development; the scoped pairing APIs
+require the configured HTTPS host. No port forwarding or service is configured
+by this module. The Flight Wall display/background service must already be up.
+
+Validation
+----------
+19 synthetic tests passed on Windows Python 3.12.14. They cover fragment/hash
+storage, one use, strict Lisa/iPhone scope, cookie boundaries, admin-route refusal,
+origin/CSRF/consent, one credential operation (including retry after an uncertain
+failure), no unrelated settings changes,
+post-pair real-report freshness, manual/stale rejection, current credential
+matching, concurrent invitation creation, revocation, expiry, admin rotation,
+origin change, restart, and static
+asset/privacy checks. Fake presence records contain no real locations.
+Two tests use the real RemoteServer HTTP transport on loopback, including owner
+login/CSRF/create, scoped phone pairing, admin/display isolation and revocation.
+The headers model an HTTPS reverse proxy; this is not a real TLS or iPhone test.
+Windows sandbox loopback was blocked initially; these two tests passed with
+authorized loopback access. The real-transport query test also detects setup
+dispatch incorrectly dropping query strings before the invitation guard.
+
+Real Chrome visual review passed with synthetic API responses at 390px and
+320px widths, including consent, a pending request, failed-response retry,
+one-time credential display and an honest waiting-for-report state. No horizontal
+overflow was observed. This does not replace a real iPhone/HTTPS deployment test.
+
+Required before shipping: Linux full suite/build. Required before claiming phone
+setup works on a real device: an opted-in iPhone test of file/manual setup,
+permissions, manual report and background Away/Home. Source-level tests do not
+establish any live connection.
+
+Primary references
+------------------
+OwnTracks iOS app and current external-configuration security behavior:
+https://apps.apple.com/us/app/owntracks/id692424691
+OwnTracks configuration files:
+https://owntracks.org/booklet/features/remoteconfig/
+OwnTracks configuration JSON keys:
+https://owntracks.org/booklet/tech/json/
+OwnTracks iOS reporting and battery modes:
+https://owntracks.org/booklet/features/ios/
+OwnTracks location mode behavior:
+https://owntracks.org/booklet/features/location/
+Apple location permission controls:
+https://support.apple.com/en-us/102515
+Apple background refresh and Low Power Mode:
+https://developer.apple.com/documentation/uikit/uiapplication/backgroundrefreshstatus

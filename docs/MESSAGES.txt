@@ -1,0 +1,157 @@
+SELECTED EMAIL SUMMARIES AND PHONE NOTIFICATIONS
+Flight Wall 0.3.0
+
+These optional features start disabled. Calendar authorization and ChatGPT's
+Google connections do not authorize the installed app to read Gmail. Each person
+must consent separately on their own profile in Flight Wall setup.
+
+EMAIL SETUP
+
+1. Open the app's setup page using the address or QR code shown on the display.
+   The general setup guide explains how to create your own Google OAuth client
+   and enable the Google Calendar API and optional Gmail API in that project.
+
+2. Chris can choose the Gmail connection on his profile. Its selected mail is
+   limited to unread Inbox messages from Airbnb, VRBO/HomeAway, and lawyer
+   addresses or domains that Chris explicitly enters. Rental sender domains are
+   airbnb.com, vrbo.com, and homeaway.com, including their subdomains.
+
+3. Enter exact lawyer addresses, such as counsel@example-law-firm.com. Use a
+   domain only if every sender at that firm should be eligible. No lawyer is
+   inferred from private email, a case name, a keyword search or an address book.
+   Leaving the lawyer fields empty means no lawyer summaries are retrieved.
+   For a lawyer using Gmail, Outlook or another public mail provider, enter the
+   exact address. A whole public-provider domain is not a lawyer-only filter.
+
+4. Lisa's default is calendar-only. She must explicitly enable her own optional
+   Gmail connection and choose sender addresses/domains before any of her mail
+   is retrieved. An empty sender list never becomes a whole-inbox search.
+
+5. Read Google's consent page. The requested Gmail scope is gmail.readonly.
+   Google's permission covers read access to that account's mailbox; Flight Wall
+   applies the narrower selected-sender rules inside the app. It has no mail
+   sending, deleting, marking-read or label-changing functions. Declining Gmail
+   access leaves the calendar and other display features available.
+
+HOW A SUMMARY WORKS
+
+The app searches only unread Inbox messages from selected senders received in
+the last day. It checks each actual From address locally as well as using a
+server-side query. A sender display name containing 'Airbnb' does not qualify.
+
+For approved messages it requests only the short Gmail snippet, subject,
+timestamps, labels and thread identifiers needed for the summary. It requests
+selected headers first; only after the sender passes does a partial response
+request the snippet. Full bodies, attachments, recipient lists and complete
+raw messages are not downloaded or cached.
+
+Previews are plain text and at most 180 characters by default. Summaries say
+'May need reply' when the most recent inbound thread message appears newer than
+the most recent message marked SENT. This is an uncertain timestamp heuristic,
+not an assessment that a legal, rental or personal obligation exists. Automated
+receipts and messages that need no answer can receive that label. Read the
+original mail in your own mail app before deciding what to do.
+
+The app retains at most 20 short summary/notification cards per person. Each
+expires within 24 hours of its message/notification timestamp. Expired previews
+are removed from the local cache when the running app reads it. If the computer
+is switched off, local files cannot be cleaned until it runs again. Retrieval
+failures are marked stale, and old summaries disappear at their expiry time.
+
+DISPLAY PRIVACY
+
+The backend filters summaries before returning display status. Chris's private
+summaries require a fresh HOME state for Chris. Lisa's optional private content
+requires Lisa freshly HOME, Chris freshly AWAY and the kids freshly AWAY, with
+the private mode enabled and guest mode off. Unknown or stale presence does not
+grant permission to show private cards. Presence can be wrong; the display is
+not proof that a room is empty. Use guest mode or disable summaries when needed.
+
+Selected sender settings and the short cache remain private local files outside
+app releases. Gmail credentials live under accounts/chris or accounts/lisa in
+separate gmail-client.json and gmail-token.json files, with mode 0600. Calendar
+tokens are independent. Do not copy these files into source code, releases,
+messages to ChatGPT, or screenshots.
+
+PHONE NOTIFICATIONS: AN OPTIONAL INBOUND BRIDGE
+
+Chris's phone bridge is restricted to explicitly selected Airbnb, VRBO or
+HomeAway app notifications. It does not accept his general SMS/iMessage,
+WhatsApp or other unrelated phone notifications. Lisa may separately opt in to
+her own selected personal-notification apps; her privacy conditions still apply.
+
+The app does not gain access to either phone merely because its owner signs
+into Google, pairs presence or connects Alexa. Notifications require another
+explicit per-person opt-in, a chosen app list, a paired forwarding method and a
+separate notification token. That token cannot read the display, change presence,
+read mail, run commands or use the administration/MCP interface.
+
+Android can support forwarding from a selected notification listener or an
+automation app after its owner grants the required Android permissions. Only
+forward the chosen app's sender and short preview. Do not forward all apps or
+entire message bodies. The sender application is supplied by the forwarding
+tool and checked against the person's explicit app list.
+
+An ordinary iPhone app cannot read every other app's notifications or its whole
+SMS/iMessage inbox in the background. No universal automatic iPhone forwarding
+is promised. A supported, explicitly configured Shortcut or manual share action
+can submit selected text where iOS permits it. Availability and whether a
+confirmation is required depend on the iOS version and the chosen trigger.
+Keep this feature off if no suitable forwarding method is configured.
+
+BRIDGE CONTRACT FOR A FORWARDING TOOL
+
+POST to the owner's configured HTTPS origin at:
+
+    /api/v1/notifications/chris
+    /api/v1/notifications/lisa
+
+Use Content-Type: application/json and Authorization: Bearer followed by that
+person's separate notification token. Obtain or rotate this token through the
+owner's authenticated setup flow. Never use the administrator, Alexa or presence
+token for notifications. A new token immediately invalidates the old one.
+
+Example body for Lisa's explicitly selected Messages app, submitted to her
+/api/v1/notifications/lisa endpoint:
+
+    {
+      "app": "Messages",
+      "sender": "Alex",
+      "preview": "See you at six.",
+      "timestamp": "2026-11-03T16:25:00Z",
+      "request_id": "a-stable-unique-forwarding-event-id"
+    }
+
+The timestamp must include a timezone and be no older than 24 hours or more
+than five minutes in the future. The app must be selected by this person in
+setup. A repeated request_id with the same details is accepted without creating
+another card; reusing it for different details is rejected. Raw request IDs are
+hashed before storage. Responses confirm receipt without returning other cards.
+
+This endpoint receives selected events; it does not install or configure a
+phone forwarding app. The forwarding method needs a reachable HTTPS origin
+and internet access. The notification token alone never creates that channel.
+
+TURNING FEATURES OFF
+
+Use setup to disable the person's Gmail or notification option, remove selected
+senders/apps, or turn all messages off. Disabling a feature immediately prevents
+its cached content from appearing and stops subsequent polling/acceptance.
+Revoke Google's grant from your Google Account if you also want to invalidate
+its refresh token. Rotate the separate notification token to disconnect a
+forwarding tool. These actions do not change calendar events or stored personal
+appointment/dinner cards.
+
+VALIDATION AND LIMITS
+
+Included tests use fake messages, local caches and mocked Google API responses.
+No real inbox, live Gmail authorization, iPhone or Android forwarding tool was
+used to verify this package. Finish those device-specific checks after setup.
+Sender matching cannot guarantee that an email is authentic; use your normal
+mail app to review the sender and message before acting.
+
+Google API reference:
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.threads/get
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/Format

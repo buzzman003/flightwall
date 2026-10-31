@@ -1,0 +1,695 @@
+FLIGHT WALL 0.3.0 — BATOCERA INSTALLATION AND SETUP
+
+READ THIS FIRST
+
+You can try the display using your existing Batocera computer and TV.
+This package adds a native Linux application to the Ports menu. It does
+not reinstall Batocera or alter your games. The app draws its own LED
+dots and glow; it does not depend on RetroArch shaders.
+
+The intended first machine is an x86_64 Ryzen 5 2400GE HP mini PC running
+Batocera 42. The executable includes its Python runtime and libraries.
+Do not install Python, pip, apt packages, or Raspberry Pi software on
+Batocera. A separate Raspberry Pi/ARM build would be needed later.
+
+The 512 x 256 drawing canvas simulates a fine-pitch LED wall. Physical
+LED pitch describes real hardware, not your TV. For reference, a real
+512 x 256 P1.25 display would measure about 25.2 x 12.6 inches in lit
+area, excluding a frame. On a TV you can judge layout, dots, and glow;
+you cannot judge the exact brightness or viewing texture of real LEDs.
+
+Fresh installations show the setup card and offline demo flights. Use
+HOUSEHOLD-SETUP.txt for the browser wizard after installing the app. Your Google connection,
+remote internet access, background startup, and automatic code updates
+require the explicit setup steps below. This release has not been
+physically tested on your particular Batocera machine or TV.
+
+
+PART 1 — WHAT YOU NEED
+
+  * Your existing Batocera computer connected to the TV by HDMI.
+  * A keyboard for the first setup; a USB keyboard is easiest.
+  * Internet access on Batocera for Google authorization and syncing.
+  * A Windows, macOS, or Linux computer on the same home network.
+  * The downloadable flightwall-batocera-0.3.0.tar.gz from this chat.
+  * Your Google account if you want your operating schedule.
+
+No paid flight-data API is needed for scheduled flights and route maps.
+Nearby aircraft use the optional ADSB.lol feed and a configured home
+location. Live positions of your selected flight use optional FlightAware
+credentials. Both are disabled initially. The app identifies demo data
+and scheduled routes, and never invents a live aircraft position.
+
+
+PART 2 — FIND YOUR BATOCERA ADDRESS
+
+1. On the TV, open MAIN MENU > NETWORK SETTINGS. Connect Wi-Fi or Ethernet
+   and note the IP address. Menu wording may vary with your theme.
+
+2. The examples here use 192.168.1.50. Replace it everywhere with your
+   actual address. You may also try batocera.local if your network
+   resolves local hostnames, but the IP address is more dependable.
+
+3. Batocera uses SSH login name root. If you have not changed the factory
+   root password, it is linux. Use your chosen password if you changed
+   it. Keep SSH on your home network; no router port forwarding is needed
+   for this project. Batocera security settings can change root access.
+
+Batocera SSH instructions:
+https://wiki.batocera.org/access_the_batocera_via_ssh
+
+
+PART 3 — DOWNLOAD AND COPY THE PACKAGE
+
+1. Download flightwall-batocera-0.3.0.tar.gz from this conversation to the
+   Downloads folder on your normal computer. This file is the installer
+   package. Do not download a Raspberry Pi image or flash Batocera again.
+   There is no public project download URL until you choose a host.
+
+2. WINDOWS: Open PowerShell and paste this command:
+
+   scp -O "$env:USERPROFILE\Downloads\flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+
+   MACOS OR LINUX: Open Terminal and paste this command:
+
+   scp -O "$HOME/Downloads/flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+
+   The -O option selects the traditional SCP transfer protocol, which
+   works with Batocera even when an SFTP subsystem is unavailable.
+   If your computer reports that scp is missing, install/enable its
+   OpenSSH Client or use WinSCP on Windows. The destination directory is
+   /userdata/system/. Copy the archive itself, not individual executables.
+
+3. Enter the Batocera root password when asked. Nothing appears while
+   you type a password; that is normal. On a first connection, SSH asks
+   whether to trust that machine's host key. Confirm the address is your
+   own Batocera computer, then accept its host key.
+
+4. Connect to Batocera from the same computer:
+
+   ssh root@192.168.1.50
+
+   Commands after this point run on Batocera until you type exit.
+
+
+PART 4 — INSTALL AND OPEN THE DEMO
+
+Upgrading an existing 0.1.0 or 0.2.0 installation: close Flight Wall on the TV first,
+then use the same copy/extract/install commands below for the 0.3.0 package.
+The installer preserves private settings, Google authorization, personal data,
+the old release, and the pinned recovery helper. It temporarily stops a running
+background service and restores it afterward. It does not enable a service you
+previously left disabled.
+
+An upgrade is staged, then activated when you next start Flight Wall from
+Ports. Open it once and let the screen appear, then close it before setting
+up Alexa. The CLI's --version should then show 0.3.0. Do not delete the old
+release or manually point current at the new folder; the normal launcher
+provides the startup health check and rollback if the new version fails.
+Existing installations keep their selected real calendar rather than being
+reset to demo mode. There is no new Google permission needed for local cards.
+
+1. Paste these lines into that SSH session:
+
+   cd /userdata/system
+   tar -xzf flightwall-batocera-0.3.0.tar.gz
+   sh /userdata/system/flightwall-batocera-0.3.0/install.sh
+
+   The installer checks that the executable can start before installing
+   it. If you see a GLIBC, library, or architecture error, stop here and
+   save that text. An update to Batocera is not automatically required.
+
+2. Expected paths after installation:
+
+   Ports menu launcher:
+     /userdata/roms/ports/Flight Wall.sh
+
+   Application and versioned releases:
+     /userdata/roms/ports/.data/flightwall/
+
+   Settings, Google tokens, cached schedule, and logs:
+     /userdata/system/configs/flightwall/
+
+   Optional background services, initially disabled:
+     /userdata/system/services/flightwall
+     /userdata/system/services/flightwall_tailscale
+
+   Settings and credentials stay outside the versioned program files.
+   Installing the same package again preserves them.
+
+3. On the TV, choose MAIN MENU > GAME SETTINGS > UPDATE GAMELISTS. Open
+   PORTS > Flight Wall. If it does not appear, restart EmulationStation
+   or reboot once. A space in the launcher filename is intentional.
+
+4. The first launch includes a setup card and labeled demonstration flights,
+   including Atlanta routes. The setup card stays until Finish setup with my
+   saved choices in the browser wizard. Regular views default to 15 seconds;
+   real flight priority uses longer flight slots. It works before Google
+   authentication. Continue with HOUSEHOLD-SETUP.txt for the recommended setup.
+
+   This describes a fresh installation. An upgrade keeps your prior calendar
+   and settings. Personal cards join the rotation only while at least one
+   saved card is currently within its display window.
+
+   Keyboard controls: Tab advances the view; 1-5 choose an available view and pause
+   the rotation; Space resumes/pauses rotation; S opens settings; H or F1
+   shows help; L toggles the LED effect; R refreshes the calendar; Escape
+   exits to Batocera; G toggles guest mode. Use the arrow keys inside settings.
+   Gamepad controls: A advances, B opens settings, the D-pad adjusts
+   settings, and Select exits.
+
+5. Start at 1920 x 1080 output using Batocera's display/video settings if
+   you prefer. A 4K TV can accept that signal and scale it. The app also
+   scales its small LED canvas to the current screen. TV overscan or
+   zoom can cut off edges; use your TV's Screen Fit/Just Scan/1:1 option.
+   Do not edit the boot partition merely to try this app.
+
+Batocera Ports and display documentation:
+https://wiki.batocera.org/systems:ports
+https://wiki.batocera.org/display_issues
+
+
+PART 5 — LEARN THE COMMAND LINE WITHOUT PROGRAMMING
+
+In the Batocera SSH session, define this convenient shortcut:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   "$FW" --help
+
+The shortcut lasts for that terminal session. If you reconnect later,
+repeat the FW= line. This is a launcher path, not a program you must edit.
+
+Read settings:
+
+   "$FW" config
+
+Example changes, entered in the Batocera SSH session:
+
+   "$FW" config --set rotation_seconds 15
+   "$FW" config --set brightness 0.7
+   "$FW" config --set glow 0.25
+   "$FW" config --set led_effect true
+   "$FW" config --set timezone '"America/Chicago"'
+
+Text values use the inner double quotes because the value is JSON. Copy
+the single and double quotes exactly. Numbers and true/false have no
+inner quotes. Settings are validated, and invalid values are rejected.
+
+Version 0.3.0 also saves local personal cards. For example:
+
+   "$FW" personal add --kind dinner --title 'Teriyaki chicken'
+   "$FW" personal list --visible
+
+Dinner is visible from 14:30 until 19:00 by default. An appointment card is
+visible from its local day's midnight until the appointment ends. These local
+entries do not create or change Google Calendar events. For exact date/time
+commands and the optional Alexa setup, continue with docs/ALEXA-SETUP.txt.
+
+The sleep timer blanks the app's picture at the chosen local times:
+
+   "$FW" config --set sleep_start '"23:00"'
+   "$FW" config --set sleep_end '"06:00"'
+   "$FW" config --set sleep_enabled true
+
+Blanking the picture does not switch off the TV's electrical power.
+HDMI-CEC power control depends on separate TV/adapter support and is not
+included in this release. Set a TV sleep timer if you want power
+off rather than a black display.
+
+
+PART 6 — ALTERNATIVE DESKTOP GOOGLE AUTHORIZATION
+
+The recommended 0.3.0 method is HOUSEHOLD-SETUP.txt's browser wizard with a
+Google Web application client and public HTTPS callback. It also covers the
+separate Chris/Lisa profiles, selected custody source, phones and optional
+Gmail. Parts 6-7 below are the Desktop CLI fallback for Calendar; do not use
+their Desktop JSON in the wizard's Web client upload.
+
+ChatGPT's existing calendar connection does not automatically authorize
+this standalone app. You authorize the app once using Google's browser
+sign-in. Your Google password is entered only on Google's website.
+
+Do this setup on your normal computer, signed into the Google account
+that can see FC View or the alternative flight calendar.
+
+1. Open https://console.cloud.google.com/ and create a project named
+   Flight Wall Personal, or choose an existing project you control.
+
+2. In APIs & Services > Library, search for Google Calendar API, open it,
+   and click ENABLE. This app uses read-only access; it does not add,
+   modify, or delete your calendar events.
+
+3. Open Google Auth Platform (or APIs & Services > OAuth consent screen).
+   Complete Branding with an app name and your own support/contact email.
+   Choose External audience for an ordinary personal Gmail account.
+   A managed Google Workspace account may allow an Internal application;
+   your organization's administrator controls that policy.
+
+4. For initial testing, add your own Google account under Test users.
+   On Data Access, add calendar.events.readonly and calendar.calendarlist.readonly
+   if the console asks you to list scopes. The exact full scope URLs are:
+
+   https://www.googleapis.com/auth/calendar.events.readonly
+   https://www.googleapis.com/auth/calendar.calendarlist.readonly
+
+5. Important for an always-on wall: External apps left in Testing usually
+   receive refresh tokens that expire after seven days for these calendar
+   scopes. For ongoing personal use, switch the app's publishing status
+   to In production when appropriate for your account. Google's unverified
+   app warning and user limits may still apply to an unpublished/unverified
+   personal project. Production is not a promise that a token never expires;
+   revoking access or account policies can still require authorization again.
+
+6. Open Clients (or Credentials > Create Credentials > OAuth client ID).
+   Choose application type Desktop app, name it Flight Wall Batocera,
+   and create it. Do not choose Web application or TV/limited-input device.
+   Download its JSON file and rename your local copy to google-client.json.
+   Desktop app authorization uses the loopback redirect automatically;
+   you do not need to invent a public Google callback URL.
+
+7. Open a NEW PowerShell/Terminal window on your normal computer and copy
+   that JSON file to Batocera. WINDOWS:
+
+   scp -O "$env:USERPROFILE\Downloads\google-client.json" root@192.168.1.50:/userdata/system/configs/flightwall/google-client.json
+
+   MACOS OR LINUX:
+
+   scp -O "$HOME/Downloads/google-client.json" root@192.168.1.50:/userdata/system/configs/flightwall/google-client.json
+
+   This is a private configuration file. Do not paste it, your refresh
+   token, or your calendar's private subscription URL into chat.
+
+Official Google instructions and token lifetime information:
+https://developers.google.com/workspace/calendar/api/quickstart/python
+https://developers.google.com/workspace/calendar/api/auth
+https://developers.google.com/identity/protocols/oauth2/native-app
+https://developers.google.com/identity/protocols/oauth2#expiration
+
+
+PART 7 — AUTHORIZE THROUGH YOUR NORMAL COMPUTER'S BROWSER
+
+Batocera does not need a desktop web browser. An SSH tunnel carries
+Google's local callback from your laptop/desktop back to Batocera.
+
+1. Close any old authentication attempt. In a terminal ON YOUR NORMAL
+   COMPUTER, start a new tunneled SSH session:
+
+   ssh -L 8766:127.0.0.1:8766 root@192.168.1.50
+
+   Leave this window open. Once connected, commands in it run on Batocera.
+
+2. In that same tunneled session, run:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   chmod 600 /userdata/system/configs/flightwall/google-client.json
+   "$FW" authorize --person chris --credentials /userdata/system/configs/flightwall/google-client.json --no-browser
+
+3. The app prints a Google sign-in URL and waits. Copy that URL into the
+   browser ON THE SAME NORMAL COMPUTER that holds the SSH tunnel. Sign in
+   to the account with the flight calendar and grant the read-only access.
+   A localhost callback page is expected; the tunnel delivers it to the app.
+   Finish before the app's authorization timeout, or run authorize again.
+
+4. If Google says access_denied, confirm that this account is an allowed
+   test user or that the project is in production. If it says the app is
+   blocked by your company, your administrator must allow it. If you see
+   redirect_uri_mismatch, recreate/download a Desktop app OAuth client.
+
+5. If localhost:8766 cannot connect, keep the tunneled SSH window open and
+   ensure no other local program is using port 8766. The browser and SSH
+   client must run on the same computer. Do not open a router port.
+
+6. List calendars the account can read:
+
+   "$FW" calendars --person chris
+
+7. Choose your FC View calendar by its exact name:
+
+   "$FW" select-calendar --person chris --role flight --name 'FC View'
+
+   If two calendars have the same name, use the ID shown by calendars:
+
+   "$FW" select-calendar --person chris --role flight --id PASTE_THE_SELECTED_CALENDAR_ID_HERE
+
+   A calendar ID is an identifier, not an authorization token. If you want
+   the alternative flight calendar, replace FC View with the exact name
+   printed by calendars. Access must be available to the authorized account.
+
+8. Enable real schedule mode and set your preferred display timezone:
+
+   "$FW" config --set demo false
+   "$FW" config --set timezone '"America/Chicago"'
+
+   Use another IANA timezone if appropriate. Flight timestamps retain
+   their actual offsets; the display timezone sets the wall clock and
+   sleep schedule. Restart the app after first calendar setup.
+
+9. Check that actual calendar flights appear. The parser recognizes common
+   flight numbers and airport routes, but FC View event formats vary. If an
+   event is missing, provide a small REDACTED example such as:
+
+   Title: DL123 ATL-LAX
+   Start: 2026-10-23T09:00:00-04:00
+   End:   2026-10-23T11:00:00-07:00
+
+   Do not send crew names, phone numbers, hotel information, sign-in tokens,
+   or a complete private roster. A parser adjustment can be made once the
+   real format is known. Your Google Calendar must contain individual legs
+   or enough leg information to extract them; the app cannot invent legs
+   from a duty-day block with no flight details.
+
+Your upcoming/current operating schedule takes priority over the idle
+display. If Google is temporarily offline, the last successful schedule
+is cached and its age/error is shown. Scheduled flight maps are not a
+substitute for operational flight dispatch or real-time flight tracking.
+
+
+PART 8 — RUN THE BACKGROUND SYNC AND CONTROL SERVICE
+
+You can use the Ports app without this service. Enable it when you want
+calendar syncing, remote settings, or update checks while the TV app is
+closed. Close the Ports display before starting the background service
+for the first time, so it can bind its local control port. Enabling a
+Batocera service controls startup on future boots;
+starting it controls the current session. Both commands are intentional:
+
+   batocera-services enable flightwall
+   batocera-services start flightwall
+
+Check status:
+
+   /userdata/system/services/flightwall status
+
+Stop and disable it later:
+
+   batocera-services stop flightwall
+   batocera-services disable flightwall
+
+The service listens only on 127.0.0.1:8765. Installing or starting it does
+not make the control endpoint reachable from the internet. Settings and
+calendar changes are saved outside the versioned app directory.
+
+The Ports app remains a separate foreground screen. Starting the service
+does not automatically open the display over your games. This first
+release does not take over EmulationStation at boot; open it from Ports.
+
+Batocera services documentation:
+https://wiki.batocera.org/scripting_services_rules_examples
+
+
+PART 9 — CONNECT CHATGPT OR CODEX
+
+First install Tailscale's official static Linux binaries. Batocera is
+not an apt-based desktop distribution, so do not use Ubuntu package
+installation commands. The optional service installed by this package
+keeps the daemon and its state on /userdata. These commands intentionally
+enable remote networking only when you run them.
+
+1. Create a Tailscale account at https://tailscale.com/ if needed. For
+   private access from Codex running on your normal computer, install
+   Tailscale on that computer too and use the same account/tailnet.
+
+2. In the Batocera SSH session, download the verified x86_64 static
+   release from Tailscale. Version 1.104.2 was current when this guide
+   was assembled. The checksum below was obtained from its official
+   .sha256 file. If you deliberately choose another version, obtain
+   that version's checksum from the official package site too.
+
+   curl -fL --proto '=https' --tlsv1.2 -o /tmp/flightwall-tailscale.tgz https://pkgs.tailscale.com/stable/tailscale_1.104.2_amd64.tgz
+   echo '512f613ed7d04fc7282f7dc5bd76aa105aae28168fbb9357eb749ebcbc29f0ae  /tmp/flightwall-tailscale.tgz' | sha256sum -c -
+
+   Continue only if the checksum command prints OK. This downloads an
+   archive; it does not pipe an internet script into a shell.
+
+3. Extract and install its two executables:
+
+   mkdir -p /tmp/flightwall-tailscale
+   tar -xzf /tmp/flightwall-tailscale.tgz -C /tmp/flightwall-tailscale
+   TS_DIR=/userdata/system/configs/flightwall/tailscale
+   mkdir -p "$TS_DIR/bin"
+   cp /tmp/flightwall-tailscale/tailscale_1.104.2_amd64/tailscale "$TS_DIR/bin/"
+   cp /tmp/flightwall-tailscale/tailscale_1.104.2_amd64/tailscaled "$TS_DIR/bin/"
+   chmod 700 "$TS_DIR"
+   chmod 755 "$TS_DIR/bin/tailscale" "$TS_DIR/bin/tailscaled"
+   batocera-services enable flightwall_tailscale
+   batocera-services start flightwall_tailscale
+
+   The daemon uses userspace networking so it does not need to change
+   Batocera's default network routes or install a kernel VPN module.
+
+4. Set these terminal shortcuts and log into Tailscale:
+
+   TS=/userdata/system/configs/flightwall/tailscale/bin/tailscale
+   TS_SOCKET=/userdata/system/configs/flightwall/tailscale/tailscaled.sock
+   "$TS" --socket="$TS_SOCKET" up --hostname=flightwall --accept-dns=false
+
+   Open the printed sign-in URL on your normal computer and authorize
+   this Batocera device. If the daemon socket is not ready yet, wait a
+   moment and retry. Keep its device state private. Check the result:
+
+   "$TS" --socket="$TS_SOCKET" status
+
+5. Ensure the Flight Wall background service from Part 8 is running.
+   Choose ONE exposure method for HTTPS port 443:
+
+   PRIVATE CODEX ACCESS, available only within your Tailscale network:
+
+   "$TS" --socket="$TS_SOCKET" serve --bg http://127.0.0.1:8765
+
+   CHATGPT CUSTOM-APP ACCESS, public HTTPS with app authentication:
+
+   "$TS" --socket="$TS_SOCKET" funnel --bg http://127.0.0.1:8765
+
+   Tailscale may ask you to enable HTTPS certificates and approve Funnel
+   access in your account. Follow its printed approval link. Funnel
+   deliberately exposes this app's HTTPS endpoint to the public internet;
+   the MCP tools still require the app's OAuth or bearer authentication.
+   It is not a router port-forwarding rule or a desktop login service.
+
+   Serve is private; an ordinary cloud-hosted ChatGPT connector cannot
+   reach a private Serve address. Funnel is needed for that connection.
+   Do not run Serve and Funnel on the same HTTPS port at the same time.
+   To change modes, reset the one you configured first:
+
+   "$TS" --socket="$TS_SOCKET" serve reset
+   "$TS" --socket="$TS_SOCKET" funnel reset
+
+   Use the applicable reset command when you want to stop sharing too.
+   Resetting exposure does not stop the local app or delete your calendar.
+
+6. The command prints an HTTPS address such as
+   https://flightwall.YOUR_TAILNET.ts.net. Use the ACTUAL address printed
+   by Tailscale, with no /mcp suffix or trailing path, in this command:
+
+   First close the Ports display. Then stop the background service while
+   setting its HTTPS identity, and start it again afterward:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   batocera-services stop flightwall
+   "$FW" config --set public_url https://flightwall.YOUR_TAILNET.ts.net
+   batocera-services start flightwall
+   "$FW" remote-info
+
+   The example address is a placeholder. The MCP URL printed by
+   remote-info ends in /mcp. Forwarding all paths is required because
+   OAuth also uses discovery and approval paths on that HTTPS origin.
+
+7. Continue with docs/REMOTE.txt for the exact OAuth approval page and
+   Codex MCP configuration. The app's private control token is stored at
+   /userdata/system/configs/flightwall/control-token.txt. Show it locally
+   only when setting up your own connector; do not send it into a chat.
+
+Official static-binary, Serve, and Funnel instructions:
+https://tailscale.com/docs/install/static
+https://pkgs.tailscale.com/stable/
+https://tailscale.com/docs/reference/tailscale-cli/serve
+https://tailscale.com/docs/reference/tailscale-cli/funnel
+https://tailscale.com/docs/features/tailscale-funnel
+
+The connection provides a small, authenticated set of app tools: read
+status, change validated settings, refresh the calendar, and check for a
+signed app update. It does not provide arbitrary shell access. Your local
+control token stays private. For ChatGPT, you approve the connection in
+your own browser through the app's OAuth page; custom-app availability
+depends on your account and workspace settings.
+
+Telling an ordinary, unconnected chat to change the display cannot reach
+the device. It must be the client/account with your connector configured,
+the device must be online, and its background service must be running.
+
+
+PART 10 — HOW SETTINGS CHANGES AND CODE UPDATES DIFFER
+
+Brightness, rotation time, sleep schedule, and other supported settings
+can be changed through the app tools and saved immediately. They survive
+restarts. A new feature or parser fix needs a new software release.
+
+The app includes a signed-update mechanism. Automatic updating starts
+disabled because there is no pre-existing release host or signing key
+for your personal installation. A future code change is not automatically
+published merely because it was written in a chat.
+
+To enable signed updates, the release owner must first:
+
+  1. Keep a private Ed25519 release-signing key on the build computer.
+  2. Build and sign a new version using scripts/make_release.py.
+  3. Host the release archive and signed manifest at stable HTTPS URLs
+     you control, such as your own release repository or HTTPS storage.
+  4. Configure this device with that manifest URL and the matching PUBLIC
+     verification key. Never copy the private signing key to Batocera.
+  5. With the GUI closed and service stopped, enable updates locally and
+     run a manual signed check. Leave updates enabled only if it succeeds.
+
+Example command shape, using the actual URL and PUBLIC key you generated:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   "$FW" config --set update_manifest_url '"https://YOUR_HOST/flightwall/latest.json"'
+   "$FW" config --set update_public_key '"YOUR_ED25519_PUBLIC_KEY"'
+   "$FW" config --set updates_enabled true
+   "$FW" update --check
+
+If the check reports an error, set updates_enabled to false and correct
+the host/key before restarting the service. The check verifies metadata
+without staging a release. See docs/UPDATES.txt for the complete release
+and provisioning procedure, and docs/UPDATE-CHANNEL.txt for the optional
+GitHub build/sign/publish workflow.
+
+YOUR_HOST and YOUR_ED25519_PUBLIC_KEY are placeholders, not a working
+server or key. The build/release instructions supplied with the source
+explain the signing command. The remote control tools cannot silently
+replace the trusted key or set an arbitrary release server.
+
+The service downloads and verifies a configured newer release, then
+stages it. Closing and reopening the Ports app activates it safely.
+A new release that fails before drawing its first frame is rolled back.
+If a process is forcibly killed before that health check, the next launch
+can perform the rollback. Healthy releases are not rolled back just
+because you later close the app. When the background service is running,
+the Ports launcher stops it before activation, the GUI runs the matching
+backend while open, and the launcher restarts the service after you exit.
+This keeps the background code aligned with the selected release.
+
+A complete unattended workflow also needs your chosen Git/release host
+connected to Codex and a signing/build workflow. Those account and hosting
+choices are not already provisioned by this download. You can install
+and use the demo, calendar, and remote settings before making them.
+
+
+PART 11 — TROUBLESHOOTING
+
+Nothing in Ports:
+  Confirm /userdata/roms/ports/Flight Wall.sh exists, update gamelists,
+  and restart EmulationStation once. It is a Linux .sh launcher, not a
+  ROM you open in RetroArch.
+
+App returns immediately to the menu:
+  Run this through SSH:
+
+   sh /userdata/roms/ports/.data/flightwall/diagnose.sh
+   tail -n 60 /userdata/system/configs/flightwall/logs/launcher.log
+
+  The diagnostic command avoids private calendar details and tokens.
+  Review logs locally before sharing them. Preserve the error text about
+  missing GLIBC, shared libraries, or video initialization if present.
+
+Executable works over SSH but a window cannot open:
+  Test GUI launch from Ports on the TV. A plain SSH session has no desktop
+  window by itself. The launcher sets DISPLAY=:0.0 for Batocera's X11
+  desktop, but GPU/window-system differences still require on-device
+  verification. Batocera 42 x86_64 is the initial target.
+
+The TV shows an old schedule:
+  Verify Batocera internet access and system time. Check app status and
+  calendar authorization. A cache can be displayed during an outage.
+  If Google authorization expired, repeat Part 7. External Testing-mode
+  refresh-token expiry after seven days is a common cause.
+
+The wrong calendar appears:
+  Run calendars again. Set calendar_id to the exact selected ID, and
+  demo to false. Clear an old explicit ID by setting calendar_id to '""'
+  before choosing by name. Restart the app/service after first setup.
+
+My flights are absent but the calendar is connected:
+  A duty-day-only block may not contain individual flight legs. Compare
+  the event's title, times, and route format with what the parser accepts.
+  Supply a minimal redacted example so the parser can be adjusted.
+
+Dots/glow look wrong:
+  Try lower glow/brightness, turn LED effect off temporarily, and check
+  the TV's sharpness and overscan. Physical LED panel texture will differ
+  from a TV simulation. A 4K panel showing a 1080p signal can scale dots.
+
+A live position or nearby traffic is missing:
+  Calendar data gives the schedule, not aircraft telemetry. Nearby/live
+  providers are optional and disabled by default; see source/provider
+  instructions before buying any subscription.
+
+Remote connection cannot reach the app:
+  Check both services, Tailscale login/status, public_url, HTTPS, and
+  connector authentication. An internet connection by itself does not
+  create a ChatGPT connector. Follow docs/REMOTE.txt.
+
+
+PART 12 — BACKUP AND REMOVE
+
+Back up the data directory to your own trusted storage if you want to
+preserve settings and Google authorization. That backup contains private
+tokens and must be treated like a password backup. Never attach it to chat.
+
+To remove the menu entry while keeping your settings and credentials:
+
+   batocera-services stop flightwall
+   batocera-services disable flightwall
+   rm -f '/userdata/roms/ports/Flight Wall.sh'
+
+Refresh gamelists afterward. This leaves program files and private data
+in place for easy reinstall. If Tailscale was enabled solely for this
+project, stop/disable flightwall_tailscale and remove/revoke the device
+in your Tailscale account when you no longer want remote access. Revoke
+the app under your Google account's third-party access page to invalidate
+its calendar tokens.
+
+
+OPTIONAL — BUILDING A FUTURE RELEASE FROM SOURCE
+
+This is for code changes later. You do not need these commands to install
+the supplied application. Use a Linux computer, or Linux/WSL with Docker
+Desktop enabled on Windows, with the source archive extracted. Docker
+must be installed and running. The build downloads a Python Debian 12
+image and pinned program dependencies.
+
+  1. Make code changes, bump the root VERSION file and the package's
+     flightwall/__init__.py version together, and run the project tests.
+  2. From the extracted project folder, build a NEW version:
+
+   FLIGHTWALL_PACKAGE_VERSION=0.3.1 sh scripts/build-linux.sh
+
+  3. The output is releases/0.3.1/ with a Linux executable, VERSION,
+     _internal libraries/assets, and dependency license notices.
+     The build refuses to overwrite an existing output directory.
+  4. Follow docs/UPDATES.txt to sign that folder and publish your release.
+     If you choose the supplied GitHub workflow, follow its dedicated
+     instructions to keep the signing key in repository secrets.
+
+The build uses Docker so it does not depend on Batocera's development
+tools. Its older glibc baseline is intentional. A Windows executable
+created with Windows PyInstaller would not run on Batocera.
+
+
+COMPATIBILITY AND PRIMARY REFERENCES
+
+Batocera 42's checked-in Buildroot pins glibc 2.40 and Python 3.12.8.
+This package is built in Debian 12 with an older glibc for compatibility,
+with its Python interpreter bundled. Actual video output still needs
+your first on-device check. Do not replace Batocera system libraries.
+
+https://github.com/batocera-linux/batocera.linux/tree/42
+https://github.com/batocera-linux/buildroot/blob/7df14b6f92f97cf2dcc67a94a5fe9c118665f9c4/package/glibc/glibc.mk
+https://github.com/batocera-linux/buildroot/blob/7df14b6f92f97cf2dcc67a94a5fe9c118665f9c4/package/python3/python3.mk
+https://wiki.batocera.org/systems:ports
+https://wiki.batocera.org/scripting_services_rules_examples
+https://wiki.batocera.org/access_the_batocera_via_ssh
+https://developers.google.com/workspace/calendar/api/quickstart/python
+https://developers.google.com/identity/protocols/oauth2/native-app
+https://tailscale.com/docs/install/static
+https://tailscale.com/docs/features/tailscale-funnel

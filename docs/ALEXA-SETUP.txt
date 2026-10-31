@@ -1,0 +1,626 @@
+FLIGHT WALL 0.4.0 — HOUSEHOLD TOOLS AND YOUR PRIVATE ALEXA SKILL
+
+WHAT THIS ADDS
+
+You can tell your own Alexa device what is for dinner or add an appointment
+to the Flight Wall display. For example:
+
+  "Alexa, tell flight wall we are having teriyaki chicken for dinner."
+
+For an appointment title, start a short conversation:
+
+  "Alexa, open Flight Wall skill."
+  "Add an appointment called Emerson doctor appointment."
+  Answer the requested date and time, then confirm when Alexa reads it back.
+
+With the optional kids rule enabled in household setup, dinner cards also
+require a current Mom/Home custody state. See HOUSEHOLD-SETUP.txt for that rule.
+
+These are local personal cards saved on your Batocera computer. They do not
+create, change, or cancel Google Calendar events. Your read-only FC View flight
+calendar continues to use its separate Google authorization. You can also
+create personal cards from the terminal without Alexa.
+
+The integration uses a standard custom Alexa skill and a small AWS Lambda
+function. It does not use Alexa+ add-on APIs or require an Alexa+ subscription
+as part of this design. Your Echo/account must support custom development
+skills. Voice recognition, Amazon account/device support, and your live HTTPS
+connection must still be tested on your own equipment.
+
+Keep the skill in the Development stage for your own Amazon account. This
+single-household implementation is not a public multi-user Skill Store app.
+It is not necessary to submit the skill for public certification to test it
+on your own compatible Alexa device registered to that same Amazon account.
+
+SOURCE DEVELOPMENT / MATCHING DEPLOYMENTS
+
+The 0.4.0 source adds timers, a shopping list and public flight watches. Local
+source edits do not update the installed 0.3.0 Linux executable or the deployed
+Lambda/model. Finish testing, build and sign a new versioned Linux release,
+install it through the established update workflow, and deliberately deploy
+the matching Alexa adapter/model before expecting these new routes to work.
+Existing credentials and mutable household data stay outside releases.
+
+BRIEF LAUNCH AND HOUSEHOLD COMMANDS
+
+  "Alexa, open Flight Wall skill."
+  Flight Wall: "Flight Wall. What would you like?"
+
+Say help for the command choices. Dinner instructions are supplied only when
+you ask for dinner help, not on every launch. Both appointment Title slots
+use the same APPOINTMENT_TITLE type, as Amazon requires across intents.
+Unlisted titles may be recognized, but custom slots are not unrestricted
+dictation; verify real spoken examples on your own Echo.
+
+Board timers:
+  "Start a pasta timer for five minutes."
+  "List timers."
+  "Cancel the pasta timer." / "Cancel timer number two."
+
+Labels have 1-80 characters; durations are whole seconds from one second to
+24 hours. Up to five timers are displayed. Finished timers remain DONE until
+dismissed, or until a newer timer needs their position. A sixth running timer
+is rejected. UTC deadlines persist across service restarts and reboots; they
+depend on a correct device clock. These are Flight Wall TV countdowns, not
+ordinary Alexa system timers, Echo alarms or promised audible notifications.
+The Alexa Timers API lists only timers created by the calling skill; this
+adapter does not call it or request timer permissions. An ordinary command
+such as "Alexa, set a timer" stays in Alexa and is not imported to Flight Wall.
+
+Flight Wall shopping list:
+  "Shopping list." / "Show the shopping list."
+  "Add olives." / "Remove olives."
+  "Read the shopping list."
+  "Clear the shopping list." (Then explicitly confirm yes, or say no.)
+
+Showing the list enables its persistent bottom ticker on the TV. This list
+belongs to Flight Wall; it is separate from Amazon's built-in shopping list.
+Items have 1-80 characters, with at most 100 items. Spoken readback includes
+at most ten items and the remaining count. You can also explicitly invoke the
+skill with "Alexa, ask Flight Wall to add olives" or "Alexa, ask Flight Wall
+to show the shopping list". The phrases "Alexa, add olives to Flight Wall"
+and "open Flight Wall shopping list" are unverified routing candidates;
+Amazon may send them to native features. Do not promise they work without
+testing. Opening Flight Wall skill, then giving the short command, avoids
+relying on that unverified shortcut.
+
+Public flight watch:
+  "Track Delta flight one hundred twenty three on Friday."
+  Check the airline, number and date in the readback, then say yes.
+
+Missing or ambiguous airline, number and date values are requested, not guessed.
+Common airline aliases map to DL (Delta), AA (American), UA (United), G4
+(Allegiant) and F9 (Frontier). G9 means Air Arabia, not Allegiant. A watch is a
+separate public-flight request; it neither exposes nor modifies the owner's
+operating-calendar flights. If live data is not configured, Alexa says so.
+Saving a watch does not establish that provider data or a live position exists.
+Up to five requests for today through fourteen days ahead are retained in the
+board timezone saved with each request. A repeated airline/number/date uses
+the existing request. Past requested days leave the rotation automatically.
+FlightAware access is optional, separately configured and potentially paid.
+It shares the existing daily request cap; operating flights are checked first.
+The lookup endpoint accepts dates only two days ahead, so more distant requests
+wait locally without queries until their full requested day fits that window.
+An exact airline/date match is required. Multiple legs or additional result
+pages are shown as ambiguous instead of choosing a flight. No match or stale
+data remains visibly unavailable; only positions at most five minutes old can
+be shown as live. Requested dates refer to the board timezone, not an assumed
+airport-local date. Specify the intended date accordingly for distant airports.
+
+
+PART 1 — THE PIECES YOU WILL CONNECT
+
+  Your voice / Echo
+       -> Amazon Alexa custom skill
+       -> Your AWS Lambda function
+       -> Your Batocera HTTPS address, normally Tailscale Funnel
+       -> Flight Wall's narrowly scoped household endpoints
+
+Batocera and its Flight Wall service must be on and online when you speak.
+The TV does not have to be showing Flight Wall at that moment. The saved card
+will appear when you next open the app during the card's display window.
+
+AWS needs a public HTTPS address. A private Tailscale Serve address alone is
+not reachable from an ordinary Lambda function outside your Tailscale network.
+Use the Funnel instructions in INSTALL.txt, Part 9. Do not expose SSH or add
+router port-forwarding rules for this project.
+
+Costs: AWS accounts and Lambda/CloudWatch usage can incur charges. Small
+household use may fit the applicable free tier or account credits, but this
+guide does not promise zero cost. Check your own AWS account's plan, credits,
+billing settings, and current pricing before creating resources. Tailscale
+availability and limits depend on your account as well.
+
+Files supplied with this release:
+
+  Flight-Wall-Alexa-Lambda-0.4.0.zip
+      Ready to upload to AWS Lambda. lambda_function.py is at the ZIP root;
+      bundled IANA timezone data provides a fallback for cloud runtimes.
+
+  Flight-Wall-Alexa-Interaction-Model-en-US.json
+      Upload this to the Alexa developer console's JSON editor.
+
+  integrations/alexa/lambda_function.py
+  integrations/alexa/interaction-model-en-US.json
+  integrations/alexa/deployment-permission-example.json
+      Source/reference copies in the installer and source download.
+
+The ZIP and JSON above contain program code/model definitions, not credentials.
+You will enter your own dedicated board token privately in the AWS console.
+Do not put that token into the Python file, a repository, screenshots, or chat.
+
+
+PART 2 — CHECK THE APP AND TRY A PERSONAL CARD LOCALLY
+
+1. Install the 0.4.0 Batocera package using INSTALL.txt. If upgrading from
+   0.1.0 or 0.2.0, close the Ports app before running the installer. It preserves your
+   Google settings/tokens and original recovery helper. The upgrade is staged
+   for the next Ports launch, rather than replacing the running program.
+
+2. Open PORTS > Flight Wall once to activate the new version, then close it.
+   This matters after an upgrade: the command-line launcher uses the selected
+   current release, which remains the old version until that safe launch.
+
+3. Connect to Batocera from your normal computer, using its actual IP:
+
+   ssh root@192.168.1.50
+
+   In the Batocera terminal, set the command shortcut and verify the version:
+
+   FW=/userdata/roms/ports/.data/flightwall/flightwall
+   "$FW" --version
+
+   It should say 0.4.0 or a newer release with these household features.
+
+4. Set your board's local timezone. This determines what "today" means and
+   when a personal card appears:
+
+   "$FW" config --set timezone America/Chicago
+   "$FW" config --set personal_enabled true
+
+   Choose another IANA timezone if appropriate. Do not leave the wall in UTC
+   unless UTC is the local-day behavior you actually want for personal cards.
+
+5. Try a dinner card without Alexa:
+
+   "$FW" personal add --kind dinner --title 'Teriyaki chicken'
+
+   With no date supplied, this uses today's date in the board's timezone.
+   Dinner appears from 14:30 up to, but not including, 19:00 by default. Saving
+   dinner at 10:00 is allowed; its card starts showing at 14:30. Saving today's
+   dinner after 19:00 does not make it appear outside that window.
+
+   To choose a particular date:
+
+   "$FW" personal add --kind dinner --title 'Teriyaki chicken' --date 2026-11-03
+
+   Adding a different dinner for the same date replaces that date's prior
+   dinner card. The latest meal remains saved; it is not an extra duplicate.
+
+6. An appointment needs a date and time. Replace this example date as needed:
+
+   "$FW" personal add --kind appointment --title 'Emerson doctor appointment' --date 2026-11-03 --time 11:25 --duration-minutes 60
+
+   The card is visible from that local day's midnight until the appointment
+   ends. In this example it stops showing at 12:25, with no extra grace hour.
+   An appointment without an explicit duration uses 60 minutes by default.
+
+7. List saved cards or those visible right now:
+
+   "$FW" personal list
+   "$FW" personal list --visible
+
+   To cancel one, use its actual ID from the list:
+
+   "$FW" personal cancel PASTE_ITEM_ID_HERE
+
+   Canceling a local card does not change any Google Calendar event.
+
+8. If you prefer other display windows/defaults, set them locally:
+
+   "$FW" config --set dinner_start 14:30
+   "$FW" config --set dinner_end 19:00
+   "$FW" config --set appointment_duration_minutes 60
+
+   personal_enabled controls whether personal cards appear on the display;
+   it does not prevent saving cards. Alexa will use the board's timezone and
+   current defaults, rather than interpreting "today" as the Lambda server's
+   UTC day. These defaults apply to newly created cards; already saved cards
+   retain their saved display times. To change today's dinner window, set the
+   defaults and save that date's dinner again. Restart the service after
+   changing initial setup defaults.
+
+
+PART 3 — START THE SERVICE AND CONFIGURE PUBLIC HTTPS
+
+1. Close the Ports display first. Enable and start its background service:
+
+   batocera-services enable flightwall
+   batocera-services start flightwall
+
+   Check the local health endpoint:
+
+   curl http://127.0.0.1:8765/health
+
+   The response should include "ok":true. If you chose a different local
+   control_port, use that port consistently in the proxy target too.
+
+2. Follow INSTALL.txt, Part 9, to install/sign into Tailscale and enable
+   its optional flightwall_tailscale service. Then expose this app:
+
+   TS=/userdata/system/configs/flightwall/tailscale/bin/tailscale
+   TS_SOCKET=/userdata/system/configs/flightwall/tailscale/tailscaled.sock
+   "$TS" --socket="$TS_SOCKET" funnel --bg http://127.0.0.1:8765
+
+   Approve HTTPS/Funnel in your own Tailscale account when asked. If this
+   HTTPS port currently uses private Serve, follow INSTALL.txt to reset that
+   mode before enabling Funnel. Funnel deliberately makes this app's HTTPS
+   endpoint public; its protected tools still need their own authentication.
+
+3. Note the ACTUAL HTTPS origin printed by Tailscale. It resembles:
+
+   https://flightwall.YOUR_TAILNET.ts.net
+
+   The example is a placeholder. Close the display and set your actual origin:
+
+   batocera-services stop flightwall
+   "$FW" config --set public_url https://flightwall.YOUR_TAILNET.ts.net
+   "$FW" config --set alexa_enabled true
+   batocera-services start flightwall
+   "$FW" alexa-info
+
+   Use the hostname Tailscale actually assigned. public_url is the HTTPS
+   origin only: no /mcp, no /api/v1 path, and no credentials in the URL.
+
+4. On your normal computer or phone using another internet connection, open:
+
+   https://YOUR_ACTUAL_HOSTNAME/health
+
+   This should show the app's small public health response. Do not proceed
+   to AWS setup if the public health page cannot reach your board. Testing
+   from a phone on cellular data is useful because it avoids relying on your
+   private home/Tailscale connection by accident.
+
+5. In your OWN Batocera/SSH terminal, explicitly display the dedicated token:
+
+   "$FW" alexa-info --show-token
+
+   Its file is:
+
+   /userdata/system/configs/flightwall/alexa-token.txt
+
+   This is different from control-token.txt, Google OAuth files, and your
+   release-signing key. Copy this Alexa token only into your own Lambda
+   environment setting in Part 5. Do not send its value into the conversation.
+   It authorizes only the limited voice household operations, not shell
+   commands, app updates, calendar access, or general remote maintenance.
+
+
+PART 4 — CREATE YOUR DEVELOPMENT SKILL
+
+Do these browser steps on your normal computer. Use the Amazon account that
+owns/registers the Echo device you want to use. Its Alexa app must use the
+same account as your Alexa developer console account.
+
+1. Open https://developer.amazon.com/alexa/console/ask and sign in. Complete
+   the free developer-account profile if Amazon asks you to do so.
+
+2. Choose Create Skill. Give it a display name such as Flight Wall Personal.
+   Choose English (US) / en-US for this supplied interaction model. Your test
+   device's Alexa language should match. Other locales need their own model
+   and testing; merely changing the JSON filename does not add a locale.
+
+3. Choose the Custom interaction model and Provision your own backend
+   resources. If the console asks for a template, choose Start from Scratch.
+   Do not choose a Smart Home model or Alexa-hosted backend for these steps.
+   The exact screen order/wording can vary with console updates.
+
+4. On the Build page, open Interaction Model > JSON Editor. Upload or paste
+   the contents of Flight-Wall-Alexa-Interaction-Model-en-US.json. Use the
+   supplied file itself, not this guide or an example request envelope.
+   Save Model, then Build Model. Wait for a successful build.
+
+5. Confirm the invocation name is:
+
+   flight wall
+
+   This is what you say after "Alexa, open" or "Alexa, tell". The skill's
+   display name can differ. Keep the two-word invocation name for the supplied
+   examples; if it conflicts with another skill in your account, choose a new
+   valid invocation name and use that name when speaking.
+
+6. Copy your Skill ID from the developer console. It has this shape:
+
+   amzn1.ask.skill.YOUR_SKILL_ID
+
+   You will use the exact ID in the Lambda trigger AND environment settings.
+   Do not confuse it with an AWS account number, function ARN, or OAuth ID.
+
+7. Leave account linking off for this private household skill. No Google
+   sign-in belongs in Alexa's account-linking section for this integration.
+   You do not need to enable contacts, location, calendar, or notification
+   permissions for this feature.
+
+
+PART 5 — CREATE THE SMALL AWS LAMBDA FUNCTION
+
+1. Open https://console.aws.amazon.com/lambda/ in your own AWS account.
+   Create an account if necessary and review its billing/free-tier terms.
+   The Amazon developer console and AWS console are separate services even
+   if you choose to use the same email address for both.
+
+2. In the AWS region selector choose US East (N. Virginia), us-east-1,
+   which is a supported Alexa Skills Kit Lambda region for North America.
+   Then choose Create function > Author from scratch.
+
+3. Use these values:
+
+   Function name: FlightWallVoice
+   Runtime:       Python 3.12, or a newer supported Python runtime
+   Architecture:  x86_64
+   Execution role: Create a new role with basic Lambda permissions
+
+   This function makes outbound HTTPS requests. It does not need access to
+   your Google account, AWS administrator permissions, API Gateway, a Lambda
+   Function URL, DynamoDB, or an AWS VPC. Leave VPC attachment off for this
+   simple setup so its normal outbound internet access remains available.
+
+4. Create the function. On its Code tab, use Upload from > .zip file and
+   select Flight-Wall-Alexa-Lambda-0.4.0.zip. Save/deploy the uploaded code.
+
+   The supplied ZIP also includes timezone data so local dates work even if
+   the cloud runtime lacks an IANA timezone database. There are no pip
+   dependencies to install or Lambda layers to add. Use this complete ZIP
+   for the novice setup. Pasting only the source file into the code editor
+   requires a runtime with suitable IANA timezone data already available.
+
+5. Under Runtime settings, choose Edit and set the handler to:
+
+   lambda_function.lambda_handler
+
+   If AWS says it cannot import lambda_function, the file was probably
+   nested inside an extra ZIP folder. Use the supplied ready-to-upload ZIP.
+
+6. Under Configuration > General configuration, use 128 MB memory and an
+   8-second timeout. Alexa expects a quick response. Increasing Lambda's
+   timeout does not make Alexa wait indefinitely for a slow/offline board.
+
+7. Under Configuration > Environment variables > Edit, add these three
+   entries. Enter raw values without surrounding quote characters:
+
+   ALEXA_SKILL_ID
+       Your exact amzn1.ask.skill... ID from Part 4.
+
+   FLIGHTWALL_BASE_URL
+       Your exact public HTTPS origin, for example
+       https://flightwall.YOUR_TAILNET.ts.net
+       No /mcp suffix, /api path, query string, or token in this value.
+
+   FLIGHTWALL_ALEXA_TOKEN
+       The dedicated token you viewed locally using alexa-info --show-token.
+       This is the only secret you copy from the board into Lambda.
+
+   Save. AWS stores environment settings separately from the uploaded code.
+   Keep account access to these settings private. Do not paste the token
+   into the code editor or any test event. The function sends it in an HTTPS
+   Authorization header, not in a URL.
+
+8. Add the invocation trigger from the Function overview panel:
+
+   Add trigger > Alexa Skills Kit
+
+   Enable Skill ID verification and enter the exact Skill ID from Part 4.
+   Save the trigger. This adds the function permission for that specific
+   skill. The supplied deployment-permission-example.json is a reference
+   for administrators; using the console trigger is easier for this setup.
+   Do not replace verification with an unrestricted function invocation URL.
+
+9. Copy the function's ARN from the top of the Lambda page. Its shape is:
+
+   arn:aws:lambda:us-east-1:YOUR_AWS_ACCOUNT:function:FlightWallVoice
+
+   This ARN belongs in the Alexa developer console. It is not the board's
+   HTTPS URL and does not contain the dedicated board token.
+
+
+PART 6 — POINT THE SKILL AT LAMBDA AND TEST IT
+
+1. Return to your Alexa skill in the developer console. On Build > Endpoint,
+   choose AWS Lambda ARN. Put the exact function ARN from Part 5 into Default
+   Region and Save Endpoints. This Alexa endpoint is Lambda, not the Tailscale
+   address; Lambda is what talks to the board's HTTPS address.
+
+2. Confirm the interaction model build succeeded. Open the Test tab and set
+   Skill testing is enabled in to Development.
+
+3. In the Alexa simulator, type:
+
+   open flight wall skill
+
+   Start with text testing so you can separate skill/backend setup from
+   microphone recognition. Try these supported dinner interactions:
+
+   tell flight wall we are having teriyaki chicken for dinner
+
+   For a different day, say "set dinner for tomorrow," then answer the meal
+   question with "dinner is teriyaki chicken." Free-form meal text and a date use separate conversation turns
+   in this model. Not every arbitrary phrase containing both is supported.
+
+4. Test an appointment with a common title:
+
+   tell flight wall add a dentist appointment on November third at eleven twenty five a.m.
+
+   Or open the skill, say "add an appointment called Emerson doctor
+   appointment," then answer the date prompt with "on November third" and
+   the time prompt with "at eleven twenty five a.m." When Alexa
+   reads the proposed appointment back, say yes to save it or no to cancel.
+   Use an explicit a.m./p.m. if the requested time could be ambiguous.
+
+5. On Batocera, verify what was actually saved:
+
+   "$FW" personal list
+   "$FW" personal list --visible
+
+   A successful save outside a card's display window will be in the first
+   list but may not be in --visible yet. Dinner is displayed 14:30-19:00 by
+   default; an appointment is displayed during its local date until its end.
+
+6. Test your actual Echo using the same Amazon account and matching language:
+
+   "Alexa, open Flight Wall skill."
+
+   If the developer skill does not appear, check the Alexa app under
+   More > Skills & Games > Your Skills > Dev Skills where available, and
+   enable your development skill. Confirm the developer console is still
+   set to Development testing. Menu wording can vary by app/device version.
+
+7. Open Flight Wall from Ports on the TV and check the Personal view when
+   the card is currently visible. If needed, use its settings/help controls
+   to select or enable that view. The existing flight views remain available.
+
+Do not publish this skill to the public Skill Store to make your own Echo
+work. Your development skill is tied to your Amazon account; this source uses
+one board credential and has no public multi-household account-linking design.
+
+
+PART 7 — FIX THE MOST COMMON SETUP ERRORS
+
+"I couldn't find that skill" or a general Alexa answer:
+  Say the invocation name explicitly: "Alexa, open Flight Wall skill." Check the
+  Amazon account on the Echo and developer console, en-US device/model locale,
+  successful Build Model, and Development testing. Check for another skill
+  with the same invocation name. Ordinary "Alexa, add an appointment" can
+  invoke Amazon's calendar feature instead of your custom skill.
+
+"The requested skill's response is invalid" / endpoint error:
+  Confirm the Lambda ARN, us-east-1 region, Alexa Skills Kit trigger, exact
+  Skill ID verification, and handler lambda_function.lambda_handler. Verify
+  you uploaded the right ZIP and clicked Deploy after code-editor changes.
+
+The skill opens but cannot save to the board:
+  Check the board's power/internet, flightwall service, flightwall_tailscale
+  service, and public /health page. Confirm Funnel is public, not private
+  Serve. Compare FLIGHTWALL_BASE_URL with the real HTTPS address, and confirm
+  alexa_enabled=true. A wrong/rotated token will be rejected. Do not weaken
+  TLS verification or put the token in the URL to work around an error.
+
+The simulator reaches the wrong skill or uses old words:
+  Rebuild the model after changing its JSON. Disable conflicting development
+  skills with the same invocation name. Confirm you edited the en-US model
+  and Lambda function currently referenced by this skill's endpoint ARN.
+
+An appointment title/date/time was misunderstood:
+  Use the guided conversation and listen to the confirmation before saying
+  yes. Free-form appointment titles are captured in a separate turn from
+  date/time because of Alexa slot-model constraints. Use a specific date
+  and a.m./p.m. instead of a broad range such as "sometime next week."
+
+The item saved but the TV shows no card:
+  Check personal_enabled, board timezone, chosen date, and --visible output.
+  An appointment is no longer shown after its end; dinner is shown only in
+  the dinner window. Restart/open the display after initial setup. A future
+  dinner card remains saved until its display date/window arrives.
+
+The time is off by several hours or dinner lands on the wrong date:
+  Correct the board's IANA timezone, system date/time, and current defaults.
+  The function reads those from the board rather than using its own UTC day.
+
+Duplicate delivery/retry:
+  The function supplies Alexa's request ID and the board deduplicates retries.
+  Do not treat a timeout as proof the write failed; check personal list before
+  speaking a different request. A new dinner for the same date replaces the
+  prior dinner, and an old retry must not bring a replaced meal back.
+
+AWS diagnosis:
+  In your Lambda function, use Monitor > View CloudWatch logs for its own
+  invocation errors. Review logs privately and redact personal information
+  before sharing an error. Do not log complete voice requests, tokens, or
+  environment variables while troubleshooting. Live Amazon speech/NLU and
+  your deployed AWS resources were not tested by the local application tests.
+
+
+PART 8 — TURN ALEXA OFF OR REPLACE ITS TOKEN
+
+To disable this voice integration while leaving the app and ChatGPT/Codex
+connection available, close the Ports display and run on Batocera:
+
+   batocera-services stop flightwall
+   "$FW" config --set alexa_enabled false
+   batocera-services start flightwall
+
+To replace the dedicated token, stop the service/close the display first:
+
+   batocera-services stop flightwall
+   "$FW" config --set alexa_enabled false
+   rm -f /userdata/system/configs/flightwall/alexa-token.txt
+   "$FW" alexa-info --show-token
+
+Copy the newly generated token into your OWN Lambda environment setting
+FLIGHTWALL_ALEXA_TOKEN and save it. Then re-enable the integration:
+
+   "$FW" config --set alexa_enabled true
+   batocera-services start flightwall
+
+Do not delete control-token.txt, google-token.json, your whole data directory,
+or any release-signing key for this operation. They are separate credentials.
+
+If you no longer want the cloud skill, turn its Development testing off and
+remove it from your Alexa account. Delete the specific FlightWallVoice Lambda
+function if you no longer use it, and review any retained CloudWatch logs or
+other AWS resources in that account. If Funnel existed only for this project,
+you may reset it using the commands in INSTALL.txt. Resetting a shared Funnel
+also disconnects other remote app clients using that same address.
+
+
+TECHNICAL REFERENCE AND LIMITS
+
+Lambda only uses the dedicated voice endpoints:
+
+  GET  /api/v1/voice-context
+       Board timezone and dinner/appointment defaults; no flight roster.
+
+  POST /api/v1/personal-items
+       Validated dinner/appointment creation with source=alexa and a request ID.
+
+  GET  /api/v1/timers
+  POST /api/v1/timers
+  POST /api/v1/timers/cancel
+       Only household timer state, bounded timer starts and ID-scoped dismissal.
+
+  GET  /api/v1/shopping-list
+  POST /api/v1/shopping-list/add
+  POST /api/v1/shopping-list/remove
+  POST /api/v1/shopping-list/clear
+  POST /api/v1/shopping-list/show
+       Only Flight Wall list state and bounded changes; clearing requires an
+       explicit confirmation. Show controls the list's TV ticker visibility.
+
+  POST /api/v1/flight-watches
+       Airline/number/date request and safe public watch acknowledgement only.
+       No operating-calendar, roster, mail, settings or administrator access.
+
+The dedicated token is not a Google credential and does not authorize the MCP
+tools. Alexa/Amazon processes what you speak, and your AWS function receives
+the resulting structured request. The board stores the resulting local card.
+These local cards do not synchronize to Google Calendar, create Alexa's own
+calendar events, or send proactive spoken reminders. This integration adds
+cards to your Flight Wall display.
+
+Verification results and remaining limitations are recorded in VALIDATION.txt.
+Source tests are not a new native Linux build or proof that the new model
+builds in Amazon, new commands recognize speech, or 0.4.0 runs on the TV.
+The installed 0.3.0 onboarding checks do not validate these new capabilities.
+
+Official documentation:
+
+https://developer.amazon.com/en-US/docs/alexa/custom-skills/steps-to-build-a-custom-skill.html
+https://www.flightaware.com/commercial/aeroapi/resources/aeroapi-openapi.yml
+https://developer.amazon.com/en-US/docs/alexa/devconsole/create-a-skill-and-choose-the-interaction-model.html
+https://developer.amazon.com/en-US/docs/alexa/custom-skills/host-a-custom-skill-as-an-aws-lambda-function.html
+https://developer.amazon.com/en-US/docs/alexa/test/test-your-skill-overview.html
+https://developer.amazon.com/en-US/docs/alexa/devconsole/test-your-skill.html
+https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html
+https://aws.amazon.com/lambda/pricing/
+https://tailscale.com/docs/features/tailscale-funnel
+https://developer.amazon.com/en-US/docs/alexa/custom-skills/create-the-interaction-model-for-your-skill.html#intent-and-slot-name-requirements
+https://developer.amazon.com/en-US/docs/alexa/smapi/alexa-timers-api-reference.html#list-timers

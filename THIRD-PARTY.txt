@@ -1,0 +1,33 @@
+THIRD-PARTY SOFTWARE AND DATA
+
+Application code and original 5 x 7 bitmap font: MIT (LICENSE.txt).
+Natural Earth and OurAirports data: public domain. Source details and
+download URLs are recorded in assets/maps/README.txt.
+
+The frozen executable includes CPython (Python Software Foundation License),
+Pillow (MIT-CMU), pygame (LGPL 2.1), SDL and bundled SDL dependencies (their
+respective permissive or LGPL licenses), PyOpenGL (BSD-style), cryptography
+(Apache 2.0 OR BSD), cffi (MIT, when required), tzdata (Apache 2.0 with public
+domain timezone data), and the PyInstaller bootloader (GPL with its special
+exception allowing distribution of the resulting bundled application).
+The versioned requirements files identify the direct dependencies.
+
+Dependency license texts and package metadata are copied into the binary
+release's licenses directory by the build script. The normal upstream
+source and license are also available at:
+
+https://www.python.org/downloads/source/
+https://github.com/python-pillow/Pillow
+https://github.com/pygame/pygame
+https://github.com/libsdl-org/SDL
+https://github.com/mcfletch/pyopengl
+https://github.com/pyca/cryptography
+https://github.com/python/cpython
+https://github.com/python/tzdata
+https://github.com/pyinstaller/pyinstaller
+
+The application loads shared libraries from its _internal directory. The
+source distribution and older-glibc Docker build instructions are provided
+so recipients can rebuild the program and replace/relink bundled libraries.
+SDL, graphics-driver and Linux system libraries supplied by Batocera remain
+part of Batocera and retain Batocera's upstream license obligations.

@@ -1,0 +1,261 @@
+FLIGHT WALL: CHATGPT AND CODEX REMOTE CONTROL
+
+This feature lets an authorized assistant read Flight Wall status, change saved
+display settings, refresh the calendar, and check your configured signed update
+feed. The four MCP tools are get_status, update_settings, refresh_calendar and
+check_updates. There is no remote command execution or file-reading tool.
+
+Display settings can change immediately and remain saved after a restart. New
+application code must still be built as a release, signed with your trusted
+release key, and published to your configured update feed. The updater can then
+stage it for the next safe launch. An assistant cannot invent a download URL,
+upload arbitrary code, replace the trusted signing key, or change remote-access
+security through these tools. See the release/update instructions for that path.
+
+This app's Google Calendar authorization is separate from any Google Calendar
+app you connected to ChatGPT. Authorize Google on your own computer using the
+calendar setup instructions. Neither MCP nor the maintenance API returns Google
+OAuth credentials. The assistant sees only the app's public display/status data.
+
+1. START LOCALLY FIRST
+
+The maintenance service listens only on 127.0.0.1:8765. It runs when the display
+app runs, or when the optional background Flight Wall service runs. If you want
+access while the display is closed, enable that background service as described
+in the installation guide. Batocera itself must be on and connected.
+
+On the Batocera terminal, this health check needs no secret:
+
+    curl http://127.0.0.1:8765/health
+
+Expected response includes "ok":true and "service":"flightwall". It includes no
+flights or account information. A failed health check usually means the app and
+background service are both stopped.
+
+The first service start creates:
+
+    /userdata/system/configs/flightwall/control-token.txt
+    /userdata/system/configs/flightwall/remote-oauth.json
+
+Both files have owner-only permissions (0600). The control token is the local
+administrator secret and also works as a static Bearer token for trusted native
+clients. The OAuth state file contains registered client metadata and hashes of
+access/refresh tokens, not the usable OAuth token strings. Protect backups of
+the whole data directory because the calendar files there contain other secrets.
+
+Version 0.2 also creates alexa-token.txt with owner-only permissions. This is a
+separate credential for the optional Alexa personal-card bridge. Alexa access is
+disabled until alexa_enabled is set locally. Never give the Alexa Lambda function
+your administrator control token. The Alexa token can use only these routes:
+
+    GET  /api/v1/voice-context
+    POST /api/v1/personal-items
+    POST /api/v1/personal-items/cancel
+
+Voice context contains only the display timezone and appointment/dinner defaults.
+This token cannot read your flight roster, change settings, refresh Google, check
+updates or call MCP. The existing administrator token can use personal-card
+routes for your own maintenance. Alexa does not gain Google Calendar write access.
+
+To view the control token, run this only in your own Batocera terminal or your
+trusted SSH session:
+
+    cat /userdata/system/configs/flightwall/control-token.txt
+
+Never paste this token into a conversation, issue, screenshot or support log.
+For ChatGPT you enter it only into Flight Wall's own HTTPS approval form. For
+Codex you provide it as a local environment variable, outside the conversation.
+
+2. CHOOSE HOW TO REACH THE SERVICE
+
+Private access for a Codex CLI running on your own computer: put both computers
+on your Tailscale network and use Tailscale Serve HTTPS. The maintenance port
+stays bound to loopback on Batocera. Your own computer must be able to reach the
+Serve hostname. A private Serve address alone cannot be reached by ChatGPT's
+cloud-based app connection.
+
+ChatGPT access: use a public HTTPS reverse proxy, such as an explicitly enabled
+Tailscale Funnel endpoint. Funnel publishes this maintenance service to the
+internet, with Flight Wall authentication protecting its tools. The app never
+opens a router port or enables Funnel automatically. Follow the Batocera/Tailscale
+guide to install Tailscale, authenticate the device and enable the optional
+endpoint (docs/INSTALL.txt, Part 9). Its CLI uses the explicit socket
+/userdata/system/configs/flightwall/tailscale/tailscaled.sock. Use a dedicated
+endpoint for Flight Wall, forwarding all paths to:
+
+    http://127.0.0.1:8765
+
+OpenAI also documents Secure MCP Tunnel for supported accounts/workspaces; that
+is a possible alternative if you already administer that service. It is not
+bundled or configured by this app.
+
+The service configuration has a local-only public_url setting. Stop the
+background service and display before changing it. Using the installed CLI, set
+it to the actual HTTPS origin displayed by your chosen proxy, for example:
+
+    /userdata/roms/ports/.data/flightwall/flightwall config --set public_url https://YOUR-DEVICE.YOUR-TAILNET.ts.net
+    /userdata/roms/ports/.data/flightwall/flightwall remote-info
+
+Use the real hostname. Do not add /mcp, any other path, a query string, or a
+trailing port unless the HTTPS service actually uses that port. Restart the
+background service/display after changing public_url. Changing this value
+invalidates previously issued OAuth tokens and registrations, so reconnect
+ChatGPT afterward. Security settings cannot be changed through MCP.
+
+The public MCP URL is then:
+
+    https://YOUR-DEVICE.YOUR-TAILNET.ts.net/mcp
+
+Check your public address from another internet connection before connecting
+ChatGPT:
+
+    curl https://YOUR-DEVICE.YOUR-TAILNET.ts.net/health
+    curl https://YOUR-DEVICE.YOUR-TAILNET.ts.net/.well-known/oauth-protected-resource/mcp
+    curl https://YOUR-DEVICE.YOUR-TAILNET.ts.net/.well-known/oauth-authorization-server
+
+The resource metadata must name your exact HTTPS /mcp URL. The authorization
+server issuer must be your exact HTTPS origin. Visiting /mcp without a token
+returns 401, with a WWW-Authenticate metadata link; that is expected.
+
+3. CONNECT CHATGPT WITH OAUTH
+
+Custom MCP apps and write tools depend on your ChatGPT plan, workspace settings
+and administrator permissions. The settings names can change. Where available,
+enable developer mode under Settings > Apps/advanced settings, then create a
+custom MCP app named Flight Wall, with the HTTPS /mcp URL above and OAuth
+authentication. This service supports dynamic client registration; you do not
+need to create a separate Google client ID for this connection. Leave optional
+preconfigured MCP client-ID/client-secret fields empty when the UI permits DCR.
+
+During connection, ChatGPT opens your Flight Wall approval page in a browser.
+Check that the browser address is your own configured HTTPS hostname. The page
+lists the requested access. Enter your local control token into that page's
+password field and select Approve connection. Do this only for a connection
+you deliberately started. A displayed client name is unverified descriptive
+text; it does not prove who initiated the request.
+
+The server uses an authorization code with S256 PKCE, exact registered redirect
+matching, a CSRF-protected approval, and an exact /mcp resource audience. Codes
+expire in two minutes and work once. Access tokens expire in one hour. Refresh
+tokens rotate on use and expire after 30 days; the connection may eventually
+ask you to authenticate again. The OAuth scope is flightwall.control; the server
+also accepts offline_access for clients that request background renewal.
+
+Select/enable Flight Wall in the conversation. Try these requests:
+
+    "Use Flight Wall to get the current display status."
+    "Set Flight Wall brightness to 0.5 and rotate views every 10 seconds."
+    "Refresh my Flight Wall calendar now."
+    "Check Flight Wall for the next signed application update."
+
+Changing a setting uses update_settings with arguments shaped like:
+
+    {"settings":{"brightness":0.5,"rotation_seconds":10}}
+
+ChatGPT may show its own tool approval before a write. It can reach the app only
+after you have made the server reachable, connected it in your account and
+selected its tools. Nothing in this downloaded app silently grants this current
+conversation access to your machine.
+
+4. CONNECT CODEX WITH A STATIC BEARER TOKEN
+
+For the Codex CLI on your own computer, add this to your local Codex config
+(commonly ~/.codex/config.toml). Use your actual reachable HTTPS hostname:
+
+    [mcp_servers.flightwall]
+    url = "https://YOUR-DEVICE.YOUR-TAILNET.ts.net/mcp"
+    bearer_token_env_var = "FLIGHTWALL_CONTROL_TOKEN"
+
+In a Bash terminal on that same computer, read the token without putting the
+literal token into the command history:
+
+    read -r -s -p 'Flight Wall control token: ' FLIGHTWALL_CONTROL_TOKEN
+    echo
+    export FLIGHTWALL_CONTROL_TOKEN
+    codex
+
+Paste the token into that terminal prompt. It is hidden as you type. The Codex
+process must inherit the environment variable. Launching Codex from a different
+terminal or GUI may not inherit it. A private Tailscale Serve URL works only if
+the Codex computer is on the same permitted tailnet. For a cloud Codex environment
+you need a reachable public endpoint or a supported MCP tunnel instead.
+
+Codex can also use this server's OAuth discovery rather than a static token if
+your client supports it; configure its URL without bearer_token_env_var and use
+the client's MCP login flow.
+
+5. DISCONNECT OR RECOVER
+
+Remove the app connection in ChatGPT/Codex when it is no longer needed. To revoke
+all OAuth grants server-side, stop the Flight Wall service and display app, then
+run the installed CLI and restart:
+
+    /userdata/roms/ports/.data/flightwall/flightwall remote-revoke
+
+Existing OAuth connections will need to sign in again. Removing
+remote-oauth.json while the service is stopped has the same effect. Do not delete
+Google calendar files to revoke MCP access.
+
+To rotate a leaked static control token, stop both the service and display app,
+remove control-token.txt AND remote-oauth.json, then restart. A new control token
+is generated. Update your own native client's environment variable; reconnect
+OAuth clients. Do not remove these files while the service is still running,
+because its in-memory state is saved back to disk.
+
+The Alexa token rotates independently. To revoke a leaked Alexa credential, stop
+the service/display, remove alexa-token.txt, restart, and replace the secret in
+your Lambda configuration. Rotating control-token.txt or revoking MCP OAuth does
+not revoke the separate Alexa token. Set alexa_enabled false locally to disable
+voice access immediately while keeping your local personal cards.
+
+Turn off your Funnel/HTTPS proxy when public remote access is unnecessary. The
+display and calendar continue to work locally. This app's tools do not provide
+SSH access. An optional SSH connection for development should use your own
+private network and keys; it is a separate capability you manage yourself.
+
+6. TROUBLESHOOTING
+
+401 on /mcp without a token: expected. With a token: check the local token,
+access expiry and public_url, then reconnect. An authenticated GET /mcp returns
+405 because this service uses stateless POST responses, without an SSE stream.
+
+403 during approval: restart the ChatGPT connection and keep cookies enabled.
+The approval cookie is Secure and needs your real HTTPS URL; the approval page
+will not work over plain HTTP. Check you copied the current local control token
+and that the page came from your own hostname. Ten failed attempts trigger a
+ten-minute lockout. Approval requests expire after ten minutes.
+
+OAuth 503 or mismatched issuer: set the local public_url and restart the service.
+Do not let a proxy rewrite the metadata documents or /oauth paths.
+
+Registration limit reached: the service bounds registrations to 64 and discards
+unapproved registrations after a day. To clear them immediately, stop the
+service, remove remote-oauth.json, restart and reconnect authorized clients.
+
+Settings rejected: follow the advertised schema and the app's allowed ranges.
+Network exposure, control port, credentials and signed-update trust settings
+are deliberately local setup choices. The normal settings tool cannot change
+them. Check the local status if the calendar/update operation itself fails.
+
+VERIFICATION AND REFERENCES
+
+The automated tests exercise real local HTTP requests, MCP initialization/tools,
+static authentication, OAuth discovery/registration/approval, PKCE, single-use
+codes, refresh rotation, hash-only OAuth persistence, expiry/audience checks,
+origin checks and secret redaction. A separate integration test verifies the
+real backend and GUI HTTP client, plus the official Python MCP client SDK when
+that optional development dependency is installed. The SDK test also follows
+discovery, registration, browser approval and PKCE exchange, with a test-only
+transport routing its public URLs to loopback. That test does not verify TLS.
+They do not establish that your particular
+Batocera installation, HTTPS proxy or live ChatGPT account has been connected.
+Complete the health/metadata checks and an actual tool call after installation.
+
+Official protocol/client documentation used for this implementation:
+
+https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization
+https://developers.openai.com/codex/mcp
+https://developers.openai.com/plugins/build/auth
+https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt
+https://developers.openai.com/api/docs/guides/secure-mcp-tunnels

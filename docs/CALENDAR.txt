@@ -1,0 +1,160 @@
+FLIGHT WALL 0.3.0 — GOOGLE CALENDARS AND AUTHORIZATION
+
+START WITH THE BROWSER WIZARD
+
+The normal household setup is the authenticated /setup page described in
+HOUSEHOLD-SETUP.txt. It supports separate Chris/Lisa profiles, actual calendar
+lists, FC View plus an optional Buzz Flight Brief source, and a separately
+chosen Mom/Dad custody source. Calendar and Gmail permissions are separate.
+
+For that browser method, create a Google OAuth Web application client with the
+exact HTTPS /setup/oauth/callback redirect URI shown by your board. Upload its
+Web JSON through your own setup page, approve the chosen person's connection,
+and list their actual calendars to verify access. Public HTTPS must already
+be configured. Do not substitute the Desktop JSON described below.
+
+Lisa does not need a second account connection if her intended custody calendar
+is already shared with and readable by Chris. Choose that verified source via
+Chris. Otherwise she may explicitly authorize her own Calendar profile. No
+calendar is selected simply because its name contains Family or Kids.
+
+A Google Calendar connection inside ChatGPT does not authorize this standalone
+app. Never paste client JSON, tokens, private calendar IDs or complete calendar
+exports into chat. No actual user credentials are included in this download.
+
+Both Calendar methods request only:
+
+  https://www.googleapis.com/auth/calendar.events.readonly
+  https://www.googleapis.com/auth/calendar.calendarlist.readonly
+
+The first reads events and the second lists readable calendars. Google grants
+these permissions to the selected account; the app subsequently fetches the
+calendar roles you explicitly choose. It cannot create/edit/delete Google events.
+Optional Gmail uses another explicit consent/token and is off by default.
+
+
+DESKTOP CLI FALLBACK — AN ALTERNATIVE TO BROWSER WEB OAUTH
+
+This method remains useful if you prefer terminal setup for Calendar. Create a
+Google OAuth client of type Desktop app, enable Google Calendar API, and download
+its Desktop JSON. A Web application or service-account JSON is not suitable for
+this particular CLI flow. Keep it private on the board as described in INSTALL.
+
+1. On your normal computer, open and keep this SSH tunnel connected:
+
+     ssh -L 8766:127.0.0.1:8766 root@192.168.1.50
+
+   Replace the IP with your own Batocera address. Do not open this callback
+   port on a router. The browser and SSH client must be on the same computer.
+
+2. In that tunneled Batocera session, authorize the explicit profile:
+
+     FW=/userdata/roms/ports/.data/flightwall/flightwall
+     "$FW" authorize --person chris --credentials /userdata/system/configs/flightwall/google-client.json --no-browser --callback-port 8766
+
+   The credentials path is the Desktop JSON you uploaded; use its actual
+   private filename if different. The app prints a Google sign-in URL and
+   waits. Open it in your NORMAL COMPUTER's browser, choose Chris's intended
+   account, and approve the read-only scopes. The loopback callback returns
+   through SSH. Random state and PKCE protect this flow; there is no OOB code
+   to paste into the app.
+
+3. List and select actual Chris calendars:
+
+     "$FW" calendars --person chris
+     "$FW" select-calendar --person chris --role flight --name 'FC View'
+     "$FW" select-calendar --person chris --role secondary --name 'Buzz Flight Brief'
+
+   The secondary source is optional. Use --id YOUR_SELECTED_ID instead of
+   --name when two readable calendars have the same name. Both flight roles
+   belong to Chris. Primary selection takes its timezone from that calendar;
+   afterward set the intended home timezone explicitly, such as:
+
+     "$FW" config --set timezone America/Chicago
+
+4. The family role can use a calendar readable by either authorized person:
+
+     "$FW" select-calendar --person chris --role family --id YOUR_CUSTODY_CALENDAR_ID
+
+   This selects the source and enables its kids filter without changing the
+   home timezone or flight role. Verify exact Mom/Dad labels in the wizard.
+
+   If Lisa needs her own unshared Calendar, she can authorize her own profile
+   with --person lisa using the same tunneled flow, then run:
+
+     "$FW" calendars --person lisa
+     "$FW" select-calendar --person lisa --role family --id YOUR_CUSTODY_CALENDAR_ID
+
+   The person must choose their correct account in Google's actual consent
+   screen; a profile label does not prove who is sitting at the browser.
+
+5. Refresh and check source/error status:
+
+     "$FW" sync
+     "$FW" diagnose
+
+   Sync uses the separate household roles after setup. Legacy commands without
+   --person retain the old Chris behavior, and successful legacy reauthorization
+   refreshes the migrated Chris credentials too. See CLI.txt for full syntax.
+
+
+PRIVATE STORAGE AND GOOGLE EXPIRATION
+
+The default data directory is /userdata/system/configs/flightwall. Separate
+Calendar clients/tokens live under accounts/chris and accounts/lisa. Optional
+Gmail clients/tokens are stored separately under each profile. The original
+root Google files are retained for older-version compatibility when migrating.
+The household cache stores parsed flight/custody metadata, not raw calendar
+exports. Credentials use owner-only permissions outside the versioned program.
+
+External projects left in Google's Testing mode normally issue refresh tokens
+that expire in seven days for these scopes. Add the actual account as a test
+user initially. For continuous personal use, review Google's requirements and
+switch audience publishing status to In production when appropriate, then
+reauthorize. A personal unverified project may still show Google's warning.
+Production status does not make tokens permanent or override work-account policy.
+
+
+FLIGHT PARSING, CUSTODY, AND OPTIONAL HOTEL DATA
+
+Flight synchronization fetches a paginated window from two days ago to 45 days
+ahead and expands recurrence. Failed fetches retain the prior successful flight
+cache and its actual last_sync/error; a successful empty roster is not replaced
+with invented flights. Multiple selected flight sources can be merged.
+
+Supported synthetic flight titles include:
+
+  1946(DH): ATL-SJU(1319-1749)
+  1946: SJU-ATL(1859-2151)
+  DL1234 ATL-MEM
+  DH DL1234 ATL-MEM
+
+Flight start/end timestamps with offsets are authoritative. Airport-local digits
+in the title are not reinterpreted using the home timezone. Unknown/ambiguous
+multi-leg summaries, cancelled events and all-day flight entries are skipped.
+A supported Report: 1219L event supplies a report time within its duty interval;
+it does not create another leg from the description.
+
+Custody uses its own selected source and exact Mom / Mom's House / Mom’s House
+and corresponding Dad aliases. Mom maps to Home; Dad maps to Away. Missing,
+conflicting or stale coverage is Unknown. All-day custody events are supported
+with Google's exclusive end-date semantics. Other calendar names or mentions
+of Mom elsewhere do not grant household privacy conditions.
+
+Normally flight synchronization does not request descriptions. The explicit
+hotel-details option can request description fields transiently from selected
+flight-calendar Hotel/Layover entries and retain only supported labeled hotel
+metadata for timed layovers. It does not keep whole descriptions, crew lists,
+phone numbers or unrelated contacts. You can also enter chosen hotel details
+manually in setup. Unsupported/unlabeled accommodation remains absent.
+
+For a parser problem, provide a minimal anonymized title and timestamp shape.
+Remove crew names, contacts, hotel details and private calendar identifiers.
+Do not send a complete private roster or authorization JSON.
+
+Official references:
+https://developers.google.com/identity/protocols/oauth2/web-server
+https://developers.google.com/identity/protocols/oauth2/native-app
+https://developers.google.com/identity/protocols/oauth2#expiration
+https://developers.google.com/workspace/calendar/api/v3/reference/events/list
+https://developers.google.com/workspace/calendar/api/v3/reference/calendarList/list

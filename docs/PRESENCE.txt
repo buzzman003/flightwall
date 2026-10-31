@@ -1,0 +1,161 @@
+PHONE PRESENCE: CHRIS AND LISA
+
+Presence is optional and starts disabled. Each person must choose to pair their
+own phone. Connecting a Google account or choosing a calendar never counts as
+being home, and does not pair a phone.
+
+The display stores only each person's latest home/away/unknown state, observation
+time and report source. It does not save GPS coordinates, a travel path or a
+location history from phone reports. The private Home geofence coordinates you
+enter in setup remain in the private configuration. A bounded ledger of hashed
+request IDs and observation fingerprints prevents old retries from changing
+newer state; those hashes do not contain coordinates or plaintext request IDs.
+
+Freshness matters for private display rules. After 90 minutes without a fresh
+report, the person's state becomes Unknown. Unknown does not mean Home. The
+presence_ttl_minutes setting can be changed locally from 5 to 1440 minutes.
+Private cards also depend on the display's other household/privacy rules.
+Phone presence is a phone's report; it is not proof that its owner is beside it.
+
+PAIR EACH PHONE SEPARATELY
+
+1. Start Flight Wall or its background service and open its authenticated setup
+   page at your configured HTTPS origin followed by /setup. Complete the owner
+   sign-in. See the installation/setup instructions for the HTTPS connection.
+
+2. In the phone/presence setup, select Chris or Lisa. The selected person should
+   review the feature and explicitly opt in before generating a pairing token.
+   Choose the appropriate phone type. Pairing is an explicit action; opening a
+   setup/status page does not create a phone credential.
+
+3. Save the newly displayed token into that person's phone automation or
+   OwnTracks app. It is displayed only as part of that pairing action. Do not
+   paste it into a conversation, email or support log. Use a separate token for
+   the other person. Phone-notification pairing uses another, separate credential.
+
+4. Enable presence in local setup after opting in. Send a fresh report and check
+   that the setup/display shows the expected person and state. Test Home, Away
+   and expiration to Unknown before relying on private-card visibility.
+
+The HTTPS endpoints are:
+
+    POST https://YOUR-HOST/api/v1/presence/chris
+    POST https://YOUR-HOST/api/v1/presence/lisa
+
+A presence credential can update only its own person's state. It cannot read
+either person's status, the flight roster, private cards, messages, settings or
+MCP tools. There is no public/device GET endpoint for presence. The control token,
+Alexa token and notification token cannot stand in for a presence token.
+
+IPHONE SHORTCUTS OR ANOTHER HTTP AUTOMATION
+
+Create three small shortcuts for your own person: report Home, report Away and
+report Unknown. Each shortcut should:
+
+1. Get the current date/time and format it as ISO 8601 including the timezone
+   offset or Z. Include seconds. Calculate it when the shortcut runs, rather
+   than saving a fixed timestamp in the shortcut.
+2. Use Get Contents of URL with your own HTTPS endpoint above, method POST.
+3. Add the Authorization header with value Bearer followed by one space and
+   your own pairing token. Add Content-Type: application/json if your client
+   does not supply it automatically.
+4. Send a JSON dictionary like this, replacing the timestamp with the freshly
+   formatted current time:
+
+       {"state":"home","observed_at":"2026-11-03T16:25:00Z"}
+
+Use "away" or "unknown" for the other two shortcuts. An optional request_id is
+a nonempty string of at most 512 characters, unique to that observation. Retrying
+one HTTP operation should reuse its ID and original timestamp. Never reuse an
+ID for a different observation. Omitting the ID is supported.
+
+You can associate Home/Away shortcuts with Arrive/Leave personal automations
+for your Home location. Choose immediate execution if your iOS version offers
+it, and verify that it runs without opening the Shortcuts app. Android automation
+apps can make the same HTTPS request with a matching current timestamp.
+
+Arrival/departure events alone do not provide a heartbeat while you stay home.
+Without another report, the state expires to Unknown after the configured time.
+Use a supported periodic reporting method or run the Home shortcut to refresh
+it. iOS background execution can limit periodic automations; test the actual
+phone rather than assuming a requested timer always runs. Private content stays
+hidden when a needed presence report is unknown or stale.
+
+OWNTRACKS HTTP MODE
+
+OwnTracks can supply periodic location observations or Home-region transitions.
+Configure HTTP mode, your person's HTTPS endpoint, and HTTP Basic authentication:
+
+    Username: chris OR lisa, matching the endpoint's final path component
+    Password: that person's presence pairing token
+
+The server also accepts Bearer authentication for HTTP clients that support it.
+Basic authentication is supported only on presence intake routes. Use HTTPS;
+never publish the local unencrypted loopback service directly to the internet.
+
+For transition reporting, name the relevant region Home. Reports with
+_type:"transition", event:"enter"/"leave", desc:"Home", and a current numeric
+tst timestamp update Home/Away respectively. Transitions for other regions are
+rejected, so leaving an airport cannot accidentally mean leaving Home.
+
+For location reports, enter the Home latitude/longitude in private local setup.
+The home_radius_m default is 200 metres and can be set from 30 to 5000 metres.
+The server calculates the distance to Home in memory, then discards the phone's
+coordinates. Reports inside the geofence become Home; reports outside become
+Away. If reported accuracy overlaps the geofence boundary, state becomes Unknown.
+An omitted accuracy value uses the reported point. Phone GPS error can therefore
+affect the result; the freshness/privacy checks still apply.
+
+OwnTracks receives an empty JSON array on successful reports, as expected by its
+HTTP interface. It never receives another person's location or a display card.
+OwnTracks may have its own local history/settings; this application's storage
+rules apply to the Flight Wall server. Configure and review the phone app's own
+permissions separately. Confirm periodic reports arrive while stationary and
+while the phone is locked. Without fresh reports, Unknown is the intended result.
+
+TIME, RETRIES AND COMMON FAILURES
+
+Reports must have timezone-aware timestamps. Reports at least as old as the
+configured freshness interval are rejected, as are observations more than two
+minutes in the future. An older report cannot overwrite a newer observation.
+Conflicting states at exactly the same timestamp are rejected. Exact retries
+are acknowledged without advancing the observation time or renewing freshness.
+
+401 means the credential is missing, wrong, revoked, belongs to the other person
+or belongs to another feature. Check the endpoint/person and paired token.
+503 with a valid presence token usually means local presence is disabled.
+400 means the observation's fields/time/geofence are invalid or it conflicts with
+a newer observation. Send a freshly observed state, without reusing an old ID.
+Check the phone's clock and the display computer's clock when timestamps fail.
+
+ROTATE, DISCONNECT OR DISABLE
+
+Pairing/rotating again creates a new token for that person and immediately clears
+that person's saved presence to Unknown. The old token stops working on the
+running server; the other person's token/state remains unchanged. Update that
+phone's automation with the new token and send a fresh report.
+
+Tokens live in these owner-only files on the display computer:
+
+    DATA/presence/chris.token
+    DATA/presence/lisa.token
+
+DATA normally means /userdata/system/configs/flightwall. Tokens are created only
+when someone explicitly pairs/rotates. Do not copy them into the release bundle.
+For a local terminal alternative, run the installed CLI with that person's
+approval:
+
+    /userdata/roms/ports/.data/flightwall/flightwall presence-pair chris --show-token
+
+Use lisa for the other person. Omitting --show-token hides the new secret. Every
+invocation rotates the token; it is not a read-only way to view an existing token.
+Pairing does not itself enable presence or create a local administrator token.
+Deleting a person's token revokes that device's HTTP access. Clear/rotate their
+presence in setup as well so previously saved presence does not remain fresh.
+Turning presence_enabled off makes every presence snapshot Unknown immediately.
+Rotating the control token or Alexa token does not rotate presence credentials.
+
+These features have automated storage and HTTP tests, including expiration,
+replays, concurrent updates, token isolation and discarding GPS inputs. Actual
+phone background behavior, Home geofence accuracy and HTTPS connectivity must
+be checked on your own devices after pairing.

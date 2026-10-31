@@ -1,0 +1,337 @@
+FLIGHT WALL: SIGNED CODE DELIVERY
+
+CANONICAL PROJECT CHANNEL
+
+The public source repository is:
+  https://github.com/buzzman003/flightwall
+
+Release status and downloads:
+  https://github.com/buzzman003/flightwall/releases
+
+The source version alone does not prove that a signed release is available or
+installed. Check the release page for published packages and their Linux test
+and native validation reports. Publishing is gated on those checks. See
+RELEASE-0.4.0.txt and VALIDATION.txt for features, validation and practical limits.
+
+The canonical maintainer's Ed25519 PUBLIC key (base64, 32 raw bytes) is:
+  cAgN7/AVpTGkfR4WQsxYU/tWknFLtCqrvxaFUOtdZPs=
+
+This public value is safe to share. The maintainer keeps the private signing
+key outside the source tree and must keep a secure backup. Never include the
+private key in Git, an application release, a chat, or the Batocera data folder.
+Do not generate a new key for each release.
+
+Initial trust must be provisioned manually on the display, outside its release
+directories. Verify the public value with a maintainer you authorize to deliver
+code. A downloaded public-key.txt is a convenient copy, not independent proof
+of trust. That public asset is planned for the canonical releases; do not assume
+it exists before publication. If the display already pins a different key,
+do not overwrite it as part of an ordinary update. Key replacement is a separate
+deliberate local trust decision, not a release feature.
+
+After a signed canonical release is published and you have approved this key,
+an existing installation can be configured locally in its Batocera SSH terminal:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set update_public_key 'cAgN7/AVpTGkfR4WQsxYU/tWknFLtCqrvxaFUOtdZPs=' --set update_manifest_url https://github.com/buzzman003/flightwall/releases/latest/download/manifest.json --set updates_enabled true
+
+The configuration is stored under /userdata/system/configs/flightwall. The
+updater verifies each manifest against this pinned key; it never downloads a
+replacement trust key. Remote settings cannot change the key or channel URL.
+Use step 6 below to check, stage and activate a newer release. An unavailable
+manifest before the first publication is not a reason to bypass verification.
+Keep the original installer, original pinned recovery helper and a data backup.
+
+TEMPLATE: HOST YOUR OWN INDEPENDENT CHANNEL
+
+The numbered instructions below are a reusable setup template for a separate
+maintainer or fork. YOUR_ACCOUNT and example version numbers are placeholders,
+not the canonical repository's provisioning status. Use your own key only for
+displays whose owners explicitly choose to trust your independent channel.
+To consume canonical releases, use the channel above; you do not need to create
+a repository, signing secret or private key.
+
+This optional setup makes the full code-update route concrete:
+
+  You ask Codex for a change in your connected Flight Wall repository.
+  Codex edits the app, tests it, and bumps its version.
+  The authorized change is pushed or merged to your main branch.
+  GitHub Actions builds a Linux application and signs it with your key.
+  Your online Batocera app downloads that signed release automatically.
+  The next safe Ports launch activates it, preserving your calendar/settings.
+
+The included .github/workflows/release.yml implements the build/sign/publish
+steps. A fork must configure its own repository and signing secret before it
+can publish. Automatic downloads also require a locally enabled channel on
+the display. This approach needs neither a public SSH port nor remote shell
+commands in ChatGPT. See REMOTE.txt for the separate settings/calendar MCP
+connection.
+
+Initial setup below is easiest on a Windows laptop. Install Git for Windows
+and Python 3.12 or newer first if they are missing. The Git installer includes
+Git Credential Manager, which can open your browser to authenticate a push.
+You also need your own GitHub account. The app itself does not need a GitHub
+account or password to download public release files.
+
+1. PREPARE A CLEAN SOURCE FOLDER
+
+Extract the supplied SOURCE archive into a new folder, for example:
+
+  C:\Users\YourName\FlightWall-project
+
+Open PowerShell there. Use the actual folder you chose:
+
+  cd "$env:USERPROFILE\FlightWall-project"
+  Get-ChildItem -Force
+
+You should see .github, flightwall, scripts, VERSION, requirements.txt, and
+requirements-build.txt. Do not use the first-install BINARY archive as the
+source repository. Do not copy your Batocera data folder, Google OAuth files,
+calendar exports, API keys, or downloaded release binaries into this folder.
+The included .gitignore excludes common build files and secrets, but keeping
+your credentials outside the project is still required.
+
+2. GENERATE AND BACK UP YOUR SIGNING KEY
+
+In that PowerShell window:
+
+  py -3.12 -m pip install cryptography
+  py -3.12 scripts/make_release.py keygen --directory "$env:USERPROFILE\FlightWall-Keys"
+
+If your installed Python is a newer version, use its py selector instead of
+-3.12. The script creates:
+
+  %USERPROFILE%\FlightWall-Keys\flightwall-signing-private.pem
+  %USERPROFILE%\FlightWall-Keys\flightwall-signing-public.pem
+  %USERPROFILE%\FlightWall-Keys\flightwall-public-key.txt
+
+Keep the PRIVATE file secret and backed up. Do not send it in a chat, commit
+it to Git, put it in an app ZIP, or copy it to Batocera. The public file is
+safe to share. The display trusts this public key for all future releases.
+Use your original key if you already generated one following UPDATES.txt.
+
+3. CREATE YOUR OWN GITHUB REPOSITORY
+
+In your browser, sign in at https://github.com/new and create a repository
+named flightwall, or another name you choose. For this simple configuration,
+choose PUBLIC so the display can download release assets without a GitHub
+login. The repository contains application source only; your calendar data
+and authentication tokens remain on your display.
+
+Create it empty: do not add GitHub's README, .gitignore, or license yet. Save
+its HTTPS URL, for example:
+
+  https://github.com/YOUR_ACCOUNT/flightwall.git
+
+YOUR_ACCOUNT is a placeholder for your real GitHub username. If you require
+a private source repository, arrange a separate accessible HTTPS release host
+and adapt the workflow's signed ZIP URL. Private GitHub release downloads that
+require login are not supported by this unauthenticated public-download client.
+
+In the repository, open:
+  Settings > Secrets and variables > Actions > New repository secret
+
+Name the secret exactly:
+  FLIGHTWALL_SIGNING_KEY
+
+Open your private PEM file locally in a text editor. Copy its ENTIRE contents,
+including BEGIN PRIVATE KEY and END PRIVATE KEY lines, into the secret's value.
+Save the secret. Never paste that value into the public repository or chat.
+GitHub stores it as an Actions secret; the workflow does not print it or upload
+it. A temporary private key is removed at the end of the publishing job.
+
+Only let trusted people change your main branch/workflow. Code merged to main
+can run with your publishing secret. Use branch protection and review changes
+before merging if other people can contribute. Pull request jobs do not get
+the signing key in this workflow; publishing runs only from main.
+
+4. GIVE THE FIRST REMOTE UPDATE A HIGHER VERSION
+
+Every update must have a version higher than the installed app and every
+version already accepted by that display. The current source candidate is
+0.4.0, above the previous delivered 0.3.0. The example below uses 0.4.0; do not
+lower a newer checkout's version or reuse a version that has been published.
+
+Open these two source files:
+
+  notepad VERSION
+  notepad flightwall\__init__.py
+
+Set VERSION to a single line:
+  0.4.0
+
+Set the __version__ line in flightwall\__init__.py to:
+  __version__ = "0.4.0"
+
+Save both. They must match. Use only three numeric components, with each new
+published version strictly higher than every version accepted by your display.
+Do not reuse a version for changed code. After a failed update, publish a new
+higher version rather than replacing an existing release ZIP.
+
+5. PUSH YOUR SOURCE AND LET THE WORKFLOW BUILD IT
+
+In PowerShell, from your clean source folder:
+
+  git init -b main
+  git status --short
+  git add .
+  git status --short
+
+Review that list. It should show application source, docs, tests, assets, and
+the .github workflow. It must not contain private PEM files, Google credentials,
+calendar data, token files, or your Batocera data folder. If one appears, stop
+and remove it from the staged files before committing. Your keys belong in
+the separate FlightWall-Keys folder.
+
+Then run, using your actual repository URL:
+
+  git commit -m "Set up Flight Wall signed update channel"
+  git remote add origin https://github.com/YOUR_ACCOUNT/flightwall.git
+  git push -u origin main
+
+Git may ask you to set your name and email for commits. Use your own values:
+
+  git config user.name "Your Name"
+  git config user.email "Your GitHub commit email"
+
+Then retry the commit/push that failed. Authenticate to GitHub in your browser
+if Git Credential Manager asks. No Google account authentication is involved
+in this release publishing step.
+
+Open the repository's Actions tab and watch:
+  Build and publish signed Flight Wall update
+
+The first build can take several minutes. The build job installs dependencies,
+runs tests including the MCP SDK tests, and uses Docker to build against
+Debian 12's older Linux runtime. You do not need Docker or Raspberry Pi tools
+on your laptop for this hosted build.
+
+After a successful publish job, the example Releases page should show v0.4.0
+with at least:
+
+  flightwall-release.zip
+  manifest.json
+
+The workflow uploads release files to a draft first, then publishes it as latest.
+The app update ZIP contains a frozen Linux application, not the first-install
+scripts. Keep your original full installer for a new Batocera installation.
+
+If the job fails:
+  - Missing FLIGHTWALL_SIGNING_KEY: add the exact secret in step 3, then rerun.
+  - VERSION mismatch: make both files in step 4 agree, commit, and push.
+  - Version/tag already exists: choose a higher version, commit, and push.
+  - Permission denied when publishing: check repository/organization Actions
+    policy allows this workflow's contents:write permission. It requests write
+    permission only in the publish job, never in the build/test job.
+  - A draft from an interrupted publish remains: inspect it before deleting
+    that unfinished draft/tag, or use a new higher version. Do not overwrite
+    an already published release used by the display.
+  - Tests/build failed: use the Actions error log with Codex to fix the source;
+    the old published release and your display remain unchanged.
+
+6. CONNECT YOUR BATOCERA INSTALLATION TO THAT CHANNEL
+
+Your first-install app must already be installed as described in INSTALL.txt.
+Copy only the PUBLIC key from PowerShell:
+
+  scp -O "$env:USERPROFILE\FlightWall-Keys\flightwall-signing-public.pem" root@batocera.local:/userdata/system/configs/flightwall/update-public.pem
+
+Use your actual Batocera IP/hostname if batocera.local does not work. Follow
+INSTALL.txt to set your Batocera SSH password. Then connect:
+
+  ssh root@batocera.local
+
+In that SSH terminal on Batocera, run this one line, replacing YOUR_ACCOUNT
+and flightwall with your actual repository path:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set update_public_key update-public.pem --set update_manifest_url https://github.com/YOUR_ACCOUNT/flightwall/releases/latest/download/manifest.json --set updates_enabled true
+
+Check and stage your test update:
+
+  /userdata/roms/ports/.data/flightwall/flightwall update --check
+  /userdata/roms/ports/.data/flightwall/flightwall update
+
+Expected results are available, then staged. If you already run the latest
+accepted release, up_to_date is normal. Signature errors mean the display's
+public key does not match the Actions signing key, or the manifest changed.
+Do not bypass signature verification to fix that error.
+
+Exit the GUI to Batocera, then open PORTS > Flight Wall again. The staged
+release activates at this safe boundary. Run diagnose to see the version:
+
+  /userdata/roms/ports/.data/flightwall/flightwall diagnose
+
+You should see the version just staged (0.4.0 in this example). Your calendar
+authentication remains in place.
+Enable the optional background service in INSTALL.txt if you want automatic
+checks while the display app is closed. The default polling interval is
+15 minutes. Both the GUI and service need internet access to download updates.
+No display restart is forced while you are watching it.
+
+7. USE CODEX FOR FUTURE CHANGES
+
+In Codex, connect your own GitHub repository using the GitHub connection/setup
+shown in your Codex account, then choose that repository for the task. A source
+download does not connect an account. Codex can also work from your local
+checkout if you prefer to review and push changes yourself.
+
+An example request:
+
+  In my Flight Wall repository, make the map stay on screen for 15 seconds.
+  Keep my calendar and remote authentication working. Run the relevant tests.
+  Bump both VERSION and flightwall/__init__.py from 0.4.0 to 0.4.1. Commit
+  and push the completed change to main so my signed
+  GitHub release workflow can deliver it to Batocera.
+
+Simple timing changes can also use the authenticated settings tool immediately
+without building code; this example illustrates the full delivery path.
+For a code change, merging/pushing a new higher version to main starts the
+same build/sign/publish route automatically. You do not reinstall the app or
+copy program files manually. The display stages the signed release at its
+next poll, or you can use the authenticated update tool to stage it sooner.
+Exit and relaunch the Ports app to activate it safely.
+
+The regular ChatGPT MCP connection exposes status, validated settings, refresh,
+and signed update checks. It cannot edit arbitrary source, run shell commands,
+or sign releases. Code delivery uses the separately connected Codex repository
+and the GitHub workflow you configured. Your laptop/Actions key and the display's
+public trust key control that route.
+
+OPTIONAL: BUILD THE SAME RELEASE LOCALLY ON LINUX/WSL
+
+The hosted workflow does this for you. For a local developer build, use the
+Linux/WSL Docker setup in INSTALL.txt, set both version files consistently,
+then run from the source folder:
+
+  sh scripts/build-linux.sh
+
+The default output is releases/<version>, read from root VERSION. The script
+passes your normal CA bundle into Docker as the BuildKit secret
+id=flightwall_ca. For a managed network with a custom trusted CA bundle and/or
+an alternate output directory, set these explicit paths, for example:
+
+  FLIGHTWALL_CA_BUNDLE=/absolute/path/to/ca-certificates.crt FLIGHTWALL_BUILD_OUTPUT=/absolute/path/to/frozen-0.4.1 sh scripts/build-linux.sh
+
+These paths are examples: select your actual trusted CA file and an output
+directory that does not already exist. Do not disable TLS verification.
+FLIGHTWALL_PACKAGE_VERSION can explicitly select a package version, but it
+still must match the application's __version__. Pass the actual frozen output
+directory to scripts/make_release.py --source, then use UPDATES.txt to sign
+and publish manually. Keep your private signing key outside the frozen folder.
+
+8. DISABLE OR RECOVER
+
+On Batocera, disable new update checks locally with:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set updates_enabled false
+
+An already staged release is separate; see UPDATES.txt to cancel its pending
+marker deliberately. To stop publishing, disable the workflow in GitHub's
+Actions tab or remove its signing secret. Keep your original signing key
+backup and the initial pinned helper release for recovery.
+
+If a new app cannot start before its first healthy frame, the stable launcher
+uses the pinned helper to select the previous release and restart its matching
+background service. An error after startup health requires a corrected higher
+version release. No automatic test can guarantee every new feature or driver
+works on your specific television; review the change and keep the known-good
+full installer and a user-data backup.

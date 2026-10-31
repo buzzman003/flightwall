@@ -1,0 +1,38 @@
+#!/bin/sh
+# Optional static-binary Tailscale daemon; installed as flightwall_tailscale.
+set -eu
+TS_DIR=${FLIGHTWALL_TAILSCALE_DIR:-/userdata/system/configs/flightwall/tailscale}
+PIDFILE="$TS_DIR/tailscaled.pid"
+SOCKET="$TS_DIR/tailscaled.sock"
+running() {
+    [ -f "$PIDFILE" ] || return 1
+    IFS= read -r PID < "$PIDFILE"
+    case "$PID" in ''|*[!0-9]*) return 1;; esac
+    kill -0 "$PID" 2>/dev/null || return 1
+    [ -r "/proc/$PID/cmdline" ] || return 1
+    EXECUTABLE=$(tr '\000' '\n' < "/proc/$PID/cmdline" | head -n 1)
+    [ "$EXECUTABLE" = "$TS_DIR/bin/tailscaled" ] || return 1
+    tr '\000' '\n' < "/proc/$PID/cmdline" | grep -Fxq -- "--state=$TS_DIR/tailscaled.state"
+}
+case "${1:-}" in
+start)
+    running && exit 0
+    test -x "$TS_DIR/bin/tailscaled" || { echo "Install the official Tailscale static binaries in $TS_DIR/bin first." >&2; exit 1; }
+    mkdir -p "$TS_DIR"
+    chmod 700 "$TS_DIR"
+    nohup "$TS_DIR/bin/tailscaled" --state="$TS_DIR/tailscaled.state" --socket="$SOCKET" --tun=userspace-networking >>"$TS_DIR/tailscaled.log" 2>&1 </dev/null &
+    printf '%s\n' "$!" > "$PIDFILE"
+    ;;
+stop)
+    if running; then
+        kill "$PID"
+        ATTEMPT=0
+        while running && [ "$ATTEMPT" -lt 10 ]; do sleep 1; ATTEMPT=$((ATTEMPT + 1)); done
+        if running; then echo 'tailscaled is still stopping.' >&2; exit 1; fi
+    fi
+    rm -f "$PIDFILE"
+    ;;
+restart) "$0" stop; "$0" start;;
+status) if running; then echo "Running (PID $PID)"; else echo 'Stopped'; exit 1; fi;;
+*) echo "Usage: $0 {start|stop|restart|status}" >&2; exit 2;;
+esac

@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "researched_on": "2026-10-31",
+  "scope": "Fort Walton Beach and Destin, Florida; not a completeness guarantee for surrounding municipalities",
+  "purpose": "Public address research only. This file is not loaded as active geofences.",
+  "all_geofences_disabled": true,
+  "coordinate_verification": "Pending local map review and an opted-in phone arrival test. No centers were inferred from a street address.",
+  "stores": [
+    {
+      "id": "walmart-919",
+      "brand": "Walmart",
+      "name": "Fort Walton Beach Supercenter",
+      "address": "748 Beal Pkwy NW, Fort Walton Beach, FL 32547",
+      "address_verified": true,
+      "source": "https://www.walmart.com/store/919-fort-walton-beach-fl",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "walmart-1362",
+      "brand": "Walmart",
+      "name": "Destin Supercenter",
+      "address": "15017 Emerald Coast Pkwy, Destin, FL 32541",
+      "address_verified": true,
+      "source": "https://www.walmart.com/store/1362-destin-fl/shopping-services",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "sams-club-6361",
+      "brand": "Sam's Club",
+      "name": "Fort Walton Beach",
+      "address": "740 Beal Pkwy NW, Fort Walton Beach, FL 32547",
+      "address_verified": true,
+      "source": "https://www.samsclub.com/club/6361-ftwalton-beach-fl",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "publix-383",
+      "brand": "Publix",
+      "name": "Sun Plaza Shopping Center",
+      "address": "421 Mary Esther Cut Off NW, Fort Walton Beach, FL 32548-4084",
+      "address_verified": true,
+      "source": "https://www.publix.com/locations/383-sun-plaza-shopping-center",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "publix-766",
+      "brand": "Publix",
+      "name": "The Shoppes at Paradise Point",
+      "address": "251 Miracle Strip Pkwy SE, Fort Walton Beach, FL 32548-5853",
+      "address_verified": true,
+      "source": "https://www.publix.com/locations/766-the-shoppes-at-paradise-point",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "publix-1303",
+      "brand": "Publix",
+      "name": "Publix Super Market",
+      "address": "610 Eglin Pkwy NE, Fort Walton Beach, FL 32547-2832",
+      "address_verified": true,
+      "source": "https://www.publix.com/locations/1303-publix-super-market",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "publix-677",
+      "brand": "Publix",
+      "name": "Paradise Key",
+      "address": "4425 Commons Dr E, Destin, FL 32541-3414",
+      "address_verified": true,
+      "source": "https://www.publix.com/locations/677-paradise-key",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    },
+    {
+      "id": "publix-2023",
+      "brand": "Publix",
+      "name": "Destin Publix at Main Street",
+      "address": "771 Harbor Blvd Unit 100, Destin, FL 32541-2620",
+      "address_verified": true,
+      "source": "https://www.publix.com/locations/2023-destin-publix-at-main-street",
+      "latitude": null,
+      "longitude": null,
+      "verified": false
+    }
+  ],
+  "pending_retailer_verification": [
+    {
+      "brand": "ALDI",
+      "candidate_address": "427 Mary Esther Cutoff, Fort Walton Beach, FL",
+      "source": "https://info.aldi.us/stores/l/fl/fort-walton-beach/427-mary-esther-cutoff/fk99",
+      "status": "Official locator redirect resolves to this address slug, but its rendered store listing could not be read. Recheck opening status and exact address in the retailer locator."
+    },
+    {
+      "brand": "ALDI",
+      "candidate_address": "798 Beal Parkway, Fort Walton Beach, FL",
+      "source": "https://info.aldi.us/stores/l/fl/fort-walton-beach/798-beal-parkway/ff82",
+      "supporting_source": "https://corporate.aldi.us/fileadmin/fm-dam/real_estates/Available_Properties/541_Ft_Walton_Beach__FL.pdf",
+      "status": "Official real-estate brochure confirms address and adjacent ALDI construction; live store details and opening status still need retailer-locator review."
+    },
+    {
+      "brand": "ALDI",
+      "candidate_address": "99 Eglin Pkwy NE, Fort Walton Beach, FL",
+      "source": "https://info.aldi.us/stores/l/fl/fort-walton-beach/99-eglin-pkwy/fp24",
+      "supporting_source": "https://dm.cms.aldi.cx/is/content/prod1amer/Brochure%20-%2099%20Eglin%20Pkwy%20NE%20%28Compressed%29pdf",
+      "status": "Official real-estate brochure confirms address; live store details and opening status still need retailer-locator review."
+    },
+    {
+      "brand": "ALDI",
+      "candidate_address": "981A Highway 98 E, Destin, FL 32541",
+      "source": "https://careers.aldi.us/employment/destin-cashier-jobs/61/45943/6252001-4155751-4166818-4153188/4",
+      "status": "Official careers listing describes a new store. A job listing is not evidence the store has opened; do not enable yet."
+    }
+  ]
+}

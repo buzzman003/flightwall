@@ -1,0 +1,83 @@
+OPTIONAL LIVE FLIGHTS AND NEARBY TRAFFIC
+Flight Wall 0.1.0
+
+Start with the calendar and demo display. Both work without paid flight data.
+The route on the map is a planned great-circle route, not an aircraft track.
+A live position appears only after a separate provider returns a fresh position
+that matches the selected calendar flight. Google Calendar cannot supply it.
+
+YOUR OWN FLIGHT: FLIGHTAWARE AEROAPI (OPTIONAL, BILLED SEPARATELY)
+
+1. Open https://www.flightaware.com/commercial/aeroapi/ and create your own
+   AeroAPI account. Review current pricing, allowed uses, availability and your
+   account's spending controls before enabling this feature. This app does not
+   include an AeroAPI subscription or access key.
+
+2. In the Batocera SSH terminal, store the key with the hidden input prompt:
+
+   /userdata/roms/ports/.data/flightwall/flightwall store-secret flightaware
+
+   Paste your key when asked. The key is saved privately outside app releases.
+   Do not paste the key into ChatGPT, source code, a screenshot or public URL.
+
+3. Set your airline code. Replace YOUR_CODE with your own 2- or 3-character code:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set airline YOUR_CODE
+
+   For example, DAL is Delta's ICAO code; use it only if that is your airline.
+   Numbers already containing an airline prefix retain their existing prefix.
+   A bare calendar number requires the code you provide; the app does not guess.
+
+4. Enable the feed:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_enabled true
+
+   Defaults: one poll every 120 seconds, only from one hour before scheduled
+   departure until one hour after scheduled arrival. Requests for the flight
+   identifier and its position both count toward a local 240-request UTC-day cap.
+   This cap limits requests, not dollars; provider billing and allowance rules
+   still apply. Check your provider account for actual usage and costs.
+
+5. To disable paid requests:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_enabled false
+
+Matching uses airline/flight number, IATA origin and destination, and the closest
+scheduled departure within six hours. Ambiguous matches are skipped. Codeshares,
+last-minute aircraft/flight changes, extreme delays and provider coverage can
+prevent a match. Positions more than five minutes old are hidden. A feed outage
+retains the calendar; it does not fabricate an aircraft moving along the route.
+
+Provider position altitude is converted from hundreds of feet to feet. Ground
+speed is in knots. These values are informational, not operational flight data.
+No real account or paid live endpoint was exercised during the included tests.
+
+OFF-DUTY NEARBY TRAFFIC: ADSB.LOL (OPTIONAL COMMUNITY FEED)
+
+This uses https://api.adsb.lol/ with no bundled key. Availability, coverage and
+terms can change. It is a volunteer receiver network, not guaranteed global
+coverage. The app requests a local circle once per minute only while off duty;
+your own roster flights take priority during the configured takeover window.
+
+Set your own display location in one command. The following is an ATL example;
+replace its coordinates if your display is elsewhere:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set home_latitude 33.64 --set home_longitude -84.43 --set nearby_radius_nm 50 --set nearby_enabled true
+
+Coordinates are shared with that feed as part of the query. Radius is in
+nautical miles, with a supported maximum of 250. Old or invalid positions are
+discarded. An unavailable feed clears aircraft rather than showing stale traffic.
+
+Disable it with:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set nearby_enabled false
+
+REFERENCE DOCUMENTATION
+
+FlightAware developer portal: https://www.flightaware.com/aeroapi/portal/documentation
+FlightAware v4 endpoints: GET /flights/{ident}; GET /flights/{id}/position
+ADSB.lol interactive documentation: https://api.adsb.lol/docs
+ADSB.lol OpenAPI schema: https://api.adsb.lol/api/openapi.json
+
+The installed app, authentication guide and remote setup are described in
+INSTALL.txt, CALENDAR.txt and REMOTE.txt beside this file.

@@ -1,0 +1,218 @@
+FLIGHT WALL: SIGNED UPDATES AND FUTURE CODE CHANGES
+
+Automatic updates are implemented but initially disabled. No update server,
+release-hosting account, signing key, or remote connection has been created for
+you. The supplied first release works offline without any of those services.
+
+There are two different kinds of changes:
+
+1. Display settings, rotation timing, brightness, calendar refresh, and an
+   update check can use the application's authenticated remote tools after you
+   configure them. See REMOTE.txt. Those tools do not execute shell commands or
+   rewrite application code.
+2. New code or bug fixes become a new signed release. Codex can help edit and
+   build that release in a connected development workspace. Someone with your
+   signing key signs it and publishes it to your chosen HTTPS
+   host. The Batocera app downloads and verifies it. The included automated
+   pipeline can perform the build/sign/publish steps, with its signing key held
+   in the pipeline's secret store. A ready-to-configure GitHub Actions workflow
+   is included: follow UPDATE-CHANNEL.txt to connect your own repository and
+   enable it. No GitHub account or signing secret has been connected for you.
+
+HOW UPDATES BEHAVE ON THE TV
+
+The foreground app or optional background service checks the configured update
+channel. A valid newer release downloads to a temporary directory under the
+installation's releases directory. A valid signature, exact byte count, SHA-256
+hash, version, and safe archive structure are required before it is staged.
+
+The running screen does not suddenly restart. A staged release activates the
+next time you exit to Batocera and start Flight Wall again. The stable Ports
+launcher changes the current symlink before it starts the GUI. The new GUI
+confirms its health after its first frame initializes successfully. If it fails
+before confirming health, the launcher rolls back to the previous release;
+an interrupted launch is also rolled back at the next application launch.
+
+This checks initial startup, not every possible runtime defect. An error after
+the healthy first frame requires a corrected higher-version release. Keep the
+previous release directories for recovery. Google tokens, calendar selection,
+settings, and remote credentials live in the separate data directory and are
+not replaced by releases.
+
+Default locations:
+  Installation: /userdata/roms/ports/.data/flightwall
+  App releases:  /userdata/roms/ports/.data/flightwall/releases/<version>
+  Active link:   /userdata/roms/ports/.data/flightwall/current
+  Staged marker: /userdata/roms/ports/.data/flightwall/pending.json
+  User data:     /userdata/system/configs/flightwall
+  Update state:  /userdata/system/configs/flightwall/updates/state.json
+
+The service can stage updates while the GUI is closed if you enable the
+background service as described in INSTALL.txt. Staging alone never activates
+an app or marks an app healthy. It requires a subsequent safe GUI launch.
+The launcher stops an existing background service at that boundary. The GUI
+runs its matching backend, then the service restarts on the selected release
+after you close the GUI. A pinned update-helper release performs activation
+and recovery even if a newer executable cannot start. Keep that helper release.
+
+SET UP YOUR OWN SIGNED CHANNEL ONCE
+
+You need a development copy of this project, Python 3.12 or newer with the
+cryptography package, and an HTTPS host for two public release files. The
+display needs internet access to that host. The update client sends no Google
+calendar tokens to the host and does not use host login cookies or HTTP Basic
+authentication. Use a public download URL or a private HTTPS host reachable
+without additional HTTP authentication. Never include secrets in the app ZIP.
+
+The examples below use a GitHub release in a repository you control. Replace
+YOUR_ACCOUNT and YOUR_REPOSITORY with actual values. They are placeholders,
+not an existing update service. Other HTTPS static hosts also work.
+
+Step 1: Generate your signing key on your development computer.
+
+Open a terminal in the project folder. On Windows PowerShell, for example:
+
+  py -3.12 -m pip install cryptography
+  py -3.12 scripts/make_release.py keygen --directory "$env:USERPROFILE\FlightWall-Keys"
+
+On Linux/macOS with Python 3.12 or newer:
+
+  python3 -m pip install cryptography
+  python3 scripts/make_release.py keygen --directory "$HOME/FlightWall-Keys"
+
+The script prints a PUBLIC configuration value and writes three files:
+  flightwall-signing-private.pem  KEEP SECRET; never publish or copy to Batocera
+  flightwall-signing-public.pem   Safe to copy to Batocera
+  flightwall-public-key.txt       Same public key as a base64 configuration value
+
+Back up the private file securely. Anyone with that key can sign code that runs
+on your display. On Windows, keep the directory in your own account and check
+its file sharing/permissions; POSIX 0600 permissions do not secure Windows ACLs.
+For the optional GitHub workflow, you explicitly provide this key to your own
+GitHub Actions secret store as described in UPDATE-CHANNEL.txt. That grants
+your trusted publishing workflow signing authority; it never belongs in the
+repository's files, a public release, or a ChatGPT message.
+The script refuses to overwrite an existing key. Do not generate a different
+key for each release: existing displays trust your original public key.
+
+Step 2: Provision only the PUBLIC key on Batocera.
+
+For example, from Windows PowerShell:
+
+  scp -O "$env:USERPROFILE\FlightWall-Keys\flightwall-signing-public.pem" root@batocera.local:/userdata/system/configs/flightwall/update-public.pem
+
+Use your actual Batocera hostname/IP if batocera.local does not resolve.
+SSH authentication follows your Batocera installation setup in INSTALL.txt.
+Do not copy the private key or Google credentials into a release folder.
+
+Step 3: Build and sign a NEW Linux application release.
+
+The updater requires numeric major.minor.patch versions: 0.1.1, 0.1.2, etc.
+Use a version higher than every version this display has already accepted.
+Set the project VERSION and package version consistently, then use the Linux
+build process in INSTALL.txt. A Windows Python installation cannot create the
+Linux executable by itself; use the supplied Linux Docker build or Linux/WSL
+as documented. The signing tool can run on Windows after that build is copied
+there. Its --source is the frozen folder containing these files directly:
+
+  FlightWall             Linux x86_64 executable
+  VERSION                Matching version, such as 0.1.1
+  _internal/...          Bundled runtime/dependencies/assets
+
+For example, after building releases/0.1.1 on Linux:
+
+  python3 scripts/make_release.py build \
+    --source releases/0.1.1 \
+    --version 0.1.1 \
+    --url https://github.com/YOUR_ACCOUNT/YOUR_REPOSITORY/releases/download/v0.1.1/FlightWall-0.1.1-linux-x86_64.zip \
+    --private-key "$HOME/FlightWall-Keys/flightwall-signing-private.pem" \
+    --output signed-release-0.1.1
+
+On Windows PowerShell, the same command can be one line with py -3.12 instead
+of python3 and --private-key "$env:USERPROFILE\FlightWall-Keys\flightwall-signing-private.pem".
+
+The output directory must be new or contain neither output file. The script
+verifies archive extraction and its signature, then produces:
+  signed-release-0.1.1/FlightWall-0.1.1-linux-x86_64.zip
+  signed-release-0.1.1/manifest.json
+
+It uploads nothing. It refuses source folders containing common credential
+filenames or private keys. Still review the source folder before publishing:
+include only the frozen application, never your Batocera data directory.
+
+Step 4: Publish both output files on your own HTTPS host.
+
+For GitHub, create a release tagged v0.1.1 in your own repository and upload
+both files as release assets. Mark it as the latest release for the example
+channel URL below. Test in your browser that these URLs download files without
+signing in:
+
+  https://github.com/YOUR_ACCOUNT/YOUR_REPOSITORY/releases/latest/download/manifest.json
+  https://github.com/YOUR_ACCOUNT/YOUR_REPOSITORY/releases/download/v0.1.1/FlightWall-0.1.1-linux-x86_64.zip
+
+Publish the ZIP before making the manifest available. The URL in the signed
+manifest must exactly identify the uploaded ZIP. Do not edit manifest fields
+after signing them; rebuild the manifest if its version or URL must change.
+
+Step 5: Enable the channel locally on Batocera.
+
+In an SSH terminal on Batocera:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set update_public_key update-public.pem --set update_manifest_url https://github.com/YOUR_ACCOUNT/YOUR_REPOSITORY/releases/latest/download/manifest.json --set updates_enabled true
+
+The key file path is relative to the separate data directory. A raw base64
+public key value is also accepted. Provisioning trust settings requires local
+configuration; the remote settings tool cannot change the signing key or
+manifest URL. The updater never downloads a replacement trust key.
+
+Step 6: Test a check, stage it, and relaunch.
+
+  /userdata/roms/ports/.data/flightwall/flightwall update --check
+  /userdata/roms/ports/.data/flightwall/flightwall update
+
+The second command downloads and stages a valid newer release. Exit the GUI,
+then open PORTS > Flight Wall again. Expected statuses include disabled,
+up_to_date, available, staged, activated, healthy, and rolled_back. An error
+does not replace the running release. The remote update tool performs the
+same signed staging operation when the authenticated connection is configured.
+
+To disable further update downloads:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set updates_enabled false
+
+This leaves an already staged release in place. If you intentionally want to
+cancel an already staged release before its next launch, close Flight Wall and
+stop its optional background service, then remove only the pending marker:
+
+  rm /userdata/roms/ports/.data/flightwall/pending.json
+
+Do not delete user data or reset update state to work around a failed check.
+Versions already accepted remain part of downgrade protection. Publish a
+higher version for a correction. Keep the original release and a user-data
+backup available for deliberate manual recovery with a maintainer's help.
+
+RELEASE FORMAT AND LIMITS
+
+A manifest has exactly five fields: version, url, sha256, size, signature.
+The signature is base64 Ed25519 over UTF-8 JSON of the other four fields with
+sorted keys, compact separators, and ensure_ascii=False. The signature covers
+the exact download URL, SHA-256 digest, version, and archive byte count.
+
+Downloads require HTTPS with normal certificate verification. Up to five
+HTTPS redirects are allowed, including GitHub's asset host redirects. HTTP
+downgrades, embedded URL credentials, URL fragments, and arbitrary local file
+URLs are rejected. Downloads carry no Google or remote-control credentials.
+
+ZIP files are limited to 512 MiB compressed, 1.5 GiB uncompressed, 512 MiB per
+file, and 10,000 entries. Large files with expansion ratio above 500 are
+rejected. Archives cannot contain symlinks, special files, encrypted entries,
+duplicate paths, drive paths, or traversal paths. Regular shared-library file
+symlinks in a frozen build are copied as ordinary files by make_release.py.
+The archive root must contain the FlightWall executable and matching VERSION.
+
+The manifest cannot carry commands, installer scripts, or hook fields. A
+verified release still contains executable application code: only trust a key
+whose owner you authorize to maintain your display. First-install packages,
+stable launcher changes, operating system updates, and hardware firmware are
+outside this app update channel. Update the stable launcher with a reviewed
+installation package if its behavior ever needs to change.
