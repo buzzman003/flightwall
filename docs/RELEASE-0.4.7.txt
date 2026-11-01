@@ -1,6 +1,6 @@
 FLIGHT WALL 0.4.7 - OPERATING MAP, TRIP WEATHER AND PORTS PREVIEW
 
-PUBLISHED, INDEPENDENTLY VERIFIED AND STAGED - ACTIVATION PENDING
+PUBLISHED, INDEPENDENTLY VERIFIED AND ACTIVE
 
 DISPLAY AND FLIGHT CONTEXT
 
@@ -92,15 +92,23 @@ media/reference assets and unchanged Alexa companions.
 GUI-live staging verified a 42-file coherent individual-file private backup,
 nine protected files and the original pinned 0.3.0 recovery. Existing settings
 and automatic-update preference were preserved; no GUI/service/OS restart was
-performed during staging. The next normal Ports launch activates 0.4.7.
+performed during staging. The owner's next normal Ports launch activated 0.4.7.
 
 After normal exit to the games menu, Ports metadata/media registration and
 graceful frontend reload passed. Ten other game entries and thirteen referenced
 media files verified unchanged; compositor and background application service
 were preserved. Exact image/logo/video hashes matched approved assets and the
-transfer archive remains intact. The owner still needs to confirm the theme's
-hover preview and launch the new version. Activation/settings preservation and
-new physical map/weather appearance are not yet claimed.
+transfer archive remains intact. The owner confirmed that artwork and video
+appear while hovering, then opened Flight Wall. Strict-host-key SSH verified
+active current/health 0.4.7, no pending update/startup-health flag, all 42 prior
+private files, nine protected credential files, five stable wrappers and the
+original pinned recovery. Every original config value matched; no added-default
+or ephemeral Google-refresh exception was needed. Approved feature preferences
+were then applied separately with a private config backup; every unrelated
+setting and the scoped control/Alexa/provider credentials remained unchanged.
+The running service picked up the new choices without a restart. Home weather
+was ready; trip weather was idle and radar/FAA outside the eligible flight
+window. Those states do not prove a live paid flight or new physical card view.
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
 Build: https://github.com/buzzman003/flightwall/actions/runs/41263038376

@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.7 published/verified/staged: operating focus must not infer phone presence or airborne
+0.4.7 published/verified/active: operating focus must not infer phone presence or airborne
 state from a calendar. Geographic zoom uses only a fresh, exactly associated
 provider position; no synthetic aircraft motion. All paid requests share the
 existing monthly/daily ledger; optional nearby route enrichment has a stricter
@@ -11,8 +11,12 @@ offline. Never ship private weather/radar/provider caches. Only geographic/radar
 insets render above logical resolution; both display paths preserve brightness
 and timer/ticker bounds. Safe Ports metadata registration preserves unrelated
 gamelist bytes and original media backups. No Alexa companion change is needed.
+The owner confirmed hover artwork/video and performed normal Ports activation.
+Health, private files/credentials/config, stable wrappers and pinned recovery
+verified before applying the separately approved preferences. Real operating
+positions and new context-card field checks remain separate.
 
-0.4.6 published, verified and active after the owner reopened Ports. Strict-host-key
+Prior 0.4.6 activation record: published, verified and active after the owner reopened Ports. Strict-host-key
 SSH verified healthy 0.4.6, no pending/startup-health flags, all original private
 files/config values, protected credentials, stable wrappers and pinned 0.3.0
 recovery. One allowed Google ephemeral refresh and one exact-default added config

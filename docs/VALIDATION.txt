@@ -1,6 +1,6 @@
 FLIGHT WALL: VALIDATION RECORD
 
-0.4.7 PUBLISHED, VERIFIED AND STAGED - NOVEMBER 1, 2026 UTC
+0.4.7 PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 1, 2026 UTC
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
 Build: https://github.com/buzzman003/flightwall/actions/runs/41263038376
@@ -22,10 +22,18 @@ After the owner exited normally, exact Ports image/logo/video registration,
 private gamelist/media backup and graceful frontend suspend/resume passed.
 Ten other raw game entries and thirteen referenced media files were unchanged.
 The compositor/standalone session remained; no force restart or kill was used.
-The transfer archive remains intact. Hover-theme acceptance and normal Ports
-launch are requested. Device activation/private preservation and new physical
-map/weather/real-flight behavior remain pending, rather than being inferred
-from the successful synthetic source/native tests.
+The transfer archive remains intact. The owner confirmed hover artwork/video
+playback, then opened Ports normally. Strict-host-key SSH verified current and
+healthy 0.4.7, no pending/startup-health flag, all 42 existing private files,
+nine protected files, five stable wrappers and the pinned original recovery.
+All original config values matched, with zero added-default fields and no
+ephemeral Google-refresh exceptions. After that preservation check, approved
+preferences were applied separately with a private config backup; all unrelated
+settings and the scoped control/Alexa/provider credentials stayed unchanged.
+The running maintenance status reflected the new choices without a restart:
+home weather ready, trip weather idle, national radar/FAA outside their flight
+window, operating status idle. These are actual runtime checks, not real-flight
+coverage or new physical weather/map-card acceptance. The latter remain pending.
 
 0.4.7 SOURCE CANDIDATE - OCTOBER 31, 2026 LOCAL / NOVEMBER 1 UTC
 
