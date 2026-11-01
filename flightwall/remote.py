@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from . import __version__
 from .personal import PersonalError
+from .card_preferences import CARD_DEFAULTS
 from .presence import PresenceStore, PresenceError, PresenceDisabled
 from .config import private_json
 
@@ -32,6 +33,8 @@ MAX_BODY = 65536
 SCOPE = "flightwall.control"
 VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SETTING_TYPES = {
+    **{key: "boolean" for key in CARD_DEFAULTS},
+    "national_radar_scope": "string", "national_radar_flight_only": "boolean",
     "airline": "string", "timezone": "string", "rotation_seconds": "integer",
     "brightness": "number", "glow": "number", "dot_gap": "number",
     "led_effect": "boolean", "show_deadheads": "boolean", "takeover_hours": "integer",
@@ -219,7 +222,7 @@ class RemoteServer:
         """HTTP-only bridge; the application validates dates and stores dedup keys."""
         operations = {"start_timer", "cancel_timer", "get_timers", "create_flight_watch",
                       "get_shopping_list", "add_shopping_item", "remove_shopping_item",
-                      "clear_shopping_list", "show_shopping_list"}
+                      "clear_shopping_list", "show_shopping_list", "select_dinner_option"}
         if name not in ("create_personal_item", "cancel_personal_item", "get_voice_context") and name not in operations:
             raise ValueError("Unknown voice operation")
         callback = self.callbacks.get(name)
@@ -238,6 +241,7 @@ class RemoteServer:
                 "remove_shopping_item": {"item", "id", "request_id", "source"},
                 "clear_shopping_list": {"confirmed", "request_id"},
                 "show_shopping_list": {"visible", "request_id"},
+                "select_dinner_option": {"option", "date", "generation", "request_id"},
             }[name]
             if not isinstance(payload, dict) or not payload or payload.keys() - allowed:
                 raise ValueError("Invalid household operation")
@@ -248,13 +252,16 @@ class RemoteServer:
                 raise ValueError("Invalid voice context")
             # This credential must never provide a flight roster or full config.
             types = {"timezone": str, "appointment_duration_minutes": int,
-                     "dinner_start": str, "dinner_end": str}
+                     "dinner_start": str, "dinner_end": str,
+                     "dinner_tomorrow_preview": bool, "dinner_requires_kids_home": bool,
+                     "dinner_options_date": str, "dinner_options_generation": str}
             value = {key: value[key] for key, expected in types.items()
                      if key in value and type(value[key]) is expected}
         else:
             if not isinstance(payload, dict) or not payload or len(payload) > 20:
                 raise ValueError("Personal-item payload must be a nonempty object")
-            allowed = ({"kind", "title", "date", "time", "duration_minutes", "source", "request_id"}
+            allowed = ({"kind", "title", "date", "time", "duration_minutes", "source", "request_id",
+                        "sides", "ready_time", "ready_window_start", "ready_window_end"}
                        if name == "create_personal_item" else {"id", "request_id"})
             if payload.keys() - allowed:
                 raise ValueError("Unsupported personal-item fields")
@@ -498,6 +505,7 @@ class RemoteServer:
                         if path == "/oauth/revoke":
                             return self._revoke(self._body(form=True))
                     personal_routes = {"/api/v1/personal-items": "create_personal_item",
+                                       "/api/v1/dinner-options/select": "select_dinner_option",
                                        "/api/v1/personal-items/cancel": "cancel_personal_item",
                                        "/api/v1/timers": "start_timer", "/api/v1/timers/cancel": "cancel_timer",
                                        "/api/v1/flight-watches": "create_flight_watch",
@@ -823,6 +831,7 @@ def _tools():
             properties["airline"].update(pattern=r"^([A-Za-z0-9]{2,3})?$", description="Airline IATA/ICAO code; empty for no override.")
             properties["timezone"]["description"] = "IANA timezone, for example America/New_York or UTC."
             properties["nearby_radius_miles"]["description"] = "Nearby radius in statute miles; null preserves the legacy nautical-mile setting."
+            properties["national_radar_scope"]["enum"] = ["national", "southeast", "local", "hyperlocal"]
             properties["weather_enabled"]["description"] = "Show the local forecast; provision forecast coordinates through the local CLI."
             for key in ("sleep_start", "sleep_end", "dinner_start", "dinner_end"):
                 properties[key].update(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$", description="Local 24-hour time HH:MM.")

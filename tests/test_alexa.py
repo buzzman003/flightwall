@@ -79,7 +79,17 @@ class AlexaConversationTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def call(self, name="AddDinnerIntent", slots=None, previous=None, request_id="amzn1.echo-api.request.initial"):
-        return alexa.lambda_handler(event(name, slots, previous and previous["sessionAttributes"], request_id), None)
+        response = alexa.lambda_handler(event(name, slots, previous and previous["sessionAttributes"], request_id), None)
+        # These legacy preservation cases omit optional dinner fields. Complete
+        # the new explicit skip turns while retaining the original request ID.
+        # The separate dinner-dialog tests exercise every real intermediate turn.
+        for step in range(2):
+            draft = response.get("sessionAttributes", {}).get("pending", {})
+            if draft.get("kind") != "dinner" or draft.get("phase") not in {"sides", "ready"}:
+                break
+            response = alexa.lambda_handler(event("SkipDinnerDetailIntent", attributes=response["sessionAttributes"],
+                                                   request_id=f"optional-skip-{step}"), None)
+        return response
 
     def appointment(self, **values):
         slots = {"Title": "dentist", "Date": "2026-10-23", "Time": "09:00", **values}
@@ -172,7 +182,7 @@ class AlexaConversationTests(unittest.TestCase):
         self.assertEqual(self.board.calls[-1]["date"], "2026-10-21")
         self.assertEqual(self.board.calls[-1]["kind"], "dinner")
         self.assertNotIn("duration_minutes", self.board.calls[-1])
-        self.assertEqual(speech(response), "Saved teriyaki chicken for dinner today.")
+        self.assertEqual(speech(response), "Saved teriyaki chicken for dinner today. Anything else?")
         item = self.board.results[-1]["item"]
         zone = ZoneInfo(self.config["timezone"])
         self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(zone).strftime("%H:%M"), "14:30")
@@ -201,7 +211,7 @@ class AlexaConversationTests(unittest.TestCase):
             return save(payload)
         with patch.object(self.board, "save", side_effect=changed_settings):
             response = self.call(slots={"Meal": "pasta"})
-        self.assertEqual(speech(response), "Saved pasta for dinner today.")
+        self.assertEqual(speech(response), "Saved pasta for dinner today. Anything else?")
         item = self.board.results[-1]["item"]
         zone = ZoneInfo(self.config["timezone"])
         self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(zone).strftime("%H:%M"), "16:00")
@@ -220,11 +230,11 @@ class AlexaConversationTests(unittest.TestCase):
                     response = self.call(name, {"Meal": "Chicken teriyaki & rice"}, request_id=f"{name}.{today}")
                     self.assertEqual(self.board.calls[-1]["date"], expected)
                     self.assertEqual(self.board.calls[-1]["title"], "Chicken teriyaki & rice")
-                    self.assertTrue(response["response"]["shouldEndSession"])
+                    self.assertEqual(response["response"]["shouldEndSession"], name != "AddDinnerTomorrowIntent")
                     if name == "AddDinnerTomorrowIntent":
                         item = self.board.results[-1]["item"]
                         self.assertEqual(datetime.fromisoformat(item["display_start"]).astimezone(timezone.utc).strftime("%H:%M"), tomorrow_utc_start)
-                        self.assertEqual(speech(response), "Saved Chicken teriyaki & rice for dinner tomorrow.")
+                        self.assertEqual(speech(response), "Saved Chicken teriyaki & rice for dinner tomorrow. Anything else?")
                     else:
                         self.assertIn("display window has already ended", speech(response))
 
@@ -239,7 +249,7 @@ class AlexaConversationTests(unittest.TestCase):
             response = self.call(slots={"Meal": "Chicken Tonight"}, previous=first, request_id="meal.followup")
         self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
         self.assertEqual(self.board.calls[-1]["title"], "Chicken Tonight")
-        self.assertEqual(speech(response), "Saved Chicken Tonight for dinner today.")
+        self.assertEqual(speech(response), "Saved Chicken Tonight for dinner today. Anything else?")
 
     def test_explicit_dinner_replaces_old_pending_date_and_reads_fresh_board_timezone(self):
         first = self.call(slots={"Date": "2026-12-25"})
@@ -249,7 +259,7 @@ class AlexaConversationTests(unittest.TestCase):
             response = self.call("AddDinnerTomorrowIntent", {"Meal": "Fresh meal"}, first, "fresh.meal")
         self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
         self.assertEqual(self.board.calls[-1]["request_id"], "fresh.meal")
-        self.assertEqual(speech(response), "Saved Fresh meal for dinner tomorrow.")
+        self.assertEqual(speech(response), "Saved Fresh meal for dinner tomorrow. Anything else?")
 
     def test_explicit_dinner_without_meal_never_reuses_prior_title(self):
         first = self.call(slots={"Date": "2026-12-25"})
@@ -281,7 +291,7 @@ class AlexaConversationTests(unittest.TestCase):
         self.call("AddDinnerTomorrowIntent", {"Meal": "Soup & Sourdough"}, request_id="tomorrow.first")
         self.call("AddDinnerTodayIntent", {"Meal": "Crème brûlée"}, request_id="today.second")
         response = self.call("AddDinnerTodayIntent", {"Meal": "Chicken Tonight"}, request_id="today.first")
-        self.assertEqual(speech(today), "Saved Chicken Tonight for dinner today.")
+        self.assertEqual(speech(today), "Saved Chicken Tonight for dinner today. Anything else?")
         self.assertIn("already replaced or cancelled", speech(response))
         self.assertEqual({item["title"] for item in self.store.list_items()}, {"Crème brûlée", "Soup & Sourdough"})
 

@@ -36,6 +36,8 @@ WIZARD_SETTINGS = frozenset({
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
     "local_visits_enabled", "shopping_ticker_enabled", "shopping_ticker_visible",
     "weather_enabled", "nearby_radius_miles",
+    "dinner_options_enabled", "dinner_options_monthly_limit_usd", "dinner_options_servings",
+    "dinner_options_max_minutes", "dinner_options_preferences",
 })
 SCOPES = {
     "calendar": ("https://www.googleapis.com/auth/calendar.events.readonly",
@@ -258,6 +260,9 @@ class OnboardingRouter:
         if not isinstance(patch, dict) or not patch or set(patch) - WIZARD_SETTINGS:
             raise SetupError("Choose supported setup settings to save.")
         patch = dict(patch)
+        if patch.get("dinner_options_enabled") is True or "dinner_options_preferences" in patch:
+            self._consent(body, "chris")
+            self._record_consent("chris", "dinner-options")
         for person in PEOPLE:
             private_fields = {person + "_gmail_enabled", person + "_notifications_enabled"}
             selection_fields = ({"chris_lawyer_senders", "chris_lawyer_domains", "chris_notification_apps"}
@@ -450,6 +455,10 @@ class OnboardingRouter:
                 return True
             if method == "GET" and route == "/setup/status":
                 self._reply(handler, 200, self._status(session))
+                return True
+            if method == "GET" and route == "/setup/dinner-options":
+                callback = self.callbacks.get("get_dinner_options")
+                self._reply(handler, 200, callback() if callable(callback) else {"status": "unavailable", "options": []})
                 return True
             if method == "POST":
                 body = self._body(handler, 8 * 1024 * 1024 if route == "/setup/content/add" else MAX_BODY)

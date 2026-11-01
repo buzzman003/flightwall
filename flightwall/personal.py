@@ -28,8 +28,12 @@ except ImportError:  # Windows development only; the Batocera runtime uses flock
 UTC = timezone.utc
 MAX_ITEMS = 1000
 MAX_REQUESTS = 2000
+MAX_DINNER_DETAILS = MAX_ITEMS + MAX_REQUESTS
+MAX_DETAILS_BYTES = 2_000_000
 REQUEST_TTL = timedelta(days=30)
-_ALLOWED = {"kind", "title", "date", "time", "duration_minutes", "request_id", "source"}
+_DINNER_INPUT = {"sides", "ready_time", "ready_window_start", "ready_window_end"}
+_DINNER_STORED = {"sides", "ready_at", "ready_until"}
+_ALLOWED = {"kind", "title", "date", "time", "duration_minutes", "request_id", "source"} | _DINNER_INPUT
 _ITEM_REQUIRED = {"id", "kind", "title", "source", "timezone", "start", "end", "display_start",
                   "display_end", "created_at", "cancelled"}
 _STAMP_KEYS = ("start", "end", "display_start", "display_end", "created_at")
@@ -67,6 +71,14 @@ def _title(value):
     if not isinstance(value, str) or not 1 <= len(value.strip()) <= 160 or any(ord(char) < 32 or ord(char) == 127
             or 0xD800 <= ord(char) <= 0xDFFF or char in "\u2028\u2029" for char in value):
         raise PersonalError("Give the card a title of 1 to 160 characters on one line.")
+    return value.strip()
+
+
+def _sides(value):
+    if (not isinstance(value, str) or not 1 <= len(value.strip()) <= 120
+            or any(ord(char) < 32 or ord(char) == 127 or 0xD800 <= ord(char) <= 0xDFFF
+                   or char in "\u2028\u2029" for char in value)):
+        raise PersonalError("Give sides as 1 to 120 characters on one line, or omit them.")
     return value.strip()
 
 
@@ -114,11 +126,68 @@ def _local(day, clock, zone):
     return next(iter(instants))
 
 
+def dinner_meal_date(item, config=None):
+    """The saved meal's original local date, not a guessed serving time."""
+    if not isinstance(item, dict) or item.get("kind") != "dinner":
+        return None
+    try:
+        zone = ZoneInfo(item.get("timezone") or (config or {}).get("timezone") or "UTC")
+        return _stamp(item.get("start") or item.get("display_start")).astimezone(zone).date()
+    except (ValueError, TypeError, KeyError, OverflowError, ZoneInfoNotFoundError):
+        return None
+
+
+def dinner_display_window(item, config, now):
+    """Project tomorrow's menu into today's configured household window.
+
+    Stored meal/start/end values are never moved. Today's meal also retains
+    its written boundaries; an expected-ready clock never extends visibility.
+    Partial legacy UI cards keep their explicit interval instead of guessing
+    which original household date they represented.
+    """
+    try:
+        now = _aware_now(now)
+        start = _stamp(item.get("display_start") or item.get("start"))
+        end = _stamp(item.get("display_end") or item.get("end"))
+        if end <= start:
+            return None
+        if config is None or not isinstance(item.get("timezone"), str):
+            return start, end
+        zone = ZoneInfo(config.get("timezone") or item["timezone"])
+        today = now.astimezone(zone).date()
+        meal_day = dinner_meal_date(item, config)
+        first = _local(today, _clock(config.get("dinner_start", "14:30")), zone)
+        last = _local(today, _clock(config.get("dinner_end", "19:00")), zone)
+        if meal_day == today:
+            first, last = max(first, start), min(last, end)
+        elif meal_day != today + timedelta(days=1):
+            return None
+        return (first, last) if first < last else None
+    except (ValueError, TypeError, KeyError, OverflowError, ZoneInfoNotFoundError):
+        return None
+
+
+def personal_card_visible(item, config, now):
+    """Pure per-frame gate shared by storage, policy and both display paths."""
+    if (not isinstance(item, dict) or item.get("kind") not in {"appointment", "dinner"}
+            or item.get("cancelled") is True or config is not None and config.get("personal_enabled", True) is not True):
+        return False
+    try:
+        now = _aware_now(now)
+        window = (dinner_display_window(item, config, now) if item["kind"] == "dinner" else
+                  (_stamp(item.get("display_start") or item.get("start")),
+                   _stamp(item.get("display_end") or item.get("end"))))
+        return bool(window and window[0] <= now < window[1])
+    except (ValueError, TypeError, KeyError, OverflowError):
+        return False
+
+
 class PersonalStore:
     def __init__(self, data_dir, config_getter):
         self.data_dir = Path(data_dir)
         self.config_getter = config_getter
         self.path = self.data_dir / "personal.json"
+        self.details_path = self.data_dir / "personal-dinner-details.json"
         self.lock_path = self.data_dir / "personal.lock"
         self._thread_lock = threading.RLock()
 
@@ -192,7 +261,7 @@ class PersonalStore:
             return state
         except FileNotFoundError:
             return {"schema_version": 1, "items": [], "requests": {}}
-        except (OSError, ValueError, TypeError, KeyError, OverflowError):
+        except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError):
             raise PersonalError("The personal-card file could not be read. Restore its backup or repair it locally; existing data was not changed.") from None
 
     @staticmethod
@@ -213,7 +282,76 @@ class PersonalStore:
         if "cancelled_at" in item:
             _stamp(item["cancelled_at"])
 
-    def _write(self, state):
+    @staticmethod
+    def _check_details(item, details):
+        if not details or set(details) - _DINNER_STORED or item["kind"] != "dinner":
+            raise ValueError("Dinner details on another card type")
+        if "sides" in details:
+            _sides(details["sides"])
+        if "ready_until" in details and "ready_at" not in details:
+            raise ValueError("Incomplete ready window")
+        ready = {key: _stamp(details[key]) for key in ("ready_at", "ready_until") if key in details}
+        zone = ZoneInfo(item["timezone"])
+        meal_day = _stamp(item["start"]).astimezone(zone).date()
+        if any(value.astimezone(zone).date() != meal_day for value in ready.values()):
+            raise ValueError("Ready time must belong to the saved meal date")
+        if "ready_until" in ready and ready["ready_until"] <= ready["ready_at"]:
+            raise ValueError("Invalid ready window")
+
+    @staticmethod
+    def _core_fingerprint(item):
+        # Cancellation changes do not move the original meal or its details.
+        # Title/date/source changes, reused IDs and hand edits cannot inherit it.
+        core = {key: item[key] for key in sorted(_ITEM_REQUIRED - {"cancelled"})}
+        return hashlib.sha256(json.dumps(core, sort_keys=True, ensure_ascii=True, allow_nan=False,
+                                         separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def _read_details(self, *, strict=False):
+        empty = {"schema_version": 1, "items": {}}
+        try:
+            with self.details_path.open("rb") as stream:
+                raw = stream.read(MAX_DETAILS_BYTES + 1)
+            if len(raw) > MAX_DETAILS_BYTES:
+                raise ValueError("Oversized dinner details")
+            document = json.loads(raw)
+            if (not isinstance(document, dict) or set(document) != {"schema_version", "items"}
+                    or type(document["schema_version"]) is not int or document["schema_version"] != 1
+                    or not isinstance(document["items"], dict) or len(document["items"]) > MAX_DINNER_DETAILS):
+                raise ValueError("Invalid dinner details")
+            for ident, entry in document["items"].items():
+                if (not isinstance(ident, str) or not re.fullmatch(r"[a-f0-9]{24}", ident)
+                        or not isinstance(entry, dict) or set(entry) - ({"core_sha256"} | _DINNER_STORED)
+                        or not _DINNER_STORED.intersection(entry)
+                        or not isinstance(entry.get("core_sha256"), str) or not re.fullmatch(r"[a-f0-9]{64}", entry["core_sha256"])):
+                    raise ValueError("Invalid dinner detail entry")
+                if "sides" in entry:
+                    _sides(entry["sides"])
+                clocks = {key: _stamp(entry[key]) for key in ("ready_at", "ready_until") if key in entry}
+                if "ready_until" in clocks and ("ready_at" not in clocks or clocks["ready_until"] <= clocks["ready_at"]):
+                    raise ValueError("Invalid dinner ready window")
+            return document
+        except FileNotFoundError:
+            return empty
+        except (OSError, ValueError, TypeError, KeyError, OverflowError, RecursionError):
+            if strict:
+                raise PersonalError("Dinner details could not be saved safely. Existing menus remain unchanged; repair the private details file locally.") from None
+            # Optional details must never make the recovery release's core
+            # meals unreadable, nor invent sides/times from a damaged cache.
+            return empty
+
+    def _with_details(self, item, document):
+        result = copy.deepcopy(item)
+        entry = document["items"].get(item["id"])
+        if not entry or entry.get("core_sha256") != self._core_fingerprint(item):
+            return result
+        details = {key: entry[key] for key in _DINNER_STORED if key in entry}
+        try:
+            self._check_details(item, details)
+        except (ValueError, TypeError, KeyError, OverflowError, ZoneInfoNotFoundError):
+            return result
+        return result | copy.deepcopy(details)
+
+    def _write_document(self, path, state):
         temporary = None
         try:
             descriptor, temporary = tempfile.mkstemp(prefix=".personal-", suffix=".tmp", dir=self.data_dir)
@@ -226,7 +364,7 @@ class PersonalStore:
                 stream.write("\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, self.path)
+            os.replace(temporary, path)
             temporary = None
             if hasattr(os, "O_DIRECTORY"):
                 parent = os.open(self.data_dir, os.O_RDONLY | os.O_DIRECTORY)
@@ -239,6 +377,25 @@ class PersonalStore:
         finally:
             if temporary is not None:
                 Path(temporary).unlink(missing_ok=True)
+
+    def _write(self, state):
+        self._write_document(self.path, state)
+
+    def _save_details(self, state, item, details):
+        document = self._read_details(strict=True)
+        retained = {row["id"] for row in state["items"]}
+        retained.update(row["item"]["id"] for row in state["requests"].values())
+        entries = {ident: entry for ident, entry in document["items"].items() if ident in retained}
+        if item["id"] in retained:
+            self._check_details(item, details)
+            entries[item["id"]] = {"core_sha256": self._core_fingerprint(item), **details}
+        if len(entries) > MAX_DINNER_DETAILS:
+            raise PersonalError("Dinner detail history is full; no menu was changed.")
+        document = {"schema_version": 1, "items": entries}
+        encoded = json.dumps(document, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode("ascii")
+        if len(encoded) + 1 > MAX_DETAILS_BYTES:
+            raise PersonalError("Dinner detail history is full; no menu was changed.")
+        self._write_document(self.details_path, document)
 
     @staticmethod
     def _prune(state, now):
@@ -271,12 +428,13 @@ class PersonalStore:
     def voice_context(self):
         _config, zone, duration, start, end = self._context()
         return {"timezone": zone.key, "appointment_duration_minutes": duration,
-                "dinner_start": start, "dinner_end": end}
+                "dinner_start": start, "dinner_end": end, "dinner_tomorrow_preview": True,
+                "dinner_requires_kids_home": _config.get("kids_filter_enabled") is True}
 
     @staticmethod
     def _intent(payload):
         if not isinstance(payload, dict) or set(payload) - _ALLOWED:
-            raise PersonalError("Use only kind, title, date, time, duration_minutes, request_id, and source for a personal card.")
+            raise PersonalError("Use only the supported personal-card fields; dinner may include sides and an exact ready time or ready window.")
         kind = payload.get("kind")
         if not isinstance(kind, str) or kind not in {"appointment", "dinner"}:
             raise PersonalError("Choose card kind appointment or dinner.")
@@ -289,11 +447,28 @@ class PersonalStore:
         elif kind == "appointment":
             raise PersonalError("Give the appointment date as YYYY-MM-DD.")
         if kind == "appointment":
+            if _DINNER_INPUT.intersection(payload):
+                raise PersonalError("Sides and expected-ready times apply only to dinner cards.")
             result["time"] = _clock(payload.get("time")).strftime("%H:%M")
             if "duration_minutes" in payload:
                 result["duration_minutes"] = _duration(payload["duration_minutes"])
         elif "time" in payload or "duration_minutes" in payload:
             raise PersonalError("Dinner uses the saved dinner_start and dinner_end settings; omit time and duration_minutes.")
+        else:
+            if "sides" in payload:
+                result["sides"] = _sides(payload["sides"])
+            has_exact = "ready_time" in payload
+            window = {"ready_window_start", "ready_window_end"}.intersection(payload)
+            if has_exact and window:
+                raise PersonalError("Give either one expected-ready time or a complete ready window, not both.")
+            if window and len(window) != 2:
+                raise PersonalError("Give both ready_window_start and ready_window_end, or omit the window.")
+            if has_exact:
+                result["ready_time"] = _clock(payload["ready_time"]).strftime("%H:%M")
+            elif window:
+                result.update({key: _clock(payload[key]).strftime("%H:%M") for key in window})
+                if result["ready_window_end"] <= result["ready_window_start"]:
+                    raise PersonalError("Expected-ready window must end later on the same meal date.")
         request_id = payload.get("request_id")
         if "request_id" in payload and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 512
                                         or not request_id.strip() or any(ord(char) < 32 or ord(char) == 127
@@ -332,7 +507,7 @@ class PersonalStore:
                 record = state["requests"][request_key]
                 if record["payload_hash"] != payload_hash:
                     raise PersonalError("This request_id was already used for different card details. Use a new request_id for a new card.")
-                item = copy.deepcopy(record["item"])
+                item = self._with_details(record["item"], self._read_details())
                 return {"created": False, "item": item, "speech": self._speech(item, now, duplicate=True)}
             _config, zone, default_duration, dinner_start, dinner_end = self._context()
             day = _date(intent["date"]) if "date" in intent else now.astimezone(zone).date()
@@ -349,6 +524,15 @@ class PersonalStore:
             else:
                 start = display_start = _local(day, _clock(dinner_start), zone)
                 end = display_end = _local(day, _clock(dinner_end), zone)
+            details = {}
+            if intent["kind"] == "dinner":
+                if "sides" in intent:
+                    details["sides"] = intent["sides"]
+                if "ready_time" in intent:
+                    details["ready_at"] = _iso(_local(day, _clock(intent["ready_time"]), zone))
+                elif "ready_window_start" in intent:
+                    details["ready_at"] = _iso(_local(day, _clock(intent["ready_window_start"]), zone))
+                    details["ready_until"] = _iso(_local(day, _clock(intent["ready_window_end"]), zone))
             unexpired = display_end > now
             matching_dinners = [previous for previous in state["items"]
                                 if intent["kind"] == "dinner" and previous["kind"] == "dinner"
@@ -377,8 +561,13 @@ class PersonalStore:
                 del state["items"][cancelled_index]
             if request_key is not None:
                 state["requests"][request_key] = {"payload_hash": payload_hash, "created_at": _iso(now), "item": copy.deepcopy(item)}
+            if details:
+                # Commit optional data first. If the core write then fails,
+                # its orphan is invisible and the next rich save prunes it.
+                self._save_details(state, item, details)
             self._write(state)
-            return {"created": True, "item": copy.deepcopy(item), "replaced": replaced, "speech": self._speech(item, now)}
+            projected = copy.deepcopy(item) | copy.deepcopy(details)
+            return {"created": True, "item": projected, "replaced": replaced, "speech": self._speech(projected, now)}
 
     def cancel(self, item_id):
         if not isinstance(item_id, str) or not re.fullmatch(r"[a-f0-9]{24}", item_id):
@@ -391,21 +580,23 @@ class PersonalStore:
             if item is None:
                 raise PersonalError("That personal card was not found or has expired. List current cards to find its ID.")
             if item["cancelled"]:
-                return {"cancelled": False, "item": copy.deepcopy(item), "speech": "That personal card was already cancelled."}
+                return {"cancelled": False, "item": self._with_details(item, self._read_details()), "speech": "That personal card was already cancelled."}
             self._cancel_item(state, item, now)
             self._write(state)
-            return {"cancelled": True, "item": copy.deepcopy(item), "speech": "Personal card cancelled."}
+            return {"cancelled": True, "item": self._with_details(item, self._read_details()), "speech": "Personal card cancelled."}
 
     def list_items(self, now=None, *, include_cancelled=False):
         now = _aware_now(now)
         with self._locked():
             state = self._read()
+            details = self._read_details()
         items = [item for item in state["items"] if _stamp(item["display_end"]) > now
                  and (include_cancelled or not item["cancelled"])]
-        return copy.deepcopy(sorted(items, key=lambda item: (_stamp(item["start"]), item["created_at"], item["id"])))
+        return [self._with_details(item, details) for item in sorted(items, key=lambda item: (_stamp(item["start"]), item["created_at"], item["id"]))]
 
     def visible(self, now=None):
         now = _aware_now(now)
-        if not self.config_getter().get("personal_enabled", True):
+        config = dict(self.config_getter())
+        if not config.get("personal_enabled", True):
             return []
-        return [item for item in self.list_items(now) if _stamp(item["display_start"]) <= now < _stamp(item["display_end"])]
+        return [item for item in self.list_items(now) if personal_card_visible(item, config, now)]

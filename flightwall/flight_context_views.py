@@ -34,11 +34,21 @@ def _enabled(state, config, flag):
 
 def radar_ready(state, config, now):
     meta = state.get("national_radar")
-    return bool(_enabled(state, config, "national_radar_enabled") and isinstance(meta, dict)
+    ready = bool(_enabled(state, config, "national_radar_enabled") and config.get("radar_card_visible", True) is True and isinstance(meta, dict)
                 and meta.get("status") == "ready" and meta.get("image_available") is True
                 and _fresh(meta.get("fetched_at"), now, 1200)
                 and _fresh(meta.get("issued_at") or meta.get("source_time"), now, 1800)
+                and meta.get("scope", "national") == config.get("national_radar_scope", "national")
                 and isinstance(meta.get("image_sha256"), str) and re.fullmatch(r"[0-9a-f]{64}", meta["image_sha256"]))
+    if ready and isinstance(meta.get("animation"), dict):
+        from .radar import validate_animation, stamp
+        try:
+            animation = validate_animation(meta["animation"])
+            if any(value is not None and not 0 <= (now - stamp(value)).total_seconds() < 7200 for value in animation["observed_at"]):
+                return False
+        except (ValueError, TypeError, KeyError, OverflowError):
+            return False
+    return ready
 
 
 def _lines(draw, xy, value, color, *, width=34, limit=2, max_width=220):
@@ -299,12 +309,15 @@ def _trip_weather(draw, image, state, config, now):
 
 def _radar(draw, image, state, config, now):
     from .render import AMBER, CYAN, MUTED, _header, _text
-    _header(draw, state, now, "NATIONAL RADAR / CURRENT OBSERVATION")
+    from .radar import SCOPE_LABELS
+    scope = config.get("national_radar_scope", "national")
+    _header(draw, state, now, SCOPE_LABELS.get(scope, "UNKNOWN") + " RADAR / OBSERVATIONS")
     if radar_ready(state, config, now):
-        _text(draw, (256, 116), "NOAA NATIONAL RADAR", CYAN, 2, align="center", max_width=472)
-        _text(draw, (256, 144), "CURRENT MOSAIC / NOT A FORECAST", MUTED, align="center", max_width=472)
+        _text(draw, (256, 116), "NOAA OBSERVED RADAR", CYAN, 2, align="center", max_width=472)
+        _text(draw, (256, 144), "OBSERVATION LOOP / UTC CLOCK IN IMAGE", MUTED, align="center", max_width=472)
         meta = state["national_radar"]
-        _footer(draw, state, "NOAA FILE " + _clock(meta.get("issued_at") or meta.get("source_time"), config)
+        clock_label = "NOAA OBS " if meta.get("clock_basis") == "advertised_observation" else "NOAA FILE "
+        _footer(draw, state, clock_label + _clock(meta.get("issued_at") or meta.get("source_time"), config)
                 + " / CHECK " + _clock(meta.get("fetched_at"), config))
     else:
         _text(draw, (256, 115), "RADAR UNAVAILABLE / STALE", AMBER, 2, align="center", max_width=472)

@@ -1,5 +1,21 @@
 # Flight Wall implementation contract
 
+0.4.8 candidate: display-only card flags never enable feeds, private consent or
+custody overrides. Apply them before priority interleaving and on every frame,
+including high-resolution image attachments and Home card summaries. Empty
+owner-selected decks fall back Home. Radius controls use statute miles; broad
+maps use declared bundled low-detail geography instead of inventing streets.
+Radar fetches only the selected fixed public scope; never send the Home pin.
+Exact NOAA WMS times or painted UTC image clocks describe observations; frame
+delays describe playback only. Hash-bind bounded sanitized loops and fail
+closed on changed scope, stale source, demo, provider disablement or outage.
+Dinner tomorrow previews use the current board-local afternoon display window
+without rewriting the saved meal date or extending expiry for ready estimates.
+Optional details must not make core personal.json unreadable by prior releases.
+The matching Alexa adapter/model uses optional follow-ups and normal reprompts;
+it cannot promise idle listening for minutes or access native Alexa lists.
+
+
 0.4.7 published/verified/active: operating focus must not infer phone presence or airborne
 state from a calendar. Geographic zoom uses only a fresh, exactly associated
 provider position; no synthetic aircraft motion. All paid requests share the

@@ -190,7 +190,8 @@ class RuntimePersonalBridgeTests(unittest.TestCase):
     def test_real_runtime_context_create_replay_cancel_and_roster_privacy(self):
         status, context = self.request("/api/v1/voice-context", token=self.alexa)
         self.assertEqual(status, 200)
-        self.assertEqual(set(context), {"timezone", "appointment_duration_minutes", "dinner_start", "dinner_end"})
+        self.assertEqual(set(context), {"timezone", "appointment_duration_minutes", "dinner_start", "dinner_end",
+                                        "dinner_tomorrow_preview", "dinner_requires_kids_home"})
         tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).date().isoformat()
         payload = {"kind": "appointment", "title": "Dentist", "date": tomorrow, "time": "14:30",
                    "source": "alexa", "request_id": "real-runtime-request"}

@@ -30,14 +30,17 @@ from PIL import Image
 from . import __version__
 from .config import private_json
 from .trip_weather import select_airports
+from . import radar as radar_tools
 
 UTC = timezone.utc
-RADAR_URL = "https://radar.weather.gov/ridge/standard/CONUS_0.gif"
+RADAR_URL = radar_tools.NATIONAL_URL
 FAA_URL = "https://nasstatus.faa.gov/api/airport-status-information"
 POLL_SECONDS = {"radar": 600, "airport_alerts": 300}
 FETCH_MAX_AGE = {"radar": 1200, "airport_alerts": 600}
 SOURCE_MAX_AGE = {"radar": 1800, "airport_alerts": 900}
-MAX_RESPONSE = {RADAR_URL: 10_000_000, FAA_URL: 2_000_000}
+MAX_RESPONSE = {RADAR_URL: 10_000_000, radar_tools.SOUTHEAST_URL: 10_000_000,
+                radar_tools.CAPABILITIES_URL: 2_000_000, radar_tools.LEGEND_URL: 200_000,
+                FAA_URL: 2_000_000}
 MAX_PIXELS = 10_000_000
 _KINDS = {"ground_stop", "ground_delay", "arrival_delay", "departure_delay"}
 _IATA = re.compile(r"[A-Z]{3}")
@@ -62,9 +65,8 @@ def _iso(value):
 
 
 def request_bytes(url):
-    """Only two fixed HTTPS endpoints, with no redirects, proxies or queries."""
-    if url not in MAX_RESPONSE:
-        raise ValueError("Unexpected flight environment endpoint")
+    """Fixed official HTTPS sources/public radar boxes, no redirects/proxies."""
+    limit = MAX_RESPONSE[FAA_URL] if url == FAA_URL else radar_tools.request_limit(url)
 
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, *args, **kwargs):
@@ -72,15 +74,15 @@ def request_bytes(url):
 
     request = urllib.request.Request(url, headers={
         "User-Agent": "FlightWall/" + __version__ + " (https://github.com/buzzman003/flightwall)",
-        "Accept": "image/gif,image/png" if url == RADAR_URL else "application/xml",
+        "Accept": "application/xml" if url in {FAA_URL, radar_tools.CAPABILITIES_URL} else "image/gif,image/png",
         "Accept-Encoding": "identity",
     })
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     with opener.open(request, timeout=10) as response:
         if response.geturl() != url or response.headers.get("Content-Encoding", "identity") != "identity":
             raise ValueError("Unexpected flight environment response")
-        raw = response.read(MAX_RESPONSE[url] + 1)
-        if not raw or len(raw) > MAX_RESPONSE[url]:
+        raw = response.read(limit + 1)
+        if not raw or len(raw) > limit:
             raise ValueError("Flight environment response exceeds bounds")
         return raw, response.headers.get("Last-Modified")
 
@@ -212,6 +214,8 @@ def _radar_context(snapshot, config, now):
     """Whole household-local flight day/day before; never observed presence."""
     if snapshot.get("demo", True):
         return False
+    if config.get("national_radar_flight_only", True) is False:
+        return True
     try:
         zone = ZoneInfo(config.get("timezone", "UTC"))
     except (KeyError, TypeError, ValueError):
@@ -239,6 +243,7 @@ class FlightEnvironmentFeed:
     def __init__(self, data_dir, config_getter):
         self.path = Path(data_dir) / "flight-environment.json"
         self.image_path = Path(data_dir) / "national-radar.png"
+        self.animation_path = Path(data_dir) / "national-radar-loop.png"
         self.config_getter = config_getter
         self._lock = threading.RLock()
         self._poll_lock = threading.Lock()
@@ -246,6 +251,8 @@ class FlightEnvironmentFeed:
         self._failed = {key: False for key in POLL_SECONDS}
         self._snapshot = {"demo": True, "flights": []}
         self._cache = {}
+        self._radar_scope = None
+        self._radar_legend = None
         try:
             if self.path.stat().st_size <= 300_000:
                 cache = json.loads(self.path.read_text(encoding="utf-8"))
@@ -258,6 +265,18 @@ class FlightEnvironmentFeed:
                             parsed = {"fetched_at": fetched, "issued_at": issued}
                             if key == "radar" and isinstance(row.get("image_sha256"), str) and _HASH.fullmatch(row["image_sha256"]):
                                 parsed["image_sha256"] = row["image_sha256"]
+                                scope = row.get("scope", "national")
+                                if scope not in radar_tools.SCOPES:
+                                    continue
+                                basis = row.get("clock_basis", "embedded_utc")
+                                if basis not in {"embedded_utc", "advertised_observation"}:
+                                    continue
+                                parsed.update(scope=scope, clock_basis=basis)
+                                if row.get("animation") is not None:
+                                    try:
+                                        parsed["animation"] = radar_tools.validate_animation(row["animation"])
+                                    except (ValueError, TypeError, KeyError, OverflowError):
+                                        pass  # A valid latest poster can still be displayed.
                             elif key == "airport_alerts" and issued and isinstance(row.get("events"), list) and len(row["events"]) <= 500:
                                 parsed["events"] = [
                                     {"airport": event["airport"], "kind": event["kind"],
@@ -277,9 +296,66 @@ class FlightEnvironmentFeed:
         flag = "national_radar_enabled" if key == "radar" else "airport_alerts_enabled"
         if config.get(flag) is not True:
             return "off"
+        if key == "radar" and config.get("national_radar_scope", "national") not in radar_tools.SCOPES:
+            return "unconfigured"
         eligible = (_radar_context(snapshot, config, now) if key == "radar" else
                     bool(select_airports(snapshot, now, timezone=config.get("timezone", "UTC"))))
         return "enabled" if eligible else "outside_window"
+
+    def _radar_files_match(self, row):
+        try:
+            for path, digest, limit in ((self.image_path, row.get("image_sha256"), radar_tools.MAX_POSTER_BYTES),
+                                        (self.animation_path, (row.get("animation") or {}).get("sha256"), radar_tools.MAX_ANIMATION_BYTES)):
+                if path.is_symlink() or not isinstance(digest, str) or not _HASH.fullmatch(digest):
+                    return False
+                with path.open("rb") as stream:
+                    raw = stream.read(limit + 1)
+                if len(raw) > limit or hashlib.sha256(raw).hexdigest() != digest:
+                    return False
+            return True
+        except OSError:
+            return False
+
+    def _fetch_radar(self, scope, now):
+        """Only the chosen public scope; never phone/home coordinates or tiles."""
+        observed = None
+        if scope in {"national", "southeast"}:
+            url = RADAR_URL if scope == "national" else radar_tools.SOUTHEAST_URL
+            raw, modified = request_bytes(url)
+            frames, durations = radar_tools.decode_loop(raw)
+            issued, basis = _source_header(modified), "embedded_utc"
+        else:
+            raw, _ = request_bytes(radar_tools.CAPABILITIES_URL)
+            observed = radar_tools.observation_times(raw, now)
+            if not self._radar_requested(scope, now):
+                raise ValueError("Radar scope/consent changed")
+            with self._lock:
+                previous = copy.deepcopy(self._cache.get("radar", {}))
+            if (previous.get("scope") == scope and previous.get("animation", {}).get("observed_at") == observed
+                    and self._radar_files_match(previous)):
+                return dict(previous, fetched_at=_iso(now)), None, None
+            if self._radar_legend is None:
+                self._radar_legend, _ = request_bytes(radar_tools.LEGEND_URL)
+            frames = []
+            for at in observed:
+                if not self._radar_requested(scope, now):
+                    raise ValueError("Radar scope/consent changed")
+                raw, _ = request_bytes(radar_tools.map_url(scope, at))
+                frames.append(radar_tools.compose_wms(raw, scope, at, self._radar_legend))
+            durations = [200] * len(frames)
+            durations[-1] = 1500
+            issued, basis = observed[-1], "advertised_observation"
+        poster, animation, metadata = radar_tools.encode_loop(frames, durations, observed)
+        row = {"fetched_at": _iso(now), "issued_at": issued, "image_sha256": hashlib.sha256(poster).hexdigest(),
+               "scope": scope, "clock_basis": basis, "animation": metadata}
+        return row, poster, animation
+
+    def _radar_requested(self, scope, now):
+        config = self.config_getter()
+        with self._lock:
+            context = copy.deepcopy(self._snapshot)
+        return (config.get("national_radar_scope", "national") == scope
+                and self._mode("radar", config, context, now) == "enabled")
 
     def poll(self, snapshot, now=None):
         now = _now(now)
@@ -295,22 +371,26 @@ class FlightEnvironmentFeed:
                     continue
                 tick = time.monotonic()
                 with self._lock:
+                    scope = self.config_getter().get("national_radar_scope", "national") if key == "radar" else None
+                    if key == "radar" and self._radar_scope != scope:
+                        self._radar_scope, self._last_attempt[key] = scope, -math.inf
                     if tick - self._last_attempt[key] < POLL_SECONDS[key]:
                         continue
                     self._last_attempt[key] = tick
                 try:
-                    raw, modified = request_bytes(url)
                     if key == "radar":
-                        png = _radar_png(raw)
-                        row = {"fetched_at": _iso(now), "issued_at": _source_header(modified),
-                               "image_sha256": hashlib.sha256(png).hexdigest()}
+                        row, png, animation = self._fetch_radar(scope, now)
                     else:
+                        raw, _ = request_bytes(url)
                         row = {"fetched_at": _iso(now), **_parse_faa(raw)}
                     with self._lock:
                         # Consent/DEMO/context may have changed during the request.
-                        if self._mode(key, self.config_getter(), self._snapshot, now) != "enabled":
+                        config = self.config_getter()
+                        if (self._mode(key, config, self._snapshot, now) != "enabled"
+                                or key == "radar" and config.get("national_radar_scope", "national") != scope):
                             continue
-                        if key == "radar":
+                        if key == "radar" and png is not None:
+                            _private_bytes(self.animation_path, animation)
                             _private_bytes(self.image_path, png)
                         self._cache[key] = row
                         self._failed[key] = False
@@ -333,18 +413,30 @@ class FlightEnvironmentFeed:
             radar = key == "radar"
             mode = self._mode(key, config, snapshot, now)
             row = cache.get(key, {}) if mode == "enabled" else {}
+            scope = config.get("national_radar_scope", "national") if radar else None
+            if radar and row.get("scope", "national") != scope:
+                row = {}
             section = {"status": mode, "fetched_at": row.get("fetched_at"), "issued_at": row.get("issued_at"),
                        "source": "NOAA/NWS national radar" if radar else "FAA airport status",
-                       "source_url": RADAR_URL if radar else "https://nasstatus.faa.gov/"}
+                       "source_url": (RADAR_URL if scope == "national" else radar_tools.SOUTHEAST_URL if scope == "southeast"
+                                      else "https://opengeo.ncep.noaa.gov/geoserver/www/index.html") if radar else "https://nasstatus.faa.gov/"}
             if radar:
                 available = False
                 try:
                     # The GUI additionally hash-binds its read to this generation.
-                    available = bool(row.get("image_sha256")) and 0 < self.image_path.stat().st_size <= MAX_RESPONSE[RADAR_URL]
+                    available = bool(row.get("image_sha256")) and not self.image_path.is_symlink() and 0 < self.image_path.stat().st_size <= radar_tools.MAX_POSTER_BYTES
                 except OSError:
                     pass
                 section.update(source_time=row.get("issued_at"), image_available=available,
-                               image_sha256=row.get("image_sha256") if available else None)
+                               image_sha256=row.get("image_sha256") if available else None,
+                               scope=scope, scope_label=radar_tools.SCOPE_LABELS.get(scope, "UNKNOWN"),
+                               clock_basis=row.get("clock_basis", "embedded_utc"), animation=None)
+                try:
+                    meta = radar_tools.validate_animation(row.get("animation"))
+                    if not self.animation_path.is_symlink() and 0 < self.animation_path.stat().st_size <= radar_tools.MAX_ANIMATION_BYTES:
+                        section["animation"] = copy.deepcopy(meta)
+                except (OSError, ValueError, TypeError, KeyError, OverflowError):
+                    pass
             else:
                 section["events"] = [event for event in row.get("events", []) if event["airport"] in selected]
             if mode == "enabled":
@@ -359,6 +451,13 @@ class FlightEnvironmentFeed:
                         age = (now - _stamp(issued)).total_seconds()
                         section["status"] = ("ready" if not failed[key] and 0 <= fetched_age < FETCH_MAX_AGE[key]
                                              and 0 <= age < SOURCE_MAX_AGE[key] else "stale")
+                        if radar and section.get("animation"):
+                            times = section["animation"]["observed_at"]
+                            if any(at is not None for at in times):
+                                observations = [radar_tools.stamp(at) for at in times]
+                                if (any(not 0 <= (now - at).total_seconds() < 7200 for at in observations)
+                                        or observations[-1] != _stamp(issued)):
+                                    section["status"] = "stale"
                 except (KeyError, ValueError, TypeError, OverflowError):
                     section["status"] = "unavailable"
             result[key] = section

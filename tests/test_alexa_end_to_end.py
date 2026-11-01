@@ -32,6 +32,15 @@ def event(intent, request_id, slots=None, attributes=None):
                         "intent": {"name": intent, "slots": {key: {"value": value} for key, value in (slots or {}).items()}}}}
 
 
+def dinner_without_optional_details(envelope):
+    response = alexa.lambda_handler(envelope, None)
+    draft = response.get("sessionAttributes", {}).get("pending", {})
+    if draft.get("kind") == "dinner" and draft.get("phase") in {"sides", "ready"}:
+        response = alexa.lambda_handler(event("SaveDinnerIntent", "optional-save-turn",
+                                              attributes=response["sessionAttributes"]), None)
+    return response
+
+
 class AlexaBoardEndToEndTests(unittest.TestCase):
     def test_timers_shopping_and_public_watch_over_actual_scoped_http(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -151,27 +160,28 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                 with patch.dict("os.environ", environment), patch.object(alexa, "build_opener", return_value=Transport()), \
                         patch.object(alexa, "_now", return_value=NOW), patch("flightwall.personal._now", return_value=NOW):
                     meal = event("AddDinnerTodayIntent", "dinner-one", {"Meal": "Teriyaki chicken"})
-                    response = alexa.lambda_handler(meal, None)
+                    response = dinner_without_optional_details(meal)
                     self.assertIn("Teriyaki chicken", response["response"]["outputSpeech"]["text"])
                     visible = runtime.personal.visible(NOW)
                     self.assertEqual(len(visible), 1)
                     self.assertEqual(visible[0]["source"], "alexa")
-                    alexa.lambda_handler(meal, None)
+                    dinner_without_optional_details(meal)
                     self.assertEqual(len(runtime.personal.visible(NOW)), 1)
-                    alexa.lambda_handler(event("AddDinnerIntent", "dinner-two", {"Meal": "Pizza"}), None)
+                    dinner_without_optional_details(event("AddDinnerIntent", "dinner-two", {"Meal": "Pizza"}))
                     self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza"])
-                    replay = alexa.lambda_handler(meal, None)
+                    replay = dinner_without_optional_details(meal)
                     self.assertIn("cancel", replay["response"]["outputSpeech"]["text"].lower())
                     self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza"])
 
                     tomorrow = event("AddDinnerTomorrowIntent", "dinner-tomorrow", {"Meal": "Soup & rice"})
-                    response = alexa.lambda_handler(tomorrow, None)
-                    self.assertEqual(response["response"]["outputSpeech"]["text"], "Saved Soup & rice for dinner tomorrow.")
-                    alexa.lambda_handler(tomorrow, None)
+                    response = dinner_without_optional_details(tomorrow)
+                    self.assertIn("Saved Soup & rice for dinner tomorrow.", response["response"]["outputSpeech"]["text"])
+                    self.assertTrue(response["response"]["outputSpeech"]["text"].endswith("Anything else?"))
+                    dinner_without_optional_details(tomorrow)
                     tomorrow_item = next(item for item in runtime.personal.list_items(NOW) if item["title"] == "Soup & rice")
                     self.assertEqual(tomorrow_item["start"], "2026-10-23T18:30:00.000000Z")
                     self.assertEqual(tomorrow_item["end"], "2026-10-23T23:00:00.000000Z")
-                    self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza"])
+                    self.assertEqual([x["title"] for x in runtime.personal.visible(NOW)], ["Pizza", "Soup & rice"])
 
                     begin = event("AddAppointmentIntent", "appointment-one", {"Title": "Emerson doctor appointment", "Date": "2026-11-03", "Time": "11:25"})
                     prompt = alexa.lambda_handler(begin, None)
@@ -180,7 +190,7 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                     self.assertEqual(len(runtime.personal.list_items(NOW)), 2)
                     confirmation = event("AMAZON.YesIntent", "appointment-yes", attributes=prompt["sessionAttributes"])
                     saved = alexa.lambda_handler(confirmation, None)
-                    self.assertTrue(saved["response"]["shouldEndSession"])
+                    self.assertFalse(saved["response"]["shouldEndSession"])
                     items = runtime.personal.list_items(NOW)
                     appointment = next(item for item in items if item["kind"] == "appointment")
                     self.assertEqual(appointment["display_end"], appointment["end"])
@@ -189,6 +199,62 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                     self.assertEqual(runtime.personal.visible(datetime(2026, 11, 3, 17, 25, tzinfo=timezone.utc)), [])
                     self.assertTrue(all(path in {"/api/v1/voice-context", "/api/v1/personal-items"} for _, path in requests))
                     self.assertFalse((data / "google-token.json").exists())
+            finally:
+                runtime.stop()
+
+    def test_dinner_details_make_one_scoped_post_and_replay_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data = Path(folder) / "data"
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = probe.getsockname()[1]
+            ConfigStore(data).update({"timezone": "America/Chicago", "alexa_enabled": True, "control_port": port})
+            runtime = Runtime(data, Path(folder) / "install").start()
+            token = runtime.remote.alexa_token_path.read_text().strip()
+            opener = build_opener(ProxyHandler({}))
+            writes = []
+
+            class Reply:
+                def __init__(self, response, original):
+                    self.response, self.original, self.status = response, original, response.status
+                def read(self, size): return self.response.read(size)
+                def geturl(self): return self.original
+                def __enter__(self): return self
+                def __exit__(self, *_): self.response.close()
+
+            class Transport:
+                def open(self, request, timeout):
+                    path = urlsplit(request.full_url).path
+                    if path == "/api/v1/personal-items":
+                        writes.append(json.loads(request.data))
+                    local = Request(f"http://127.0.0.1:{port}" + path, data=request.data,
+                                    headers=dict(request.header_items()), method=request.get_method())
+                    return Reply(opener.open(local, timeout=timeout), request.full_url)
+
+            environment = {"ALEXA_SKILL_ID": SKILL, "FLIGHTWALL_BASE_URL": "https://board.example", "FLIGHTWALL_ALEXA_TOKEN": token}
+            try:
+                with patch.dict("os.environ", environment), patch.object(alexa, "build_opener", return_value=Transport()), \
+                        patch.object(alexa, "_now", return_value=NOW), patch("flightwall.personal._now", return_value=NOW):
+                    meal = alexa.lambda_handler(event("AddDinnerTomorrowIntent", "detailed-dinner", {"Meal": "Tacos"}), None)
+                    self.assertEqual(writes, [])
+                    side = alexa.lambda_handler(event("SetDinnerSidesIntent", "side-turn", {"Sides": "rice and beans"}, meal["sessionAttributes"]), None)
+                    self.assertEqual(writes, [])
+                    ready = event("SetDinnerReadyWindowIntent", "ready-turn", {"ReadyStart": "18:45", "ReadyEnd": "19:15"}, side["sessionAttributes"])
+                    saved = alexa.lambda_handler(ready, None)
+                    self.assertEqual(len(writes), 1)
+                    self.assertEqual(writes[0]["request_id"], "detailed-dinner")
+                    self.assertEqual(writes[0]["ready_window_end"], "19:15")
+                    self.assertIn("6:45 P.M. and 7:15 P.M.", saved["response"]["outputSpeech"]["text"])
+                    self.assertNotIn("token", json.dumps(saved).lower())
+                    repeated = alexa.lambda_handler(ready, None)
+                    self.assertEqual(writes[0], writes[1])
+                    self.assertIn("Already saved", repeated["response"]["outputSpeech"]["text"])
+                    items = runtime.personal.list_items(NOW)
+                    self.assertEqual(len(items), 1)
+                    self.assertEqual(items[0]["sides"], "rice and beans")
+                    self.assertEqual(items[0]["ready_at"], "2026-10-23T23:45:00.000000Z")
+                    self.assertEqual(items[0]["ready_until"], "2026-10-24T00:15:00.000000Z")
+                    self.assertEqual(items[0]["display_end"], "2026-10-24T00:00:00.000000Z")
             finally:
                 runtime.stop()
 

@@ -1,3 +1,15 @@
+FLIGHT WALL 0.4.8 - SOURCE CANDIDATE
+
+Adds four daily pictured meal ideas, dinner sides/ready clocks and tomorrow menus,
+animated NOAA radar and S options for card visibility, aircraft radius and
+radar area. Defaults preserve existing consent, provider choices and Kids Home
+rules. Dinner's display window remains 14:30-19:00 in the configured timezone.
+The logical LED board remains 512x256; radar/geography use a clear image inset.
+See docs/RELEASE-0.4.8.txt and docs/VALIDATION.txt for checks and limitations.
+The matching Alexa Lambda/model must be deployed after native activation.
+Linux signed build, companion deployment and device activation are pending.
+
+PREVIOUS RELEASE:
 FLIGHT WALL 0.4.7 - PUBLISHED, VERIFIED AND ACTIVE
 
 Adds a position-driven operating map, current-flight focus, optional nearby

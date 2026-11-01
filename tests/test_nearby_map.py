@@ -69,10 +69,10 @@ class NearbyGeographyTests(unittest.TestCase):
         self.assertEqual(image.getpixel(bay), nearby_map.WATER)
         self.assertNotEqual(image.getpixel(land), nearby_map.WATER)
 
-    def test_outside_region_off_demo_unknown_or_unbounded_inputs_fall_back(self):
-        for changes in ({"home_latitude": 40, "home_longitude": -100}, {"nearby_enabled": False},
+    def test_off_demo_unknown_or_unbounded_inputs_fall_back(self):
+        for changes in ({"nearby_enabled": False},
                         {"demo": True}, {"home_latitude": None}, {"home_longitude": float("nan")},
-                        {"nearby_radius_miles": True}, {"nearby_radius_miles": 0}, {"nearby_radius_miles": 250},
+                        {"nearby_radius_miles": True}, {"nearby_radius_miles": 0}, {"nearby_radius_miles": 251},
                         {"home_latitude": 90}):
             with self.subTest(changes=changes):
                 self.assertIsNone(nearby_map.render_map(CONFIG | changes, (1110, 555), now=NOW))
@@ -113,6 +113,25 @@ class NearbyGeographyTests(unittest.TestCase):
     def test_legacy_nautical_radius_keeps_its_units(self):
         parameters = nearby_map._parameters(CONFIG | {"nearby_radius_miles": None, "nearby_radius_nm": 5}, (1110, 555))
         self.assertAlmostEqual(parameters[2], 5 * 1.15078)
+
+    def test_owner_radius_presets_use_actual_bundled_geography_and_exact_filter(self):
+        # A received point about seven miles north appears at 10mi, never 5mi.
+        row = aircraft(latitude=30.495, longitude=-86.4958)
+        for radius in (2.5, 5, 10, 25, 50, 100):
+            with self.subTest(radius=radius):
+                config = CONFIG | {"nearby_radius_miles": radius}
+                empty = nearby_map.render_map(config, (1110, 555), now=NOW)
+                actual = nearby_map.render_map(config, (1110, 555), [row], NOW)
+                self.assertIsInstance(empty, Image.Image)
+                self.assertEqual(empty.size, (1110, 555))
+                self.assertEqual(actual.tobytes() == empty.tobytes(), radius <= 5)
+        # The wider basemap has its own declared source and no online tiles.
+        labels = []
+        nearby_map._base_map.cache_clear()
+        nearby_map._wide_base_map.cache_clear()
+        with patch.object(render, "_text", side_effect=lambda draw, xy, text, *a, **kw: labels.append(text)):
+            nearby_map.render_map(CONFIG | {"nearby_radius_miles": 100}, (1110, 555), now=NOW)
+        self.assertIn("NATURAL EARTH / LIMITED DETAIL", labels)
 
     def test_corrupt_missing_or_unlicensed_asset_is_not_silently_displayed(self):
         valid = json.loads(nearby_map.ASSET_PATH.read_text(encoding="utf-8"))

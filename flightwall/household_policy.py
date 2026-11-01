@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import math
+import re
 from urllib.parse import urlsplit
 from .outlook import trip_preview
+from .personal import personal_card_visible
+from .card_preferences import card_enabled
 
 
 def _time(value):
@@ -135,9 +138,70 @@ def filter_personal_items(items, status, config, now=None):
     if config.get("personal_enabled", True) is not True:
         return []
     context = household_context(status, config, now)
-    return [dict(item) for item in items or [] if _visible(item, now, require_window=True)
-            and item.get("kind") in {"appointment", "dinner"}
+    return [dict(item) for item in items or [] if personal_card_visible(item, config, now)
             and not (item.get("kind") == "dinner" and config.get("kids_filter_enabled") is True and not context["kids_home"])]
+
+
+def kids_home_current(status, config, now=None):
+    """Recheck a dated custody observation, not a cached room boolean."""
+    now = _now(now)
+    kids = status.get("kids") if isinstance(status, dict) else None
+    if not _known(kids, "home"):
+        return False
+    observed, until = _time(kids.get("last_sync")), _time(kids.get("until"))
+    age = config.get("kids_stale_minutes", 30)
+    age = age if type(age) in (int, float) and math.isfinite(age) and 1 <= age <= 1440 else 30
+    return bool(observed and until and timedelta(minutes=-5) <= now - observed <= timedelta(minutes=age) and now < until)
+
+
+def dinner_options_visible(status, config, now=None):
+    """Daily ideas require dated Kids Home, current generation and no selection.
+
+    This view is never a presence observation, an alert, or a cached private
+    boolean. Missing/expired backend data fails closed even during manual pause.
+    """
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+    now = _now(now)
+    if (not isinstance(status, dict) or config.get("personal_enabled", True) is not True
+            or config.get("dinner_options_enabled") is not True
+            or config.get("demo") is True or status.get("demo") is True
+            or isinstance(status.get("snapshot"), dict) and status["snapshot"].get("demo") is True
+            or config.get("dinner_options_card_visible", True) is not True
+            or status.get("backend_available", True) is not True
+            or status.get("dinner_today_selected") is not False):
+        return False
+    kids, options = status.get("kids"), status.get("dinner_options")
+    if not kids_home_current(status, config, now) or not isinstance(options, dict) or options.get("status") != "ready":
+        return False
+    try:
+        zone = ZoneInfo(config.get("timezone", "UTC"))
+        local = now.astimezone(zone)
+        if not (5, 0) <= (local.hour, local.minute) < (19, 0) or options.get("date") != local.date().isoformat():
+            return False
+        generated = _time(options.get("generated_at"))
+        if not generated or generated > now or generated.astimezone(zone).date() != local.date():
+            return False
+    except (ValueError, TypeError, OverflowError, ZoneInfoNotFoundError):
+        return False
+    if (not isinstance(options.get("generation"), str) or not re.fullmatch(r"[a-f0-9]{24}", options["generation"])
+            or not isinstance(options.get("options"), list) or len(options["options"]) != 4):
+        return False
+    numbers = set()
+    def plain(value, maximum, *, empty=False):
+        return (isinstance(value, str) and (empty or bool(value.strip())) and len(value) <= maximum
+                and not any(ord(char) < 32 or ord(char) == 127 or 0xD800 <= ord(char) <= 0xDFFF
+                            or char in "\u2028\u2029" for char in value))
+    for row in options["options"]:
+        if (not isinstance(row, dict) or set(row) - {"number", "title", "sides", "minutes", "image_data"}
+                or type(row.get("number")) is not int or not 1 <= row["number"] <= 4 or row["number"] in numbers
+                or not plain(row.get("title"), 80) or not plain(row.get("sides", ""), 120, empty=True)
+                or type(row.get("minutes")) is not int or not 1 <= row["minutes"] <= 120):
+            return False
+        data = row.get("image_data")
+        if data is not None and (not isinstance(data, str) or len(data) > 1_100_000 or not data.startswith("data:image/png;base64,")):
+            return False
+        numbers.add(row["number"])
+    return numbers == {1, 2, 3, 4}
 
 
 def _cards(value):
@@ -240,6 +304,8 @@ def build_rotation(status, config, now=None):
     focus = focus if isinstance(focus, (int, float)) and not isinstance(focus, bool) and 3 <= focus <= 600 else 60
     entries = []
     def add(view, key=None, item=None, seconds=None, **extra):
+        if not card_enabled(view, config, item):
+            return
         entry = {"key": key or view, "view": view, "duration_seconds": seconds or duration, **extra}
         if item is not None:
             entry["item"] = dict(item)
@@ -270,6 +336,10 @@ def build_rotation(status, config, now=None):
         add("nearby")
     if config.get("weather_enabled") is True and snapshot.get("demo") is False:
         add("weather")
+    section = status.get("national_radar")
+    if (config.get("national_radar_enabled") is True and snapshot.get("demo") is False
+            and isinstance(section, dict) and section.get("status") not in {None, "demo", "off", "idle", "outside_window"}):
+        add("national_radar")
     from .flight_alerts import fresh_status, within_tracking_window
     operating = fresh_status(status.get("operating_status"), now)
     tracked = status.get("operating_flight")
@@ -287,10 +357,6 @@ def build_rotation(status, config, now=None):
                     and code not in seen):
                 add("trip_weather", "trip_weather:" + code, item=airport)
                 seen.add(code)
-    section = status.get("national_radar")
-    if (config.get("national_radar_enabled") is True and snapshot.get("demo") is False
-            and isinstance(section, dict) and section.get("status") not in {None, "demo", "off", "idle", "outside_window"}):
-        add("national_radar")
     section = status.get("airport_alerts")
     if (config.get("airport_alerts_enabled") is True and snapshot.get("demo") is False
             and isinstance(section, dict) and section.get("status") == "ready" and _cards(section.get("events"))):
@@ -306,6 +372,8 @@ def build_rotation(status, config, now=None):
                 add("local_visit", "local_visit:" + str(item.get("id")), item)
     for item in _cards(status.get("flight_watches"))[:5]:
         add("flight_watch", "flight_watch:" + str(item.get("id")), item)
+    if dinner_options_visible(status, config, now):
+        add("dinner_options")
     for index, item in enumerate(filter_personal_items(status.get("personal_items"), status, config, now)):
         add("personal", "personal:" + str(item.get("id") or index), item)
     messages = status.get("messages") or {}
@@ -331,10 +399,14 @@ def build_rotation(status, config, now=None):
         for index, item in enumerate(_cards(layovers)[:4]):
             if _visible(item, now, require_window=True):
                 add("layover", "layover:" + str(item.get("id") or index), item)
+    if not entries:
+        add("home")
     if context["flight_priority"]:
         core = {"details", "map", "operating_map"}
         flight_slots = [entry for entry in entries if entry["view"] in core]
         other_slots = [entry for entry in entries if entry["view"] not in core]
+        if not flight_slots:
+            return other_slots
         if len(other_slots) % 2:
             repeated = dict(other_slots[0])
             repeated["key"] += ":repeat"

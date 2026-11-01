@@ -1,7 +1,103 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
 Updated November 1, 2026 UTC (October 31 in Central Time)
 
-CURRENT RELEASE: SIGNED 0.4.6 ACTIVE
+CURRENT BASELINE: SIGNED 0.4.7 ACTIVATION VERIFIED
+
+The latest activation record is 0.4.7, with independent signature/inventory
+verification, Linux 1072 tests + 519 subtests (zero skips), native upgrades and
+rollback, private-data preservation and owner-confirmed Ports artwork/video.
+See RELEASE-0.4.7.txt and VALIDATION.txt. This is the last verified deployment
+record, not a claim that any phone or live-flight observation is connected now.
+
+Already delivered: full display fit/crisp no-glow preference, ten-day custody,
+dated VPS departure/Brief leave clocks, clean route maps, AM/PM, actual-deck
+progress, arrows/controllers, retro reveals, five-minute DONE expiry, dinner
+snack notice, home weather/overnight rain, high-resolution nearby/operating maps,
+flight focus, budgeted route enrichment, airport weather/radar/FAA feeds and
+Ports logo/video. Do not recode these based on older planning sections below.
+
+CURRENT 0.4.8 CANDIDATE (BUILD/DEVICE/VOICE CHECKS PENDING)
+
+The owner requested coding dinner sides/ready estimates, today/tomorrow menu
+previews, animated NOAA radar and S options for card visibility, aircraft ranges
+2.5/5/10/25/50/100 statute miles and National/Southeast/Local200mi/Hyperlocal
+radar. The Kids Home rule is explicitly retained. Rich dinner metadata stays
+outside the older-readable core personal store. No new Home Assistant or SMS
+setup is included. The owner now confirms the explicit launch "open Flight Wall
+skill" works; Amazon support attributes previous failures to recognition before
+the handler. Test the matching new model/adapter on a real Echo after deployment.
+See RELEASE-0.4.8.txt and VALIDATION.txt for actual progress.
+
+FUTURE PANTRY IDEAS - RECORD ONLY
+Consider explicit pantry inventory and shopping-list import before exploring
+fridge-camera input. A checked shopping item alone does not establish what is
+currently in the fridge; confirm purchases/quantities and freshness. No camera,
+inventory ingestion, shopping-list import or message sending is included now.
+
+PRIORITIES STILL OUTSTANDING
+
+OWNER-REQUESTED NEARBY AIRCRAFT FOLLOW-UP - RECORD ONLY
+
+Keep the five-statute-mile map; when a fresh inner ring is empty, show the
+nearest ten aircraft outside five and within thirty miles in a compact side
+list. Explore roughly one-second near-ring refresh while viewing/paused, with
+outer list thirty-to-sixty-second updates, provider-rate-aware backoff and no
+increase to paid FlightAware calls/caps. Enlarge the map and remove repetitive
+fixed footer prose, retaining compact source/age and required attribution.
+Additional feedback: make registration (or verified commercial flight number)
+the primary identifier, with compact aircraft type on the same line. For one
+to three aircraft, use small matching thumbnails/transparent cutouts and allow
+a narrower map; keep the ten-aircraft outer list compact. Actual or stock/type
+images are both acceptable, with no on-screen actual/representative label or
+caption, per the owner's follow-up. This is also deferred.
+The owner explicitly deferred implementation. Full requirements and ambiguity
+around rapid empty-ring discovery: NEARBY-AIRCRAFT-NEXT.txt. Do not change code,
+polling, installed version or live settings for this note.
+
+1. Reliable physical Alexa dinner commands. Short greeting/help and dinner
+   parsing exist; the unresolved issue is intermittent real Echo discovery/
+   routing. A support case was submitted. Follow up through the existing case
+   and correlate a short physical today/tomorrow dinner test with Lambda and
+   board observations. Do not promise that Home Assistant repairs invocation
+   or repeat already unsuccessful rename/re-enable loops without new evidence.
+2. Lisa's iPhone setup and validation. The scoped one-use invitation/import
+   flow is shipped, not awaiting feature coding. Lisa must choose consent,
+   install OwnTracks, review/import or enter HTTP settings, grant her chosen
+   iOS permissions, send a real location report, and test locked/background
+   Away/Home plus stationary freshness. Do not copy Android 400m/1200s controls
+   onto iOS or call Significant mode a guaranteed periodic heartbeat. No phone
+   pairing implicitly enables Gmail, shopping SMS, notifications or private cards.
+3. Field validation of 0.4.7: actual provider flight association/positions and
+   progressive zoom, taxi coverage, nearby route enrichment, eligible airport
+   weather/radar/advisory cards, and real phone outings. Tests and an idle feed
+   cannot establish positive real-flight coverage. Keep the shared $5 app cap
+   and optional nearby subcap; do not spend on synthetic flight lookups.
+4. Ordinary Echo timer mirror: choose an always-on Home Assistant host and
+   authenticate the source, then implement a separate scoped, stale-safe bridge.
+   No host or adapter has been provisioned. Custom-skill timer permissions do
+   not grant ordinary/native timer access. Distinguish a successful empty
+   snapshot from an outage before removing mirrored timers. See
+   NATIVE-ALEXA-TIMERS.txt and HOME-ASSISTANT-PLAN.txt.
+5. Shopping remains paused. The Flight Wall list/ticker exists; native Alexa
+   list mirroring and store-arrival SMS are not connected. If resumed, verify
+   the list source, Lisa's separate consent, stores/accuracy, sender/recipient
+   and once-per-local-day delivery. Do not send messages or enable shopping now.
+
+SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.7
+
+* Return clear timer-limit/disabled errors rather than the generic personal-item
+  rejection. Preserve five-active-timer safety and request deduplication.
+* Several early HTTP POST error responses can leave an unread body on a reused
+  connection. Close or safely consume bounded bodies and add pooled-client
+  regressions for unknown-route, disabled-OAuth, unavailable device callbacks
+  and device-body validation errors. The unauthorized-MCP case is already fixed.
+  This is a request-framing reliability issue; no authentication bypass is claimed.
+
+Neither small code item is required to begin Lisa's already shipped onboarding.
+Further release work still requires matching higher versions, relevant tests,
+the configured signed workflow and next-safe-Ports-launch activation.
+
+PREVIOUS RELEASE RECORD: SIGNED 0.4.6 ACTIVE
 
 Final Linux 822 tests + 443 subtests and both native upgrade/rollback gates passed.
 Independent signature/inventory/source checks and GUI-live 41-file backup passed.

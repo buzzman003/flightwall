@@ -29,10 +29,15 @@ google-*.json
 *cache.json
 config.json
 personal.json
+personal-dinner-details.json
 timers.json
 flight-watches.json
 remote-oauth.json
 flight-environment.json
 national-radar.png
+national-radar-loop.png
+dinner-options.json
+dinner-options-usage.json
+dinner-options.lock
 trip-weather.json
 trip-weather

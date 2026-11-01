@@ -6,8 +6,17 @@
         {
           "name": "AddDinnerIntent",
           "slots": [
-            {"name": "Meal", "type": "AMAZON.SearchQuery"},
-            {"name": "Date", "type": "AMAZON.DATE"}
+            {
+              "name": "Meal",
+              "type": "AMAZON.SearchQuery",
+              "samples": [
+                "{Meal}"
+              ]
+            },
+            {
+              "name": "Date",
+              "type": "AMAZON.DATE"
+            }
           ],
           "samples": [
             "we are having {Meal} for dinner",
@@ -18,12 +27,20 @@
             "add {Meal} for dinner",
             "put {Meal} on the dinner board",
             "set dinner for {Date}",
-            "dinner is on {Date}"
+            "dinner is on {Date}",
+            "set dinner menu to {Meal}",
+            "set the dinner menu to {Meal}",
+            "the dinner menu is {Meal}"
           ]
         },
         {
           "name": "AddDinnerTodayIntent",
-          "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
+          "slots": [
+            {
+              "name": "Meal",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
           "samples": [
             "set dinner today to {Meal}",
             "add {Meal} for dinner today",
@@ -34,12 +51,21 @@
             "we are having {Meal} for dinner today",
             "{Meal} is for dinner today",
             "that {Meal} is for dinner today",
-            "dinner today"
+            "dinner today",
+            "set dinner menu today to {Meal}",
+            "set the dinner menu today to {Meal}",
+            "set dinner menu to {Meal} today",
+            "set today dinner to {Meal}"
           ]
         },
         {
           "name": "AddDinnerTomorrowIntent",
-          "slots": [{"name": "Meal", "type": "AMAZON.SearchQuery"}],
+          "slots": [
+            {
+              "name": "Meal",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
           "samples": [
             "set dinner tomorrow to {Meal}",
             "add {Meal} for dinner tomorrow",
@@ -50,7 +76,115 @@
             "we are having {Meal} for dinner tomorrow",
             "{Meal} is for dinner tomorrow",
             "that {Meal} is for dinner tomorrow",
-            "dinner tomorrow"
+            "dinner tomorrow",
+            "set dinner menu tomorrow to {Meal}",
+            "set the dinner menu tomorrow to {Meal}",
+            "set dinner menu to {Meal} tomorrow",
+            "set tomorrow dinner to {Meal}"
+          ]
+        },
+        {
+          "name": "SelectDinnerOptionIntent",
+          "slots": [
+            {
+              "name": "OptionNumber",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "select dinner option {OptionNumber}",
+            "choose dinner option {OptionNumber}",
+            "pick dinner option {OptionNumber}",
+            "select option {OptionNumber} for dinner",
+            "make dinner option {OptionNumber}",
+            "dinner option {OptionNumber}",
+            "select a dinner option"
+          ]
+        },
+        {
+          "name": "SetDinnerSidesIntent",
+          "slots": [
+            {
+              "name": "Sides",
+              "type": "AMAZON.SearchQuery",
+              "samples": [
+                "{Sides}"
+              ]
+            }
+          ],
+          "samples": [
+            "sides are {Sides}",
+            "the sides are {Sides}",
+            "with sides of {Sides}",
+            "add a side of {Sides}"
+          ]
+        },
+        {
+          "name": "SetDinnerReadyTimeIntent",
+          "slots": [
+            {
+              "name": "ReadyTime",
+              "type": "AMAZON.TIME",
+              "samples": [
+                "{ReadyTime}"
+              ]
+            }
+          ],
+          "samples": [
+            "dinner will be ready at {ReadyTime}",
+            "ready at {ReadyTime}",
+            "it will be ready at {ReadyTime}",
+            "serve dinner at {ReadyTime}"
+          ]
+        },
+        {
+          "name": "SetDinnerReadyWindowIntent",
+          "slots": [
+            {
+              "name": "ReadyStart",
+              "type": "AMAZON.TIME"
+            },
+            {
+              "name": "ReadyEnd",
+              "type": "AMAZON.TIME"
+            }
+          ],
+          "samples": [
+            "between {ReadyStart} and {ReadyEnd}",
+            "ready between {ReadyStart} and {ReadyEnd}",
+            "dinner will be ready between {ReadyStart} and {ReadyEnd}",
+            "from {ReadyStart} until {ReadyEnd}"
+          ]
+        },
+        {
+          "name": "SkipDinnerDetailIntent",
+          "samples": [
+            "skip",
+            "skip that",
+            "skip the sides",
+            "no sides",
+            "skip the ready time",
+            "no ready time"
+          ]
+        },
+        {
+          "name": "SaveDinnerIntent",
+          "samples": [
+            "save dinner",
+            "save the dinner menu",
+            "save dinner now",
+            "just save dinner",
+            "that is all for dinner"
+          ]
+        },
+        {
+          "name": "FinishSkillIntent",
+          "samples": [
+            "that's all",
+            "that is all",
+            "nothing else",
+            "I'm done",
+            "all done"
           ]
         },
         {
@@ -214,39 +348,276 @@
         {
           "name": "TIMER_LABEL",
           "values": [
-            {"name": {"value": "pasta"}}, {"name": {"value": "tea"}},
-            {"name": {"value": "laundry"}}, {"name": {"value": "oven"}},
-            {"name": {"value": "homework"}}, {"name": {"value": "exercise"}},
-            {"name": {"value": "break"}}, {"name": {"value": "meeting"}}
+            {
+              "name": {
+                "value": "pasta"
+              }
+            },
+            {
+              "name": {
+                "value": "tea"
+              }
+            },
+            {
+              "name": {
+                "value": "laundry"
+              }
+            },
+            {
+              "name": {
+                "value": "oven"
+              }
+            },
+            {
+              "name": {
+                "value": "homework"
+              }
+            },
+            {
+              "name": {
+                "value": "exercise"
+              }
+            },
+            {
+              "name": {
+                "value": "break"
+              }
+            },
+            {
+              "name": {
+                "value": "meeting"
+              }
+            }
           ]
         },
         {
           "name": "AIRLINE",
           "values": [
-            {"name": {"value": "Delta", "synonyms": ["Delta Air Lines", "Delta Airlines", "D. L."]}},
-            {"name": {"value": "American", "synonyms": ["American Airlines", "A. A."]}},
-            {"name": {"value": "United", "synonyms": ["United Airlines", "U. A."]}},
-            {"name": {"value": "Allegiant", "synonyms": ["Allegiant Air", "G. four"]}},
-            {"name": {"value": "Frontier", "synonyms": ["Frontier Airlines", "F. nine"]}},
-            {"name": {"value": "Air Arabia", "synonyms": ["G. nine"]}}
+            {
+              "name": {
+                "value": "Delta",
+                "synonyms": [
+                  "Delta Air Lines",
+                  "Delta Airlines",
+                  "D. L."
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "American",
+                "synonyms": [
+                  "American Airlines",
+                  "A. A."
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "United",
+                "synonyms": [
+                  "United Airlines",
+                  "U. A."
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Allegiant",
+                "synonyms": [
+                  "Allegiant Air",
+                  "G. four"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Frontier",
+                "synonyms": [
+                  "Frontier Airlines",
+                  "F. nine"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "Air Arabia",
+                "synonyms": [
+                  "G. nine"
+                ]
+              }
+            }
           ]
         },
         {
           "name": "APPOINTMENT_TITLE",
           "values": [
-            {"name": {"value": "dentist", "synonyms": ["dental appointment", "dental cleaning"]}},
-            {"name": {"value": "doctor", "synonyms": ["doctor appointment", "checkup"]}},
-            {"name": {"value": "eye exam", "synonyms": ["eye doctor"]}},
-            {"name": {"value": "haircut", "synonyms": ["hair appointment"]}},
-            {"name": {"value": "car service", "synonyms": ["oil change", "car appointment"]}},
-            {"name": {"value": "school meeting", "synonyms": ["parent teacher meeting"]}},
-            {"name": {"value": "meeting"}},
-            {"name": {"value": "annual physical"}},
-            {"name": {"value": "lunch"}},
-            {"name": {"value": "veterinarian", "synonyms": ["vet appointment"]}}
+            {
+              "name": {
+                "value": "dentist",
+                "synonyms": [
+                  "dental appointment",
+                  "dental cleaning"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "doctor",
+                "synonyms": [
+                  "doctor appointment",
+                  "checkup"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "eye exam",
+                "synonyms": [
+                  "eye doctor"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "haircut",
+                "synonyms": [
+                  "hair appointment"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "car service",
+                "synonyms": [
+                  "oil change",
+                  "car appointment"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "school meeting",
+                "synonyms": [
+                  "parent teacher meeting"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "meeting"
+              }
+            },
+            {
+              "name": {
+                "value": "annual physical"
+              }
+            },
+            {
+              "name": {
+                "value": "lunch"
+              }
+            },
+            {
+              "name": {
+                "value": "veterinarian",
+                "synonyms": [
+                  "vet appointment"
+                ]
+              }
+            }
           ]
         }
       ]
-    }
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "AddDinnerIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "Meal",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Dinner.Meal"
+              }
+            },
+            {
+              "name": "Date",
+              "type": "AMAZON.DATE",
+              "elicitationRequired": false,
+              "confirmationRequired": false,
+              "prompts": {}
+            }
+          ]
+        },
+        {
+          "name": "SetDinnerSidesIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "Sides",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Dinner.Sides"
+              }
+            }
+          ]
+        },
+        {
+          "name": "SetDinnerReadyTimeIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "ReadyTime",
+              "type": "AMAZON.TIME",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {
+                "elicitation": "Dinner.Ready"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Dinner.Meal",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "What is for dinner?"
+          }
+        ]
+      },
+      {
+        "id": "Dinner.Sides",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "What sides? You can say skip."
+          }
+        ]
+      },
+      {
+        "id": "Dinner.Ready",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "When should dinner be ready? Give a time or window, including A.M. or P.M., or say skip."
+          }
+        ]
+      }
+    ]
   }
 }

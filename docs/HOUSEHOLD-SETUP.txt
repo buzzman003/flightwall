@@ -1,3 +1,16 @@
+0.4.8 OPTIONAL DINNER IDEAS
+Signed-in page09 has separate household food consent, preferences, servings,
+maximum cooking time and a monthly app allowance of at most$3. An API key is
+stored privately and is never part of a release. One four-meal generation is
+attempted per local day only from05:00 while Kids are explicitly/freshly Home
+and no dinner has been selected. Options have food pictures and saved recipes
+for your phone. Three meals are quicker and the fourth can take up to an hour.
+The ideas card remains until a dinner is selected or19:00. After14:30 its
+background changes to CHOOSE TONIGHT; no message or alarm is sent. Kids Away,
+Unknown or stale hides it. Selecting via the custom skill saves a normal meal.
+API and ChatGPT conversation access are separate; past chats are not silently
+forwarded. See RELEASE-0.4.8.txt and ALEXA-SETUP.txt for limits and deployment.
+
 FLIGHT WALL 0.3.0 — HOUSEHOLD SETUP FOR CHRIS AND LISA
 
 START HERE AFTER INSTALLING THE APP

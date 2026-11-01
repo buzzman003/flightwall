@@ -1,3 +1,35 @@
+DAILY IDEAS AND OPTION CHOICE (0.4.8)
+In signed-in setup, page09 Dinner ideas saves food preferences and reads the
+current recipes on a phone. Enable its separate food consent/key/monthly app
+allowance before daily generation. This does not enable Lisa inspiration.
+The ideas card needs fresh Kids Home from05:00 local, with no dinner selected.
+Three choices are quicker; the fourth can take up to an hour. At14:30 an
+unselected card changes appearance without sending an alert. To select one,
+open the confirmed skill, then say "select dinner option three". It selects
+the actual saved number from today's generation; it does not guess a meal.
+The normal saved-menu window and Kids Home requirement still apply.
+
+DINNER DETAILS AND TOMORROW PREVIEW (0.4.8)
+
+Deploy the matching 0.4.8 Lambda ZIP and en-US interaction model after updating
+the board. Preserve the existing SkillID and dedicated voice-only credential.
+Use the explicit launch: "Alexa, open Flight Wall skill." Then say:
+  "Dinner today is chicken teriyaki."
+  "Dinner tomorrow is tacos and rice."
+Alexa can ask for optional sides and an expected ready time/window. Say
+"skip" to omit a detail or "save dinner" to finish. Normal Stop/Cancel exits.
+Successful saves use a short confirmation and "Anything else?", followed by
+one normal reprompt. Alexa controls the listening timeout; this does not keep
+the microphone open for two or three minutes. Help is available on request.
+
+Today and tomorrow are separate dated menu cards in the current afternoon
+window (default 2:30-7:00 PM). Expected ready times do not extend that window.
+The configured Kids Home rule still applies: Away, Unknown or stale hides the
+cards. A card set to HIDE in S options is still saved for later. After 5 PM,
+today's menu shows NO SNACKS; tomorrow's preview does not invent that state.
+Native "add to shopping list" and regular Echo timers stay in Alexa's own
+system; a custom skill cannot read them simply because consent was given.
+
 DINNER COMMAND UPDATE (0.4.1)
 
 After installing the matching adapter/model, candidate direct forms are:

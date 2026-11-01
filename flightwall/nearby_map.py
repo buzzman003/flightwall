@@ -140,7 +140,7 @@ def _base_map(latitude, longitude, radius, size, draw_radius=True):
     bounds, features = asset
     project, center, pixels, footer, extent = _projection(latitude, longitude, radius, size)
     if any((extent[0] < bounds[0], extent[1] < bounds[1], extent[2] > bounds[2], extent[3] > bounds[3])):
-        return None
+        return _wide_base_map(latitude, longitude, radius, size, draw_radius)
     image = Image.new("RGB", size, WATER)
     draw = ImageDraw.Draw(image)
     for kind in ("land", "water"):
@@ -192,12 +192,36 @@ def _base_map(latitude, longitude, radius, size, draw_radius=True):
     return image
 
 
+@lru_cache(maxsize=4)
+def _wide_base_map(latitude, longitude, radius, size, draw_radius=True):
+    """Public low-detail geography when a wider range outgrows local OSM data."""
+    from .operating_map import _world_background, _world
+    if _world() is None:
+        return None
+    image = _world_background(latitude, longitude, radius, size).copy()
+    draw = ImageDraw.Draw(image)
+    _project, center, pixels, footer, _extent = _projection(latitude, longitude, radius, size)
+    from .render import _text
+    scale = max(1, min(3, size[1] // 180, size[0] // 216))
+    _text(draw, (8, 8), "N", CYAN, scale)
+    if draw_radius:
+        cx, cy = center
+        r = radius * pixels
+        draw.ellipse((cx-r, cy-r, cx+r, cy+r), outline=(70, 111, 124), width=max(1, scale))
+        _text(draw, (size[0]-8, 8), f"{radius:g} MI RADIUS", MUTED, scale, align="right")
+    draw.rectangle((0, size[1]-footer, size[0]-1, size[1]-1), fill=(3, 12, 18))
+    _text(draw, (5, size[1]-footer+max(1, (footer-7*scale)//2)),
+          "NATURAL EARTH / LIMITED DETAIL", MUTED, scale)
+    return image
+
+
 def regional_background(latitude, longitude, radius_miles, size):
     """Public regional geography for any local-only viewport, without a home pin.
 
     This draws no center cross, traffic circle or aircraft. Operating-flight
     maps can reuse the licensed region without pretending its center is home.
-    A complete viewport outside the asset fails to None for an honest fallback.
+    A viewport outside the local asset returns None so operating-flight maps
+    can select and correctly label their own lower-detail world fallback.
     """
     parameters = _parameters({"demo": False, "nearby_enabled": True,
                               "home_latitude": latitude, "home_longitude": longitude,
@@ -205,6 +229,13 @@ def regional_background(latitude, longitude, radius_miles, size):
     if parameters is None:
         return None
     latitude, longitude, radius, size = parameters
+    asset = _load_asset()
+    if asset is None:
+        return None
+    bounds = asset[0]
+    extent = _projection(latitude, longitude, radius, size)[-1]
+    if any((extent[0] < bounds[0], extent[1] < bounds[1], extent[2] > bounds[2], extent[3] > bounds[3])):
+        return None
     image = _base_map(latitude, longitude, radius, size, False)
     return image.copy() if image is not None else None
 

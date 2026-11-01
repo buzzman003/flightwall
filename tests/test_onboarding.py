@@ -81,6 +81,33 @@ class OnboardingTests(unittest.TestCase):
     def consent(self, person="lisa"):
         return {"consenting_person": person, "owner_consent": True}
 
+    def test_dinner_generation_has_its_own_consent_and_cannot_enable_lisa_features(self):
+        self.login()
+        patch = {"dinner_options_enabled": True, "dinner_options_monthly_limit_usd": 3,
+                 "dinner_options_servings": 8, "dinner_options_max_minutes": 60,
+                 "dinner_options_preferences": "Fictional pasta; extra chili at the table"}
+        denied = self.call('/setup/settings', {"settings": patch})
+        self.assertEqual(denied.status, 400)
+        self.assertFalse(self.config.get()['dinner_options_enabled'])
+        saved = self.call('/setup/settings', {"settings": patch, **self.consent('chris')})
+        self.assertEqual(saved.status, 200)
+        actual = self.config.get()
+        self.assertTrue(actual['dinner_options_enabled'])
+        for name in ('openai_enabled', 'inspiration_enabled', 'lisa_private_enabled', 'lisa_gmail_enabled'):
+            self.assertFalse(actual[name])
+        rejected = self.call('/setup/settings', {"settings": {"dinner_options_monthly_limit_usd": 4}})
+        self.assertEqual(rejected.status, 400)
+
+    def test_phone_recipe_read_requires_an_authenticated_setup_session(self):
+        self.callbacks['get_dinner_options'] = lambda: {"status": "ready", "date": "2026-11-01", "options": [
+            {"number": 1, "title": "Fictional dinner", "ingredients": ['Rice'], "steps": ['Cook rice']}]}
+        denied = self.call('/setup/dinner-options', method='GET', authenticated=False)
+        self.assertEqual(denied.status, 401)
+        self.login()
+        result = self.call('/setup/dinner-options', method='GET')
+        self.assertEqual(result.status, 200)
+        self.assertEqual(result.value()['options'][0]['ingredients'], ['Rice'])
+
     def client_body(self, person="lisa", service="calendar"):
         return {"person": person, "service": service, "credentials": {"web": {
             "client_id": "123456789012-example.apps.googleusercontent.com", "client_secret": "example-client-secret",

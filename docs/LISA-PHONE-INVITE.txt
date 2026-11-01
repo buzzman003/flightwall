@@ -1,10 +1,11 @@
-LISA'S IPHONE INVITATION -- NEXT-VERSION SOURCE
+LISA'S IPHONE INVITATION -- SHIPPED IN 0.4.7, PHONE VALIDATION PENDING
 Reviewed October 31, 2026
 
-This is implemented next-version source and synthetic validation, not a live
-phone connection. These tests sent no invitation and rotated no real phone
-credential. A versioned and signed Linux build must pass the release workflow
-before this source is deployed; each phone user must consent independently.
+The limited invitation flow is included in the signed, native-validated 0.4.7
+release. Its source/native tests are not a live phone connection. Those tests
+sent no invitation and rotated no real phone credential. Each phone user must
+consent independently; Lisa's actual import, permissions and report/background
+checks remain required. See RELEASE-0.4.7.txt for separate deployment evidence.
 
 Owner flow
 ----------
@@ -148,8 +149,8 @@ Real Chrome visual review passed with synthetic API responses at 390px and
 one-time credential display and an honest waiting-for-report state. No horizontal
 overflow was observed. This does not replace a real iPhone/HTTPS deployment test.
 
-Required before shipping: Linux full suite/build. Required before claiming phone
-setup works on a real device: an opted-in iPhone test of file/manual setup,
+The 0.4.7 Linux full suite/build and signed native gates passed. Required before
+claiming phone setup works on a real device: an opted-in iPhone test of file/manual setup,
 permissions, manual report and background Away/Home. Source-level tests do not
 establish any live connection.
 

@@ -10,10 +10,12 @@ import threading
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from .card_preferences import CARD_DEFAULTS
 
 DEFAULT_DATA_DIR = "/userdata/system/configs/flightwall"
 DEFAULT_INSTALL_DIR = "/userdata/roms/ports/.data/flightwall"
 DEFAULTS = {
+    **CARD_DEFAULTS,
     "calendar_name": "FC View", "calendar_id": "", "airline": "", "demo": True,
     "timezone": "UTC", "rotation_seconds": 15, "logical_width": 512, "logical_height": 256,
     "brightness": 0.7, "glow": 0.25, "dot_gap": 0.22, "led_effect": True,
@@ -23,6 +25,7 @@ DEFAULTS = {
     "nearby_radius_nm": 50, "nearby_radius_miles": None, "nearby_detailed_map": True, "flightaware_enabled": False,
     "weather_enabled": False, "weather_latitude": None, "weather_longitude": None,
     "trip_weather_enabled": False, "national_radar_enabled": False, "airport_alerts_enabled": False,
+    "national_radar_scope": "national", "national_radar_flight_only": True,
     "nearby_enrichment_enabled": False, "nearby_enrichment_monthly_limit_usd": 1.0,
     "flightaware_poll_seconds": 120, "flightaware_daily_limit": 240,
     "flightaware_monthly_limit_usd": 5,
@@ -30,6 +33,8 @@ DEFAULTS = {
     "update_interval_minutes": 15, "public_url": "", "control_port": 8765,
     "personal_enabled": True, "appointment_duration_minutes": 60,
     "dinner_start": "14:30", "dinner_end": "19:00", "alexa_enabled": False,
+    "dinner_options_enabled": False, "dinner_options_monthly_limit_usd": 0,
+    "dinner_options_preferences": "", "dinner_options_servings": 8, "dinner_options_max_minutes": 60,
     "secondary_calendar_id": "", "secondary_calendar_name": "Buzz Flight Brief",
     "family_calendar_profile": "chris", "family_calendar_id": "", "family_calendar_name": "",
     "kids_filter_enabled": False, "kids_stale_minutes": 30,
@@ -56,6 +61,7 @@ DEFAULTS = {
     "shopping_stores": "[]",
 }
 REMOTE_SETTINGS = frozenset({
+    *CARD_DEFAULTS, "national_radar_scope", "national_radar_flight_only",
     "airline", "timezone", "rotation_seconds", "brightness", "glow", "dot_gap",
     "led_effect", "show_deadheads", "takeover_hours", "sleep_start", "sleep_end",
     "sleep_enabled", "nearby_enabled", "home_latitude", "home_longitude", "nearby_radius_nm", "nearby_radius_miles",
@@ -72,6 +78,7 @@ PUBLIC_FIELDS = (REMOTE_SETTINGS - {"home_latitude", "home_longitude"}) | {
     "messages_enabled", "presence_ttl_minutes", "kids_stale_minutes", "health_max_age_hours", "hotel_details_enabled",
     "brief_leave_times_enabled",
     "trip_weather_enabled", "national_radar_enabled", "airport_alerts_enabled", "nearby_enrichment_enabled",
+    "dinner_options_enabled",
 }
 JSON_LIST_FIELDS = frozenset({"chris_lawyer_senders", "chris_lawyer_domains", "lisa_mail_senders", "lisa_mail_domains",
                               "chris_notification_apps", "lisa_notification_apps", "inspiration_sources"})
@@ -104,6 +111,10 @@ def validate(key, value):
         if not isinstance(value, str) or value not in {"conflict", "report_safe", "recommended"}:
             raise ValueError("Choose conflict, report_safe or recommended for Brief leave times")
         return value
+    if key == "national_radar_scope":
+        if not isinstance(value, str) or value not in {"national", "southeast", "local", "hyperlocal"}:
+            raise ValueError("Choose national, southeast, local or hyperlocal radar")
+        return value
     if isinstance(original, bool):
         if not isinstance(value, bool):
             raise ValueError(f"{key} must be true or false")
@@ -132,6 +143,8 @@ def validate(key, value):
             "flight_focus_seconds": (15, 300), "flight_window_before_minutes": (0, 240),
             "flight_window_after_minutes": (0, 240), "message_preview_chars": (40, 300),
             "health_max_age_hours": (1, 720), "openai_daily_limit": (1, 100),
+            "dinner_options_monthly_limit_usd": (0, 3), "dinner_options_servings": (1, 20),
+            "dinner_options_max_minutes": (45, 60),
             "custody_outlook_days": (10, 10), "flight_preview_days": (1, 14),
         }
         low, high = limits[key]
@@ -142,6 +155,8 @@ def validate(key, value):
     else:
         if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value):
             raise ValueError(f"Invalid text for {key}")
+        if key == "dinner_options_preferences" and len(value) > 1200:
+            raise ValueError("Dinner preferences must contain at most 1200 characters")
         if key == "timezone":
             try:
                 ZoneInfo(value)

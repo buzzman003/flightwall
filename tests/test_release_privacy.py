@@ -29,13 +29,14 @@ class ReleasePrivacyTests(unittest.TestCase):
     def test_detached_runtime_files_cannot_be_signed_as_application_files(self):
         names = ("config.json", "state.json", "google-client.json", "google-token.json", "gmail-token.json",
                  "calendar-cache.json", "household-cache.json", "household-calendars.json", "messages-cache.json",
-                 "research-cache.json", "inspiration-cache.json", "personal.json", "content.json", "layovers.json",
+                 "research-cache.json", "inspiration-cache.json", "personal.json", "personal-dinner-details.json", "content.json", "layovers.json",
                  "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json", "setup-consents.json", "setup-complete.json",
                  "openai-usage.json", "flightaware-usage.json", "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                  "control-token.txt", "alexa-token.txt", "notification-token.txt", "customtoken.txt", "lisa.token",
                  "openai.key", "flightaware.key", "personal.lock", "timers.lock", "flight-watches.lock",
                  "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock",
-                 "trip-weather.json", "flight-environment.json", "national-radar.png")
+                 "trip-weather.json", "flight-environment.json", "national-radar.png", "national-radar-loop.png",
+                 "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock")
         for name in names:
             with self.subTest(name=name):
                 path = self.source / name

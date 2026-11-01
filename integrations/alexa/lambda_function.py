@@ -24,15 +24,19 @@ MAX_TITLE = 160
 MAX_REQUEST_ID = 512
 PENDING_FIELDS = {"kind", "title", "date", "time", "duration_minutes", "request_id",
                   "timezone", "dinner_start", "dinner_end", "phase", "label", "duration_seconds",
-                  "airline", "flight_number", "action", "item"}
+                  "airline", "flight_number", "action", "item", "sides", "sides_checked",
+                  "ready_time", "ready_window_start", "ready_window_end", "ready_checked",
+                  "option", "generation"}
 WELCOME = "Flight Wall. What would you like?"
 HELP = ("You can say, start a pasta timer for five minutes, list timers, or cancel the pasta timer. "
         "For an appointment, say, add a dentist appointment on Friday at nine A.M. "
         "To watch a public flight, say, track Delta flight one twenty three on Friday. "
         "Say shopping list to show it, add olives, or remove olives. Clear shopping list asks for confirmation. "
         "I confirm appointments and flight requests before saving. For dinner instructions, say dinner help.")
-DINNER_HELP = ("Say, dinner today is chicken teriyaki, or dinner tomorrow is pasta. "
-               "For another date, say set dinner for Friday, then give the meal.")
+DINNER_HELP = ("Say, set dinner menu today to chicken teriyaki, or dinner tomorrow is tacos. "
+               "I'll ask for optional sides and a ready time. Say skip, or save dinner to skip both. "
+               "For a time window, say between six forty five P.M. and seven fifteen P.M. "
+               "To choose a displayed dinner idea, say select dinner option three.")
 DINNER_DAY_INTENTS = {"AddDinnerTodayIntent": 0, "AddDinnerTomorrowIntent": 1}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
             "american": "AA", "american airlines": "AA", "aa": "AA",
@@ -83,7 +87,8 @@ class BoardClient:
         if path not in ("/api/v1/voice-context", "/api/v1/personal-items", "/api/v1/timers",
                         "/api/v1/timers/cancel", "/api/v1/flight-watches", "/api/v1/shopping-list",
                         "/api/v1/shopping-list/add", "/api/v1/shopping-list/remove",
-                        "/api/v1/shopping-list/clear", "/api/v1/shopping-list/show"):
+                        "/api/v1/shopping-list/clear", "/api/v1/shopping-list/show",
+                        "/api/v1/dinner-options/select"):
             raise BoardError(retryable=False)
         data = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
         request = Request(self.base + path, data=data, headers={
@@ -141,13 +146,31 @@ class BoardClient:
             _exact_time(end)
             if start >= end:
                 raise ValueError
+            for flag in ("dinner_tomorrow_preview", "dinner_requires_kids_home"):
+                if flag in context and type(context[flag]) is not bool:
+                    raise ValueError
+            option_date = context.get("dinner_options_date")
+            generation = context.get("dinner_options_generation")
+            if option_date is not None or generation is not None:
+                _exact_date(option_date)
+                _dinner_generation(generation)
         except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
             raise BoardError(retryable=False) from None
         return {"timezone": zone, "appointment_duration_minutes": duration,
-                "dinner_start": start, "dinner_end": end}
+                "dinner_start": start, "dinner_end": end,
+                **{flag: context[flag] for flag in ("dinner_tomorrow_preview", "dinner_requires_kids_home")
+                   if flag in context},
+                **({"dinner_options_date": option_date, "dinner_options_generation": generation}
+                   if option_date is not None else {})}
 
     def save(self, payload):
         result = self._request("/api/v1/personal-items", payload)
+        if not (type(result.get("created")) is bool and isinstance(result.get("item"), dict)):
+            raise BoardError()
+        return result
+
+    def select_dinner_option(self, payload):
+        result = self._request("/api/v1/dinner-options/select", payload)
         if not (type(result.get("created")) is bool and isinstance(result.get("item"), dict)):
             raise BoardError()
         return result
@@ -220,6 +243,20 @@ def _exact_date(value):
     if not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
         raise ValueError("date")
     return date.fromisoformat(value).isoformat()
+
+
+def _dinner_generation(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-f0-9]{24}", value):
+        raise ValueError("dinner generation")
+    return value
+
+
+def _dinner_option(value):
+    if type(value) is int and 1 <= value <= 4:
+        return value
+    if isinstance(value, str) and re.fullmatch(r"[1-4]", value):
+        return int(value)
+    raise ValueError("dinner option")
 
 
 def _dinner_meal(value, *, day_selected):
@@ -354,20 +391,40 @@ def _request_id(value):
     return value
 
 
-def _speech(text, pending=None, *, end=False):
+def _speech(text, pending=None, *, end=False, reprompt=None):
     # PlainText deliberately avoids interpreting user titles as SSML/XML markup.
     response = {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end}
     if not end:
-        response["reprompt"] = {"outputSpeech": {"type": "PlainText", "text": text}}
+        response["reprompt"] = {"outputSpeech": {"type": "PlainText", "text": reprompt or text}}
     return {"version": "1.0", "sessionAttributes": {"pending": pending} if pending and not end else {},
             "response": response}
+
+
+def _complete(text):
+    """One ordinary follow-up opportunity; Alexa controls its listening timeout."""
+    return _speech(text.rstrip() + " Anything else?", reprompt="Anything else? Say no to finish.")
+
+
+def _elicit_dinner(pending, slot, prompt):
+    intent = {"Meal": "AddDinnerIntent", "Sides": "SetDinnerSidesIntent",
+              "ReadyTime": "SetDinnerReadyTimeIntent"}[slot]
+    result = _speech(prompt, pending)
+    result["response"]["directives"] = [{"type": "Dialog.ElicitSlot", "slotToElicit": slot,
+        "updatedIntent": {"name": intent, "confirmationStatus": "NONE",
+                          "slots": {slot: {"name": slot, "confirmationStatus": "NONE"}}}}]
+    if slot == "Meal":
+        date_slot = {"name": "Date", "confirmationStatus": "NONE"}
+        if pending.get("date"):
+            date_slot["value"] = pending["date"]
+        result["response"]["directives"][0]["updatedIntent"]["slots"]["Date"] = date_slot
+    return result
 
 
 def _pending(event):
     value = event.get("session", {}).get("attributes", {}).get("pending")
     if not isinstance(value, dict) or set(value) - PENDING_FIELDS:
         return None
-    if value.get("kind") not in ("appointment", "dinner", "timer", "flight_watch", "shopping"):
+    if value.get("kind") not in ("appointment", "dinner", "dinner_option", "timer", "flight_watch", "shopping"):
         return None
     if len(json.dumps(value)) > 4096:
         return None
@@ -386,7 +443,8 @@ def _slots(intent):
     if not isinstance(slots, dict):
         return result
     for name in ("Title", "Meal", "Date", "Time", "Duration", "TimerLabel", "TimerDuration",
-                 "TimerNumber", "Airline", "FlightNumber", "Item"):
+                 "TimerNumber", "Airline", "FlightNumber", "Item", "Sides", "ReadyTime", "ReadyStart", "ReadyEnd",
+                 "OptionNumber"):
         slot = slots.get(name)
         if isinstance(slot, dict) and slot.get("value") is not None:
             result[name] = slot["value"]
@@ -421,6 +479,127 @@ def _local_datetime(day, clock, zone):
     if len(candidates) != 1:
         raise ValueError("The local time is missing or repeated because the clocks change.")
     return candidates[0]
+
+
+def _sides(value):
+    value = _text(value)
+    if len(value) > 120 or any(0xD800 <= ord(c) <= 0xDFFF or c in "\u2028\u2029" for c in value):
+        raise ValueError("sides")
+    return value
+
+
+def _dinner_prompt(pending):
+    if not pending.get("title"):
+        return _elicit_dinner(pending, "Meal", "What is for dinner?")
+    if pending.get("phase") == "sides":
+        return _elicit_dinner(pending, "Sides", "What sides? You can say skip.")
+    return _elicit_dinner(pending, "ReadyTime", "When should dinner be ready? Give a time or window, including A.M. or P.M., or say skip.")
+
+
+def _ready_words(pending):
+    if pending.get("ready_time"):
+        return "ready at " + _human_time(pending["ready_time"])
+    if pending.get("ready_window_start") and pending.get("ready_window_end"):
+        return ("ready between " + _human_time(pending["ready_window_start"]) + " and "
+                + _human_time(pending["ready_window_end"]))
+    return ""
+
+
+def _validate_dinner_details(pending, context):
+    if pending.get("sides") is not None:
+        _sides(pending["sides"])
+    keys = {key for key in ("ready_time", "ready_window_start", "ready_window_end") if pending.get(key) is not None}
+    if keys and keys not in ({"ready_time"}, {"ready_window_start", "ready_window_end"}):
+        raise ValueError("ready window")
+    zone = ZoneInfo(context["timezone"])
+    clocks = [_local_datetime(pending["date"], _exact_time(pending[key]), zone)
+              for key in ("ready_time", "ready_window_start", "ready_window_end") if key in keys]
+    if len(clocks) == 2 and clocks[1].astimezone(timezone.utc) <= clocks[0].astimezone(timezone.utc):
+        raise ValueError("ready window order")
+
+
+def _continue_dinner(client, pending, context, *, finish=False):
+    _exact_date(pending["date"])
+    if not pending.get("title"):
+        return _dinner_prompt(pending)
+    _text(pending["title"])
+    if pending.get("timezone") != context["timezone"]:
+        pending["timezone"] = context["timezone"]
+        for key in ("ready_time", "ready_window_start", "ready_window_end"):
+            pending.pop(key, None)
+        pending["ready_checked"] = 0
+        pending["phase"] = "ready"
+        return _elicit_dinner(pending, "ReadyTime", "The board's time zone changed. Please give the ready time again, or say skip.")
+    _validate_dinner_details(pending, context)
+    if finish:
+        pending["sides_checked"] = pending["ready_checked"] = 1
+    if not pending.get("sides_checked"):
+        pending["phase"] = "sides"
+        return _dinner_prompt(pending)
+    if not pending.get("ready_checked"):
+        pending["phase"] = "ready"
+        return _dinner_prompt(pending)
+    return _save(client, pending, context)
+
+
+def _dinner_detail(client, name, values, pending, context):
+    if not pending or pending.get("kind") != "dinner" or not pending.get("title") or not pending.get("date"):
+        return _speech("First tell me dinner today or tomorrow, followed by the meal.")
+    if pending.get("phase") == "retry":
+        return _speech("Say yes to retry the unchanged dinner, or no to stop and check the board.", pending)
+    # An elicited free-text slot can capture the control phrase rather than
+    # switch intents. Never save the literal words "skip" as a side dish.
+    control = values.get("Sides") if name == "SetDinnerSidesIntent" else values.get("ReadyTime")
+    if isinstance(control, str):
+        control = control.strip().casefold().rstrip(".!?")
+        if control in {"skip", "skip that", "no", "none", "no sides", "skip ready time"}:
+            name = "SkipDinnerDetailIntent"
+        elif control in {"save dinner", "save dinner menu", "just save dinner"}:
+            name = "SaveDinnerIntent"
+    if name == "SaveDinnerIntent":
+        if pending.get("phase") == "ready_confirm":
+            for key in ("ready_time", "ready_window_start", "ready_window_end"):
+                pending.pop(key, None)
+        return _continue_dinner(client, pending, context, finish=True)
+    if name in ("SkipDinnerDetailIntent", "AMAZON.NoIntent"):
+        if pending.get("phase") == "sides":
+            pending.pop("sides", None)
+            pending["sides_checked"] = 1
+        else:
+            for key in ("ready_time", "ready_window_start", "ready_window_end"):
+                pending.pop(key, None)
+            pending["ready_checked"] = 1
+        return _continue_dinner(client, pending, context)
+    if name == "SetDinnerSidesIntent":
+        try:
+            pending["sides"] = _sides(values.get("Sides"))
+        except ValueError:
+            pending["phase"] = "sides"
+            return _elicit_dinner(pending, "Sides", "Give sides in up to 120 characters, or say skip.")
+        pending["sides_checked"] = 1
+        return _continue_dinner(client, pending, context)
+    for key in ("ready_time", "ready_window_start", "ready_window_end"):
+        pending.pop(key, None)
+    pending["ready_checked"] = 0
+    try:
+        if name == "SetDinnerReadyWindowIntent":
+            pending.update(ready_window_start=_exact_time(values.get("ReadyStart")),
+                           ready_window_end=_exact_time(values.get("ReadyEnd")))
+        else:
+            pending["ready_time"] = _exact_time(values.get("ReadyTime", values.get("Time")))
+        _validate_dinner_details(pending, context)
+    except (ValueError, TypeError):
+        for key in ("ready_time", "ready_window_start", "ready_window_end"):
+            pending.pop(key, None)
+        pending["phase"] = "ready"
+        return _elicit_dinner(pending, "ReadyTime", "Give an exact same-day time or ordered window, including A.M. or P.M., or say skip. Clock-change times must be unambiguous.")
+    # AMAZON.TIME turns bare 'six' into 06:00. Never silently change a morning
+    # value to evening, or store an accidental AM dinner clock without readback.
+    if any(int(pending[key][:2]) < 12 for key in ("ready_time", "ready_window_start", "ready_window_end") if pending.get(key)):
+        pending["phase"] = "ready_confirm"
+        return _speech("I heard " + _ready_words(pending) + ". Is that right? Say yes, or give the time including P.M.", pending)
+    pending["ready_checked"] = 1
+    return _continue_dinner(client, pending, context)
 
 
 def _confirm(pending):
@@ -464,6 +643,10 @@ def _save(client, pending, context):
     payload["source"] = "alexa"
     if pending["kind"] == "appointment":
         payload.update(time=pending["time"], duration_minutes=pending["duration_minutes"])
+    else:
+        _validate_dinner_details(pending, context)
+        payload.update({key: pending[key] for key in ("sides", "ready_time", "ready_window_start", "ready_window_end")
+                        if pending.get(key) is not None})
     try:
         result = client.save(payload)
     except BoardError as exc:
@@ -475,6 +658,10 @@ def _save(client, pending, context):
         pending["phase"] = "retry"
         return _speech("I could not confirm whether the board saved that. Say yes to retry this same entry, "
                        "or no to stop and check the board. Retrying this entry will not create a duplicate.", pending)
+    return _saved_personal_response(result, pending["kind"], context)
+
+
+def _saved_personal_response(result, kind, context):
     item = result.get("item", {})
     hidden = " Personal cards are currently hidden on the display." if result.get("display_enabled") is False else ""
     if item.get("cancelled") is True:
@@ -493,23 +680,37 @@ def _save(client, pending, context):
         start, end, display_start, display_end = stamps
         local_start, local_end = start.astimezone(zone), end.astimezone(zone)
         actual_day = local_start.date().isoformat()
-        if pending["kind"] == "dinner":
+        if kind == "dinner":
             if display_end <= _now():
                 return _speech(f"{saved} {title} for dinner on {_human_date(actual_day)}. "
                                "Its display window has already ended, so it will not appear. "
                                "I have not moved it to tomorrow." + duplicate + hidden, end=True)
-            return _speech(f"{saved} {title} for dinner {_dinner_day_words(actual_day, zone)}."
-                           + duplicate + hidden, end=True)
+            sides = " with " + _sides(item["sides"]) if item.get("sides") else ""
+            ready = ""
+            if item.get("ready_at"):
+                clock = datetime.fromisoformat(item["ready_at"].replace("Z", "+00:00"))
+                if clock.tzinfo is None or clock.astimezone(zone).date().isoformat() != actual_day:
+                    raise ValueError("ready date")
+                ready = " Ready at " + _human_time(clock.astimezone(zone).strftime("%H:%M"))
+                if item.get("ready_until"):
+                    until = datetime.fromisoformat(item["ready_until"].replace("Z", "+00:00"))
+                    if (until.tzinfo is None or until <= clock or until.astimezone(zone).date().isoformat() != actual_day):
+                        raise ValueError("ready window")
+                    ready = (" Ready between " + _human_time(clock.astimezone(zone).strftime("%H:%M"))
+                             + " and " + _human_time(until.astimezone(zone).strftime("%H:%M")))
+            policy = " Menus show afternoons when Kids are Home." if context.get("dinner_requires_kids_home") is True else ""
+            return _complete(f"{saved} {title}{sides} for dinner {_dinner_day_words(actual_day, zone)}."
+                             + (ready.rstrip(".") + "." if ready else "") + duplicate + hidden + policy)
         minutes = int((end.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds() / 60)
         until = _human_time(local_end.strftime("%H:%M"))
         if local_end.date() != local_start.date():
             until += " on " + _human_date(local_end.date().isoformat())
-        return _speech(f"{saved} {title} on {_human_date(actual_day)}, at "
+        return _complete(f"{saved} {title} on {_human_date(actual_day)}, at "
                        f"{_human_time(local_start.strftime('%H:%M'))}, for {minutes} minutes. "
                        f"Its display window is from midnight that day until {until}, when the appointment ends."
-                       + duplicate + hidden, end=True)
+                       + duplicate + hidden)
     except (KeyError, TypeError, ValueError, ZoneInfoNotFoundError):
-        return _speech(f"{saved} the entry. Check the board for its actual display window." + duplicate + hidden, end=True)
+        return _complete(f"{saved} the entry. Check the board for its actual display window." + duplicate + hidden)
 
 
 def _authorized(event):
@@ -536,6 +737,39 @@ def _action_error(error, pending):
                    "or no to stop and check the board. A retry will not apply the same request twice.", pending)
 
 
+def _select_dinner_option(client, pending, context):
+    payload = {"option": _dinner_option(pending.get("option")), "date": _exact_date(pending.get("date")),
+               "generation": _dinner_generation(pending.get("generation")),
+               "request_id": _request_id(pending.get("request_id"))}
+    try:
+        result = client.select_dinner_option(payload)
+    except BoardError as error:
+        return _action_error(error, pending)
+    return _saved_personal_response(result, "dinner", context)
+
+
+def _dinner_option_dialog(client, values, pending, request, context):
+    if pending and pending["kind"] == "dinner_option" and pending.get("phase") == "retry":
+        return _speech("Say yes to retry the unchanged dinner option, or no to stop and check the board.", pending)
+    if not pending or pending["kind"] != "dinner_option":
+        day, generation = context.get("dinner_options_date"), context.get("dinner_options_generation")
+        if day is None or generation is None:
+            return _speech("Today's dinner ideas are not ready on the board. You can still tell me a dinner menu.")
+        try:
+            day, generation = _exact_date(day), _dinner_generation(generation)
+            if day != _now().astimezone(ZoneInfo(context["timezone"])).date().isoformat():
+                raise ValueError("stale dinner ideas")
+        except (ValueError, TypeError, ZoneInfoNotFoundError):
+            return _speech("Today's dinner ideas are not ready on the board. You can still tell me a dinner menu.")
+        pending = {"kind": "dinner_option", "phase": "collect", "date": day, "generation": generation,
+                   "request_id": _request_id(request.get("requestId"))}
+    try:
+        pending["option"] = _dinner_option(values.get("OptionNumber"))
+    except ValueError:
+        return _speech("Which dinner option? Say, select dinner option one, two, three, or four.", pending)
+    return _select_dinner_option(client, pending, context)
+
+
 def _save_timer(client, pending):
     label = _timer_label(pending.get("label"))
     seconds = pending.get("duration_seconds")
@@ -553,10 +787,10 @@ def _save_timer(client, pending):
     if timer["status"] == "expired":
         return _speech(f"The {timer['label']} timer has already finished. I have not restarted it.", end=True)
     if result.get("created") is False:
-        return _speech(f"The {timer['label']} timer is already running, with "
-                       f"{_duration_words(timer['remaining_seconds'])} remaining. No new timer was started.", end=True)
-    return _speech(f"Started the {timer['label']} timer for {_duration_words(timer['duration_seconds'])} "
-                   "on Flight Wall.", end=True)
+        return _complete(f"The {timer['label']} timer is already running, with "
+                         f"{_duration_words(timer['remaining_seconds'])} remaining. No new timer was started.")
+    return _complete(f"Started the {timer['label']} timer for {_duration_words(timer['duration_seconds'])} "
+                     "on Flight Wall.")
 
 
 def _timer_dialog(client, name, values, pending, request):
@@ -579,13 +813,13 @@ def _timer_dialog(client, name, values, pending, request):
 def _list_timers(client):
     timers = client.list_timers()
     if not timers:
-        return _speech("There are no Flight Wall timers.", end=True)
+        return _complete("There are no Flight Wall timers.")
     entries = []
     for number, timer in enumerate(timers, 1):
         timer = _timer(timer)
         detail = "finished" if timer["status"] == "expired" else _duration_words(timer["remaining_seconds"]) + " remaining"
         entries.append(f"Timer {number}, {timer['label']}, {detail}.")
-    return _speech(" ".join(entries), end=True)
+    return _complete(" ".join(entries))
 
 
 def _cancel_timer(client, values):
@@ -611,7 +845,7 @@ def _cancel_timer(client, values):
         client.cancel_timer(timer["id"])
     except BoardError:
         return _speech("I could not confirm that cancellation. Say list timers to check before trying again.", end=True)
-    return _speech(f"Cancelled the {timer['label']} timer on Flight Wall.", end=True)
+    return _complete(f"Cancelled the {timer['label']} timer on Flight Wall.")
 
 
 def _confirm_flight(pending):
@@ -650,7 +884,7 @@ def _save_flight(client, pending):
     saved = "Added" if result["created"] else "Already added"
     availability = (" Flight data will appear when available." if result["tracking_available"] else
                     " Live flight data is not configured.")
-    return _speech(f"{saved} {watch['ident']} on {_human_date(watch['date'])} to the flight board." + availability, end=True)
+    return _complete(f"{saved} {watch['ident']} on {_human_date(watch['date'])} to the flight board." + availability)
 
 
 def _shopping_words(result):
@@ -690,19 +924,19 @@ def _save_shopping(client, pending):
     except BoardError as exc:
         return _action_error(exc, pending)
     if action == "show":
-        return _speech("Showing the shopping list on Flight Wall. " + _shopping_words(result), end=True)
+        return _complete("Showing the shopping list on Flight Wall. " + _shopping_words(result))
     if action == "clear":
-        return _speech("The Flight Wall shopping list is clear.", end=True)
+        return _complete("The Flight Wall shopping list is clear.")
     if action == "add":
         message = f"Added {payload['item']} to the shopping list." if result["changed"] else f"{payload['item']} is already on the shopping list."
     else:
         message = f"Removed {payload['item']} from the shopping list." if result["changed"] else f"{payload['item']} is not on the shopping list."
-    return _speech(message, end=True)
+    return _complete(message)
 
 
 def _shopping_dialog(client, name, values, pending, request):
     if name == "ReadShoppingListIntent":
-        return _speech(_shopping_words(client.shopping_list()), end=True)
+        return _complete(_shopping_words(client.shopping_list()))
     action = {"ShowShoppingListIntent": "show", "AddShoppingItemIntent": "add",
               "RemoveShoppingItemIntent": "remove", "ClearShoppingListIntent": "clear"}[name]
     if (not pending or pending["kind"] != "shopping" or pending.get("action") != action
@@ -738,17 +972,35 @@ def lambda_handler(event, lambda_context):
         intent = request.get("intent", {})
         name = intent.get("name")
         pending = _pending(event)
-        if name in ("AMAZON.CancelIntent", "AMAZON.StopIntent", "AMAZON.NoIntent"):
+        if (name == "AMAZON.NoIntent" and pending and pending["kind"] == "dinner"
+                and pending.get("phase") in {"sides", "ready", "ready_confirm"}):
+            client = BoardClient()
+            context = client.context()
+            if pending.get("phase") == "ready_confirm":
+                for key in ("ready_time", "ready_window_start", "ready_window_end"):
+                    pending.pop(key, None)
+                pending["ready_checked"], pending["phase"] = 0, "ready"
+                return _dinner_prompt(pending)
+            return _dinner_detail(client, name, {}, pending, context)
+        if name in ("AMAZON.CancelIntent", "AMAZON.StopIntent", "AMAZON.NoIntent", "FinishSkillIntent"):
             if pending and pending.get("phase") == "retry":
                 return _speech("Okay, I will not retry. Please check the board, because the earlier save may have completed.", end=True)
+            if not pending:
+                return _speech("Okay.", end=True)
             return _speech("Okay, cancelled. I did not save an entry.", end=True)
         if name == "AMAZON.HelpIntent":
             return _speech(HELP, pending)
         if name == "DinnerHelpIntent":
             return _speech(DINNER_HELP, pending)
         if name == "AMAZON.FallbackIntent":
+            if pending and pending["kind"] == "dinner" and pending.get("phase") in {"sides", "ready"}:
+                return _dinner_prompt(pending)
             return _speech("I did not catch that. What would you like? Say help for options.", pending)
         if name == "AMAZON.RepeatIntent":
+            if pending and pending["kind"] == "dinner" and pending.get("phase") in {"collect", "sides", "ready", "ready_confirm"}:
+                if pending.get("phase") == "ready_confirm":
+                    return _speech("I heard " + _ready_words(pending) + ". Is that right?", pending)
+                return _dinner_prompt(pending)
             if pending and pending.get("phase") == "confirm":
                 if pending["kind"] == "shopping":
                     return _confirm_shopping(pending)
@@ -786,6 +1038,24 @@ def lambda_handler(event, lambda_context):
                 return _flight_dialog({}, pending, request)
             return _save_flight(client, pending)
         context = client.context()
+        if name == "SelectDinnerOptionIntent":
+            return _dinner_option_dialog(client, values, pending, request, context)
+        if name == "AMAZON.YesIntent" and pending["kind"] == "dinner_option":
+            if pending.get("phase") != "retry":
+                return _speech("Say, select dinner option one, two, three, or four.", pending)
+            return _select_dinner_option(client, pending, context)
+        if name in {"SetDinnerSidesIntent", "SetDinnerReadyTimeIntent", "SetDinnerReadyWindowIntent",
+                    "SkipDinnerDetailIntent", "SaveDinnerIntent"} or (
+                name == "SetTimeIntent" and pending and pending["kind"] == "dinner"):
+            return _dinner_detail(client, name, values, pending, context)
+        if name == "SetDateIntent" and pending and pending["kind"] == "dinner":
+            if pending.get("phase") == "retry":
+                return _speech("Say yes to retry the unchanged dinner, or no to stop and check the board.", pending)
+            try:
+                pending["date"] = _exact_date(values.get("Date"))
+            except ValueError:
+                return _speech("Which exact dinner date should I use?", pending)
+            return _continue_dinner(client, pending, context)
         if name == "AMAZON.YesIntent":
             if pending["kind"] == "appointment":
                 previous_phase, previous_zone = pending.get("phase"), pending.get("timezone")
@@ -794,6 +1064,9 @@ def lambda_handler(event, lambda_context):
                     return validation
                 if previous_zone != context["timezone"]:
                     return _speech("The board's time zone changed. " + validation["response"]["outputSpeech"]["text"], pending)
+            elif pending.get("phase") == "ready_confirm":
+                pending["ready_checked"] = 1
+                return _continue_dinner(client, pending, context)
             elif pending.get("phase") != "retry":
                 return _speech("Tell me the meal first. Say, we are having chicken for dinner.", pending)
             _text(pending["title"])
@@ -804,7 +1077,7 @@ def lambda_handler(event, lambda_context):
             explicit_day = name in DINNER_DAY_INTENTS
             if explicit_day or not pending or pending["kind"] != "dinner" or pending.get("phase") == "retry":
                 pending = _new_pending("dinner", request, context)
-            pending["timezone"] = context["timezone"]
+            pending.setdefault("timezone", context["timezone"])
             if explicit_day:
                 today = _now().astimezone(ZoneInfo(context["timezone"])).date()
                 pending["date"] = (today + timedelta(days=DINNER_DAY_INTENTS[name])).isoformat()
@@ -816,7 +1089,17 @@ def lambda_handler(event, lambda_context):
                     return _speech("Which exact day is dinner for? Say, set dinner for tomorrow, or give the exact date.", pending)
             if "Meal" in values:
                 try:
-                    pending["title"] = _dinner_meal(values["Meal"], day_selected=bool(pending.get("date")))
+                    title = _dinner_meal(values["Meal"], day_selected=bool(pending.get("date")))
+                    if pending.get("title") and pending["title"] != title:
+                        for key in ("sides", "sides_checked", "ready_time", "ready_window_start", "ready_window_end", "ready_checked"):
+                            pending.pop(key, None)
+                    # Split only an explicit side label, never infer whether
+                    # 'chicken with garlic sauce' names a dish or a side.
+                    labeled = re.fullmatch(r"(.+?)\s+with\s+(?:a side of|sides of)\s+(.+)", title, re.I)
+                    if labeled:
+                        title, side = _text(labeled[1]), _sides(labeled[2])
+                        pending.update(sides=side, sides_checked=1)
+                    pending["title"] = title
                 except ValueError as exc:
                     pending.pop("title", None)
                     if str(exc) == "meal date is ambiguous":
@@ -827,12 +1110,12 @@ def lambda_handler(event, lambda_context):
                     return _speech("Please give a dinner name of one to 160 characters. "
                                    "Say, dinner is chicken teriyaki.", pending)
             if not pending.get("title"):
-                return _speech("What is for dinner? Say, dinner is chicken teriyaki.", pending)
+                return _dinner_prompt(pending)
             if "date" not in pending:
                 pending["date"] = _now().astimezone(ZoneInfo(context["timezone"])).date().isoformat()
             if not pending.get("date"):
                 return _speech("Which exact day is dinner for? Say, set dinner for tomorrow.", pending)
-            return _save(client, pending, context)
+            return _continue_dinner(client, pending, context)
         if name in ("AddAppointmentIntent", "SetAppointmentTitleIntent"):
             if not pending or pending["kind"] != "appointment" or pending.get("phase") == "retry":
                 pending = _new_pending("appointment", request, context)

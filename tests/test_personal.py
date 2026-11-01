@@ -210,7 +210,8 @@ class PersonalTests(unittest.TestCase):
         self.config["calendar_id"] = "private-calendar-id"
         self.store.create(self.appointment(title="Private appointment"))
         self.assertEqual(self.store.voice_context(), {"timezone": "America/New_York", "appointment_duration_minutes": 60,
-                                                     "dinner_start": "14:30", "dinner_end": "19:00"})
+                                                     "dinner_start": "14:30", "dinner_end": "19:00",
+                                                     "dinner_tomorrow_preview": True, "dinner_requires_kids_home": False})
 
     def test_later_config_edits_do_not_move_existing_card_boundaries(self):
         original = self.store.create(self.appointment())["item"]

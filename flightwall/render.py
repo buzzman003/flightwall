@@ -512,29 +512,40 @@ def _nearby(draw, state, config, now, flights, tz):
     _text(draw, (16, 219), "YOUR FLIGHT SCHEDULE TAKES PRIORITY", CYAN)
 
 
-def _visible_personal(items, now):
+def _visible_personal(items, now, config=None):
     """Defend against a stale backend frame leaving an expired card onscreen."""
+    from .personal import personal_card_visible
     visible = []
     for item in items or []:
         if not isinstance(item, dict) or item.get("kind") not in {"appointment", "dinner"}:
             continue
         if not isinstance(item.get("title"), str) or not item["title"].strip():
             continue
-        start = _dt(item.get("display_start") or item.get("start"))
-        end = _dt(item.get("display_end") or item.get("end"))
-        if start and end and start <= now < end:
+        if personal_card_visible(item, config, now):
             visible.append(item)
     return visible
 
 
-def _selected_personal(state, now):
+def _selected_personal(state, now, config=None):
     selected = state.get("selected_personal_item")
     if isinstance(selected, dict):
-        return next(iter(_visible_personal([selected], now)), None)
-    items = _visible_personal(state.get("personal_items"), now)
+        return next(iter(_visible_personal([selected], now, config)), None)
+    items = _visible_personal(state.get("personal_items"), now, config)
     if isinstance(selected, str):
         return next((item for item in items if item.get("id") == selected), None)
     return items[0] if items else None
+
+
+def _dinner_kids_allowed(state, config, now):
+    if config.get("kids_filter_enabled") is not True:
+        return True
+    if "kids" in state:
+        from .household_policy import kids_home_current
+        return state.get("backend_available", True) is True and kids_home_current(state, config, now)
+    # Legacy renderer inputs carry an already rechecked context; new GUI
+    # snapshots additionally supply the dated record for an independent check.
+    context = state.get("household_context")
+    return isinstance(context, dict) and context.get("kids_home") is True
 
 
 def _draw_title(draw, title, xy, width, height, scales=(4, 3, 2), color=WHITE):
@@ -566,20 +577,42 @@ def _personal(draw, state, config, now, item):
     tz = _tz({"timezone": config.get("timezone") or item.get("timezone") or "UTC"})
     local_now = now.astimezone(tz)
     start, end = _dt(item.get("start")), _dt(item.get("end"))
-    shown_date = start.astimezone(tz) if start else local_now
-    date_label = ("TODAY / " if shown_date.date() == local_now.date() else "") + shown_date.strftime("%a %d %b")
     dinner = item["kind"] == "dinner"
+    shown_date = start.astimezone(tz) if start else local_now
+    if dinner:
+        from .personal import dinner_meal_date
+        shown_date = dinner_meal_date(item, config) or shown_date.date()
+        relative = ("TODAY / " if shown_date == local_now.date() else
+                    "TOMORROW / " if shown_date == local_now.date() + timedelta(days=1) else "")
+        date_label = relative + shown_date.strftime("%a %d %b")
+    else:
+        date_label = ("TODAY / " if shown_date.date() == local_now.date() else "") + shown_date.strftime("%a %d %b")
     _header(draw, state, now, "HOME BOARD" if dinner else "MY APPOINTMENT")
     _text(draw, (497, 40), date_label, AMBER, align="right", max_width=265)
     if dinner:
-        _text(draw, (25, 67), "TONIGHT'S DINNER", CYAN, 2)
+        tomorrow = shown_date == local_now.date() + timedelta(days=1)
+        _text(draw, (25, 67), "TOMORROW'S DINNER" if tomorrow else "TONIGHT'S DINNER", CYAN, 2)
         # Small place setting, drawn as pixels just like the rest of the wall.
         draw.ellipse((462, 62, 482, 82), outline=LINE, width=2)
         draw.ellipse((467, 67, 477, 77), outline=CYAN)
         draw.line((454, 63, 454, 81), fill=CYAN)
         draw.line((451, 62, 451, 68, 457, 68, 457, 62), fill=CYAN)
         draw.line((489, 62, 489, 81), fill=AMBER)
-        _draw_title(draw, item["title"], (25, 96), 464, 62)
+        sides = item.get("sides") if isinstance(item.get("sides"), str) else None
+        ready, ready_until = _dt(item.get("ready_at")), _dt(item.get("ready_until"))
+        if sides or ready:
+            _draw_title(draw, item["title"], (25, 89), 464, 40, scales=(3, 2))
+            if sides:
+                _paragraph(draw, "SIDES / " + sides, (25, 134), 464, lines=2, gap=3, color=WHITE)
+            if ready:
+                clock = format_time(ready.astimezone(tz))
+                if ready_until and ready_until > ready:
+                    clock += " - " + format_time(ready_until.astimezone(tz), include_zone=True)
+                else:
+                    clock = format_time(ready.astimezone(tz), include_zone=True)
+                _text(draw, (25, 158), "EXPECTED READY / " + clock, CYAN, max_width=464)
+        else:
+            _draw_title(draw, item["title"], (25, 96), 464, 62)
         # Compute on every frame, even when the backend card is cached/paused.
         # The TV's household zone governs the rule, not a stored card's zone.
         snacks_closed = local_now.hour >= 17
@@ -588,7 +621,9 @@ def _personal(draw, state, config, now, item):
         draw.rectangle((25, 171, 486, 196), fill=snack_fill, outline=snack_color, width=2)
         _text(draw, (256, 177), "NO MORE SNACKS" if snacks_closed else "SNACKS OK",
               snack_color, 2, align="center", max_width=440)
-        until = _dt(item.get("display_end")) or end
+        from .personal import dinner_display_window
+        current_window = dinner_display_window(item, config, now)
+        until = current_window[1] if current_window else _dt(item.get("display_end")) or end
         if until:
             _text(draw, (25, 209), "CLEARS AT " + format_time(until.astimezone(tz), include_zone=True), MUTED, max_width=300)
         else:
@@ -611,6 +646,38 @@ def _personal(draw, state, config, now, item):
         _text(draw, (16, 209), status, WHITE, max_width=300)
     source = _clean(item.get("source") or "MANUAL")
     _text(draw, (496, 209), "VIA " + source, MUTED, align="right", max_width=165)
+
+
+def _dinner_options(draw, image, state, config, now):
+    """Four numbered ideas; warm context after lunch, without alerts or sound."""
+    from .display import decode_artwork
+    local = now.astimezone(_tz(config))
+    choosing = (local.hour, local.minute) >= (14, 30)
+    background = (27, 16, 12) if choosing else BG
+    panel = (40, 24, 17) if choosing else PANEL
+    image.paste(background, (0, 0, 512, 256))
+    _header(draw, state, now, "WHAT'S FOR DINNER?")
+    _text(draw, (497, 40), local.strftime("%a %d %b"), AMBER, align="right", max_width=170)
+    _text(draw, (15, 64), "CHOOSE TONIGHT" if choosing else "FOUR EASY DINNER IDEAS",
+          AMBER if choosing else CYAN, 2, max_width=480)
+    options = sorted(state["dinner_options"]["options"], key=lambda row: row["number"])
+    for index, option in enumerate(options):
+        x = 15 + index * 124
+        draw.rectangle((x, 84, x + 114, 221), fill=panel, outline=LINE)
+        _text(draw, (x + 8, 90), str(option["number"]), AMBER, 2)
+        _text(draw, (x + 106, 94), f"{option['minutes']} MIN", MUTED, align="right", max_width=77)
+        picture = decode_artwork(option.get("image_data"))
+        if picture is not None:
+            from PIL import ImageOps
+            picture = ImageOps.fit(picture, (100, 61), method=Image.Resampling.LANCZOS)
+            image.paste(picture, (x + 7, 113))
+        else:
+            draw.rectangle((x + 7, 113, x + 106, 173), fill=BG)
+            _text(draw, (x + 57, 139), "PHOTO", MUTED, align="center", max_width=90)
+            _text(draw, (x + 57, 151), "UNAVAILABLE", MUTED, align="center", max_width=90)
+        _draw_title(draw, option["title"], (x + 7, 181), 100, 33, scales=(1,), color=WHITE)
+    draw.line((14, 232, 498, 232), fill=LINE)
+    _text(draw, (15, 241), "NUMBERED OPTIONS / NO DINNER SELECTED", MUTED, max_width=deck_footer_width(state))
 
 
 def _paragraph(draw, value, xy, width, *, scale=1, lines=4, color=WHITE, gap=6):
@@ -1035,15 +1102,16 @@ def _trip_map(draw, image, state, config, now):
 
 
 def _home(draw, state, config, now):
+    from .card_preferences import card_enabled
     _header(draw, state, now, "HOME / TODAY")
     local = now.astimezone(_tz(config))
     _text(draw, (26, 73), format_time(local), WHITE, 4, max_width=204)
     _text(draw, (26, 127), local.strftime("%Z"), CYAN, 2)
     _text(draw, (26, 161), local.strftime("%A"), WHITE, 2, max_width=204)
     _text(draw, (26, 188), local.strftime("%d %b %Y"), MUTED, max_width=204)
-    items = _visible_personal(state.get("personal_items"), now) if config.get("personal_enabled", True) else []
-    context = state.get("household_context")
-    if config.get("kids_filter_enabled") is True and (not isinstance(context, dict) or context.get("kids_home") is not True):
+    items = _visible_personal(state.get("personal_items"), now, config) if config.get("personal_enabled", True) else []
+    items = [item for item in items if card_enabled("personal", config, item)]
+    if not _dinner_kids_allowed(state, config, now):
         items = [item for item in items if item.get("kind") != "dinner"]
     items.sort(key=lambda item: _dt(item.get("start")) or now)
     if not items:
@@ -1253,6 +1321,14 @@ def render_frame(state, config, size=BASE_SIZE):
     image = Image.new("RGB", BASE_SIZE, BG)
     draw = ImageDraw.Draw(image)
     view = state.get("view", "details")
+    from .card_preferences import card_enabled
+    selected_item = _selected_personal(state, now, config) if view == "personal" else None
+    if not card_enabled(view, config, selected_item):
+        # A paused/manual slot can outlive its visibility preference. The home
+        # board separately filters its mini-cards, so no hidden item leaks there.
+        view = "home"
+        state = dict(state, view="home", selected_personal_item=None, selected_card=None,
+                     selected_layover=None, artwork_image=None)
     personal_item = None
     if view == "map":
         _map(draw, image, state, config, now, flight, tz)
@@ -1271,12 +1347,18 @@ def render_frame(state, config, size=BASE_SIZE):
         from .flight_context_views import render_context
         render_context(draw, image, state, config, now)
     elif view == "personal":
-        personal_item = _selected_personal(state, now)
-        if personal_item and personal_item.get("kind") == "dinner" and config.get("kids_filter_enabled") is True:
-            context = state.get("household_context") or {}
-            if not isinstance(context, dict) or context.get("kids_home") is not True:
-                personal_item = None
+        personal_item = _selected_personal(state, now, config)
+        if personal_item and personal_item.get("kind") == "dinner" and not _dinner_kids_allowed(state, config, now):
+            personal_item = None
         _personal(draw, state, config, now, personal_item)
+    elif view == "dinner_options":
+        from .household_policy import dinner_options_visible
+        if dinner_options_visible(state, config, now):
+            _dinner_options(draw, image, state, config, now)
+        else:
+            view = "home"
+            state = dict(state, view="home", selected_card=None)
+            _home(draw, state, config, now)
     elif view == "setup":
         _setup(draw, state, config, now)
     elif view == "custody_outlook":
@@ -1306,7 +1388,7 @@ def render_frame(state, config, size=BASE_SIZE):
             _layover(draw, state, config, now, card)
     else:
         _details(draw, state, config, now, flight, flights, tz)
-    if view not in {"weather", "nearby", "flight_status", "operating_map", "trip_weather", "national_radar", "airport_alerts"}:
+    if view not in {"weather", "nearby", "flight_status", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
         _footer(draw, state, view, now, tz, personal_item)
     _deck_progress(draw, state)
     if not state.get("defer_display_overlays") and not state.get("defer_timer_overlay"):

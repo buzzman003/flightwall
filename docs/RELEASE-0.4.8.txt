@@ -1,0 +1,69 @@
+FLIGHT WALL 0.4.8 - DINNER, RADAR AND TV CHOICES
+
+DINNER
+Optional sides and expected ready time or same-date time window accompany
+the meal. Today and tomorrow can rotate as separate dated cards during the
+current configured afternoon window. Appointments keep their actual end and
+no grace period. Same-date replacement, deduplication, timezone/DST validation,
+end-exclusive expiry and the owner's Kids Home requirement remain in force.
+The optional metadata is private; old releases must still read core meals.
+
+DAILY DINNER IDEAS
+Optional daily AI ideas use a separately saved OpenAI API key and independent
+household consent; enabling them does not enable Lisa inspiration or private
+cards. On a day with fresh Kids Home, generate one set of four meal choices
+from05:00 local: three quicker choices and one up-to-one-hour choice, with
+numbered food pictures. Defaults target eight servings. Recipes stay available
+in the authenticated setup page on a phone. Only the selected food preferences,
+serving count and cooking limits are sent to OpenAI, not custody observations,
+calendar contents, mail, home location or ChatGPT conversation histories.
+The ideas card shows05:00-19:00 while no dinner is selected. From14:30 it
+changes its background and says CHOOSE TONIGHT; it sends no alert. Kids Away,
+Unknown or stale hides it, even during pause/outage. Selecting an option maps
+the exact current-day generation/number to an ordinary saved dinner card.
+A stale date/generation cannot silently select a different meal after midnight.
+The corresponding voice command inside the skill is "select dinner option
+three". Existing free-form dinner commands and optional sides/ready follow-ups
+remain available. A saved selection replaces the same-date meal normally.
+Daily generation defaults off, with a zero spending allowance until configured.
+The app's maximum allowance is$3/month, conservatively reserved before requests;
+failed/uncertain attempts count and are not automatically retried that day.
+This local feature allowance does not control other API clients or the whole
+provider account. API access/credits, food generation and real speech still
+need separate verification; a ChatGPT project is not automatically linked.
+
+OPTIONS ON THE TV
+Press S; Tab (Shift+Tab back) changes Display / Cards / Maps groups. Use Up/
+Down to select and Left/Right to change. Gamepad B opens/closes settings,
+A changes group, and D-pad selects/changes. S or Escape closes. Changes save
+immediately. Card SHOW never enables a provider or grants private-card consent;
+it displays that category only when its existing eligibility rules pass.
+Hide operating/trip/nearby/weather/radar/airport-weather/advisory/family/visit/
+dinner/appointment/watch cards independently. An empty deck returns Home.
+Aircraft radius uses statute miles: 2.5, 5, 10, 25, 50, 100. The local detailed
+map remains within its bundled coverage; wider ranges use explicitly limited-
+detail Natural Earth geography with exact-radius aircraft filtering.
+
+RADAR
+The radar card follows home weather when both are eligible. Areas are National,
+Southeast, Local (200 statute miles around public Destin airport), or Hyperlocal
+(Fort Walton Beach / Destin). No private Home pin is sent for radar. Only the
+selected area fetches, at most every ten minutes. Scope changes invalidate old
+images immediately. Weather forecasts retain their separate 15-minute polling.
+National/Southeast use official NOAA observed GIF loops with their embedded UTC
+clocks. Local areas use exact observation times advertised by NOAA WMS, over
+bundled geography. Playback delays are not made-up scan timestamps. A bounded,
+hash-bound local PNG loop animates even while card rotation is paused; an
+invalid loop falls back to an explicitly static poster. Stale/disabled/demo/
+offline state never presents a cached loop as current. Radar is context for
+the household display, not an aviation decision or operational weather source.
+
+PRESERVATION AND LIMITS
+Offline first-launch DEMO, 512x256 logical board, software fallback, private
+settings/credentials, original pinned recovery and signed next-launch updates
+remain. Games and other Ports metadata are outside this patch. No new paid
+lookup budget or faster community polling is introduced. Native Alexa list
+import and global Echo timer mirroring are not implemented. Photo/outer-list/
+one-second aircraft requests remain recorded for a later update.
+
+Validation and actual deployment status are in docs/VALIDATION.txt.

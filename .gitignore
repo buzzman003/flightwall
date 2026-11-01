@@ -30,6 +30,7 @@ notifications*.json
 message-*.json
 messages-*.json
 personal.json
+personal-dinner-details.json
 content.json
 research-cache.json
 inspiration-cache.json
@@ -51,5 +52,9 @@ flightaware-usage.json
 flightaware-usage.lock
 flight-environment.json
 national-radar.png
+national-radar-loop.png
+dinner-options.json
+dinner-options-usage.json
+dinner-options.lock
 trip-weather.json
 trip-weather/

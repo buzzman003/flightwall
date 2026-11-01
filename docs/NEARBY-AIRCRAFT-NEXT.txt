@@ -1,0 +1,115 @@
+NEARBY AIRCRAFT - OWNER FEEDBACK FOR A FUTURE UPDATE
+
+STATUS: RECORDED ONLY. DO NOT IMPLEMENT, BUILD, INSTALL OR CHANGE POLLING NOW.
+Baseline: shipped 0.4.7. This request changes no running application settings,
+provider usage, credential, archive, installed executable or release version.
+
+REQUESTED DISPLAY BEHAVIOR
+
+1. Keep the existing local map/ring at exactly five STATUTE miles from the
+   private saved display/home point. Do not silently expand this local ring.
+2. When a successful fresh observation contains no aircraft inside that ring,
+   show a side list of the nearest ten aircraft outside five and within thirty
+   statute miles. Sort by actual received distance, deduplicate identities and
+   show fewer than ten when fewer are available. Never pad with stale/fake data.
+   The purpose is useful surrounding traffic, including possible VPS/Destin
+   arrivals; do not infer a destination from proximity or direction.
+3. The outer list is fallback context when the five-mile ring is empty, not
+   another ten-aircraft card rotation. Keep nearby aircraft in the ring first.
+   Show compact useful fields that actually exist: callsign/tail, distance,
+   received altitude, groundspeed and track; route only when uniquely verified.
+4. Enlarge the geographic map and recover space currently used by the fixed
+   NEAREST 3 / ROUTES ONLY WHEN VERIFIED footer and the long ADSB.LOL /
+   RECEIVED POSITIONS / NOT ALL TRAFFIC line. Remove that repetitive prose.
+   Use recovered space for useful traffic data or a larger map. Preserve a
+   compact source/freshness indication and any required map attribution without
+   recreating the large footer. Unknown, stale and unavailable states remain
+   distinguishable; an outage is not an empty sky.
+
+IDENTIFIER, AIRCRAFT TYPE AND THUMBNAILS - ADDITIONAL OWNER FEEDBACK
+
+* Give the aircraft identifier the strongest visual priority. For a known
+  commercial service, prefer its verified flight number; for other aircraft,
+  prefer the registration/tail number. Do not displace a known registration
+  with a list index or hex address. If the preferred identifier is unavailable,
+  use a clearly labeled received callsign/hex fallback. Do not guess commercial
+  status or fabricate a flight number from an aircraft type or proximity.
+* Put the compact received aircraft type on that SAME headline line when room
+  permits: examples B350, D328 and A359. Prefer the actual supported ICAO type
+  code/variant over long marketing descriptions. Do not guess an A350 variant
+  or expand a short code into an unverified model name. Missing type stays
+  unknown or is omitted, preserving the identifier's prominence.
+* When only one to three aircraft are displayed, add a small thumbnail of each
+  aircraft beside its identifier/type and telemetry. The owner wants a visual
+  reference that also helps household members who do not know the type codes.
+  For the larger outer-area list (up to ten aircraft), use compact text rows
+  rather than squeezing in ten unreadable thumbnails.
+* An actual aircraft photo or a suitable stock/type-matched image are both
+  acceptable. The owner understands that the thumbnail may be representative
+  and explicitly does not want an on-screen actual/representative label,
+  caption or badge taking up space. Keep that visual choice compact. Match
+  the known aircraft type where available and do not add unsupported claims
+  about an exact tail, livery or airline. Fall back to text if no image fits.
+* For suitable white-background source images, produce a clean transparent
+  cutout and size it to the card; preserve aircraft proportions, shape and
+  visible markings. No image is being sourced, generated or edited now.
+* The map can become somewhat narrower to make room for these small cards.
+  Use the observed spare horizontal map margins where practical, keep the
+  five-mile ring and its received positions visible, and balance the larger
+  usable map area from removing the repetitive footers with the thumbnail area.
+  Review both sparse image-card and dense text-list layouts on the TV.
+* Image sourcing, permission/attribution and type/optional registration association
+  remain later implementation work. Keep downloaded artwork/cache outside
+  releases in private DATA, bound sizes and refresh/cache use, and never fetch
+  thumbnails per frame or per one-second aircraft update. Recheck the image
+  association when a row changes; never leave a different aircraft type's image
+  attached, including while paused. A matching stock/type image may be reused
+  for that type without a representative-image label. Preserve paid API caps.
+
+REQUESTED REFRESH BEHAVIOR - EVALUATE BEFORE COMMITTING TO A RATE
+
+* Target approximately one-second received-position updates for the immediate
+  five-mile area, including while the owner pauses on the nearby-aircraft card.
+  The owner also mentioned rapid checks while the inner ring is empty so an
+  approaching aircraft is noticed promptly, then clarified fast updates for
+  aircraft inside the ring. Design near-ring discovery and active-ring polling
+  together; do not retain a hidden one-minute entry-detection delay by accident.
+* The outer five-to-thirty-mile list can refresh more slowly, about thirty to
+  sixty seconds. Exact adaptive cadence is a design/research item, not enabled
+  by recording this feedback. No twenty-aircraft requirement: nearest ten is
+  the chosen initial list size.
+* Check the community provider's permitted rate and actual observation cadence.
+  ADSB.lol publishes dynamic limits and best-effort capacity, not a guaranteed
+  one-request-per-second allowance. Respect rate responses/Retry-After, use
+  bounded backoff, avoid overlapping requests and keep UI/control responsive.
+* Separate display redraw from successful fresh observations. Do not extrapolate
+  moving aircraft, relabel old coordinates as a new fix, or reset age when the
+  same cached provider snapshot is fetched again. Recheck source now/seen_pos
+  timestamps on each frame, including pause and backend failure.
+* Keep community ADS-B position refresh separate from paid FlightAware route
+  enrichment. This request does not authorize per-second AeroAPI calls or an
+  increase to the shared $5/month app cap or optional $1 nearby-route subcap.
+  Continue bounded/cached route lookups with operating-flight priority.
+
+ENGINEERING AND ACCEPTANCE FOR THE LATER IMPLEMENTATION
+
+* Provider circle radius uses integer NAUTICAL miles. Convert/round up the query
+  radius, then filter exact local statute distances: inner d<=5; outer 5<d<=30.
+  Use a bounded circle response for ten rows; a single closest-aircraft query
+  cannot populate the requested list.
+* Preserve the logical 512x256 board and high-resolution geographic inset,
+  crisp LED titles, brightness, software fallback, timers/ticker content bounds,
+  operating-flight focus and per-frame privacy/freshness guards.
+* Check a real fresh-empty inner ring, entry/exit at the boundary, up to ten
+  outer rows, multiple inner aircraft, stale/future/failed responses, rate-limit
+  recovery and paused-card refresh. Review readability on the TV.
+* Before shipping: version above 0.4.7, relevant source/rendering tests, zero-skip
+  native Linux validation and the existing signed release/next-launch workflow.
+  Preserve games, mutable settings, private credentials and pinned recovery.
+
+Primary provider references for later implementation:
+https://github.com/adsblol/api/blob/main/README.md
+https://api.adsb.lol/docs
+https://api.adsb.lol/api/openapi.json
+https://www.adsb.lol/request
+https://github.com/wiedehopf/readsb/blob/dev/README-json.md

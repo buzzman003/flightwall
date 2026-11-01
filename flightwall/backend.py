@@ -14,7 +14,8 @@ from .feeds import FlightFeeds, parse_time
 from .remote import RemoteServer
 from .render import demo_snapshot
 from .updater import UpdateManager
-from .personal import PersonalStore, PersonalError
+from .personal import PersonalStore, PersonalError, personal_card_visible
+from .dinner_options import DinnerOptions
 from .household_calendar import HouseholdCalendars
 from .presence import PresenceStore
 from .messages import MessageFeeds
@@ -73,6 +74,7 @@ class Runtime:
         self.trip_weather = TripWeatherFeed(data_dir, self.config.get)
         self.environment = FlightEnvironmentFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
+        self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
         self.shopping_list = ShoppingListStore(data_dir)
@@ -94,6 +96,7 @@ class Runtime:
         self._weather_worker = None
         self._trip_weather_worker = None
         self._environment_worker = None
+        self._dinner_worker = None
         # One transient confirmed arrival, never a location/presence history.
         self._recent_vps_arrival = None
         self._mail_refresh = threading.Event()
@@ -148,9 +151,10 @@ class Runtime:
             flight = operating
         personal_error = None
         try:
-            personal_items = self.personal.visible(now) if config["personal_enabled"] else []
+            personal_all = self.personal.list_items(now) if config["personal_enabled"] else []
+            personal_items = [item for item in personal_all if personal_card_visible(item, config, now)]
         except PersonalError as exc:
-            personal_items, personal_error = [], str(exc)
+            personal_all, personal_items, personal_error = [], [], str(exc)
         with self.lock:
             live = self.feeds.live
             operating_live = live
@@ -248,6 +252,18 @@ class Runtime:
         context = household_context(status, config, now)
         status["household_context"] = context
         status["personal_items"] = filter_personal_items(personal_items, status, config, now)
+        try:
+            from .personal import dinner_meal_date
+            from zoneinfo import ZoneInfo
+            today = now.astimezone(ZoneInfo(config["timezone"])).date()
+            status["dinner_today_selected"] = any(not item.get("cancelled") and item.get("kind") == "dinner"
+                and dinner_meal_date(item, config) == today for item in personal_all)
+            if personal_error:
+                status["dinner_today_selected"] = True
+            status["dinner_options"] = self.dinner_options.status(now)
+        except (OSError, ValueError, TypeError, KeyError, OverflowError):
+            status["dinner_today_selected"] = True
+            status["dinner_options"] = {"status": "unavailable", "options": []}
         status["messages"] = {"chris": [], "lisa": []}
         for person in ("chris", "lisa"):
             eligible = context["chris_home"] if person == "chris" else context["private_lisa"]
@@ -337,6 +353,9 @@ class Runtime:
                                    "item_count": len(shopping.get("items", []))}
         status["inspiration"] = [{k: v for k, v in item.items() if k != "image_data"}
                                  for item in status["inspiration"] if item.get("owner", item.get("profile")) == "public"]
+        ideas = status.get("dinner_options", {})
+        status["dinner_options"] = {"status": ideas.get("status"), "date": ideas.get("date"),
+                                   "option_count": len(ideas.get("options", []))}
         return status
 
     def setup_get(self):
@@ -416,8 +435,11 @@ class Runtime:
         return {"queued": True, "message": "Calendar refresh queued."}
 
     def create_personal_item(self, payload):
+        from .card_preferences import card_enabled
         result = self.personal.create(payload)
-        result["display_enabled"] = self.config.get()["personal_enabled"]
+        config = self.config.get()
+        result["display_enabled"] = (config["personal_enabled"]
+                                     and card_enabled("personal", config, result.get("item")))
         return result
 
     def cancel_personal_item(self, payload):
@@ -426,7 +448,15 @@ class Runtime:
         return self.personal.cancel(payload.get("id"))
 
     def get_voice_context(self):
-        return self.personal.voice_context()
+        return {**self.personal.voice_context(), **self.dinner_options.voice_context()}
+
+    def select_dinner_option(self, payload):
+        from .card_preferences import card_enabled
+        result = self.dinner_options.select(payload)
+        config = self.config.get()
+        result["display_enabled"] = (config["personal_enabled"]
+                                     and card_enabled("personal", config, result.get("item")))
+        return result
 
     def sync(self):
         if not self._sync_lock.acquire(blocking=False):
@@ -574,6 +604,17 @@ class Runtime:
                 pass
             self.stop_event.wait(2)
 
+    def _run_dinner_options(self):
+        # Slow optional generation cannot block calendars, Alexa or rendering.
+        while not self.stop_event.is_set():
+            try:
+                if self.config.get().get("dinner_options_enabled") is True:
+                    kids = self.household.status().get("kids", {})
+                    self.dinner_options.poll(kids, datetime.now(timezone.utc))
+            except Exception:
+                pass  # The generator exposes bounded, nonsecret status only.
+            self.stop_event.wait(60)
+
     def _sync_content(self):
         if not self._content_lock.acquire(blocking=False):
             return
@@ -596,6 +637,7 @@ class Runtime:
             "create_personal_item": self.create_personal_item,
             "cancel_personal_item": self.cancel_personal_item,
             "get_voice_context": self.get_voice_context,
+            "select_dinner_option": self.select_dinner_option,
             "start_timer": self.start_timer, "cancel_timer": self.cancel_timer, "get_timers": self.get_timers,
             "create_flight_watch": self.create_flight_watch,
             "get_shopping_list": self.get_shopping_list,
@@ -606,6 +648,7 @@ class Runtime:
             "update_presence": self.update_presence,
             "receive_notification": self.receive_notification,
             "setup_get": self.setup_get, "setup_save": self.setup_save,
+            "get_dinner_options": lambda: self.dinner_options.status(include_recipes=True),
             "setup_calendars": self.household.list_calendars,
             "setup_kids_preview": self.household.preview_kids,
             "setup_refresh": self.refresh_calendar,
@@ -622,6 +665,8 @@ class Runtime:
         self._trip_weather_worker.start()
         self._environment_worker = threading.Thread(target=self._run_environment, name="flightwall-environment", daemon=True)
         self._environment_worker.start()
+        self._dinner_worker = threading.Thread(target=self._run_dinner_options, name="flightwall-dinner-options", daemon=True)
+        self._dinner_worker.start()
         return self
 
     def stop(self):
@@ -636,3 +681,5 @@ class Runtime:
             self._trip_weather_worker.join(timeout=2)
         if self._environment_worker:
             self._environment_worker.join(timeout=2)
+        if self._dinner_worker:
+            self._dinner_worker.join(timeout=2)

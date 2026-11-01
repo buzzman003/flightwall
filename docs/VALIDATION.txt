@@ -1,3 +1,44 @@
+AUTOMATED SOURCE CHECKS FOR0.4.8 - NOVEMBER1,2026
+Final Windows source suite:1227 passed +533 subtests,51 expected platform/
+optional-native skips. The first complete run found a broad-map fallback label
+regression and an outdated safe-voice-context assertion; both were corrected,
+the affected120-test group passed, then the full suite above passed. Relevant
+source includes the final pinned text model and UTC-month budget revocation fix.
+Independent two-process synthetic generation verified one batch and one10-cent
+reservation. Exact published047 personal-source regression verified list/create/
+cancel/reopen after richer048 dinner saves without corrupting core storage.
+Read-only TV preflight verified healthy active047 and unchanged original03
+recovery while development continued; no live app/service/OS restart was done.
+
+Actual fixed-public NOAA source smoke passed National, Southeast, Local200mi
+and Hyperlocal:10 sanitized frames each; hash-bound reader advanced through
+source-timed frames. No private Home pin or paid provider was involved. These
+are public provider/renderer checks, not physical TV acceptance. Meal prompts,
+recipes, photos and API errors were synthetic in tests; no live paid meal
+request or household state override was performed. Alexa adapter tests used
+real local scoped HTTP, not AWS or physical speech. New source is not yet the
+running Batocera executable or deployed Lambda/model. Signed Linux/native
+acceptance, independent public artifact verification, private backup, next-safe-
+launch activation and matching Alexa deployment still remain required.
+
+0.4.8 SOURCE CANDIDATE - NOVEMBER 1, 2026 LOCAL
+
+The current patch adds optional dinner sides/ready metadata, today/tomorrow
+afternoon menus, bounded NOAA observation animation, display-only card choices,
+six aircraft range presets and four radar scopes. Current Kids Home and guest/
+private-card gates remain intact. A stored dinner can be correctly hidden when
+Kids are Away/Unknown; phone presence does not override the custody calendar.
+No native Echo timers, native Alexa shopping-list import or idle two-minute
+skill listening are claimed. A short normal reprompt supports another command.
+
+Amazon's support response was read; the owner confirmed the explicit launch
+"Alexa, open Flight Wall skill" works. Recognition failures occur before the
+handler is reached. No support email was sent or case closed in this patch.
+Live richer dinner speech, TV settings/radar acceptance and the signed native
+build/install/rollback checks remain pending. No private calendar or household
+data was added to public source. Deferred nearby-aircraft changes remain in
+docs/NEARBY-AIRCRAFT-NEXT.txt; this patch implements only the requested ranges.
+
 FLIGHT WALL: VALIDATION RECORD
 
 0.4.7 PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 1, 2026 UTC

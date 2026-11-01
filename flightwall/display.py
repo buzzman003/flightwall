@@ -22,6 +22,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageEnhance
 from .render import compose_display_overlays, display_content_bounds, render_frame, shopping_ticker_names, visible_timers
 from .feeds import parse_time
 from .household_policy import build_rotation, card_visible, filter_personal_items, household_context
+from .card_preferences import card_enabled
+from .tv_options import GROUPS, draw_options, next_value
 
 
 def fresh_household_status(status, config, now=None, *, backend_available=True):
@@ -127,6 +129,9 @@ def entry_render_state(status, config, entry, now=None):
     state = {**status.get("snapshot", {}), "now": now.isoformat(), "view": view,
              "selected_flight": selected, "live": live, "nearby": status.get("nearby", []),
              "household_context": context,
+             "kids": status.get("kids", {}),
+             "dinner_options": status.get("dinner_options", {}),
+             "dinner_today_selected": status.get("dinner_today_selected", False),
              "timers": status.get("timers", []), "custody_outlook": status.get("custody_outlook", {}),
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
@@ -145,7 +150,7 @@ def entry_render_state(status, config, entry, now=None):
              "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
-    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "operating_map", "trip_weather", "national_radar", "airport_alerts"}:
+    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):
         artwork = decode_artwork(image_data)
@@ -313,12 +318,13 @@ def active_personal_items(status, config, now=None):
     if not config.get("personal_enabled", True):
         return []
     now = now or datetime.now(timezone.utc)
+    from .personal import personal_card_visible
     result = []
     for item in status.get("personal_items", []):
         try:
             if item.get("cancelled") or item.get("kind") not in {"appointment", "dinner"}:
                 continue
-            if parse_time(item["display_start"]) <= now < parse_time(item["display_end"]):
+            if card_enabled("personal", config, item) and personal_card_visible(item, config, now):
                 result.append(item)
         except (ValueError, KeyError, TypeError, AttributeError):
             continue
@@ -329,7 +335,7 @@ def rotation_views(status, config, now=None):
     views = ["nearby", "schedule", "map", "details"] if config.get("nearby_enabled") and not status.get("on_duty") else ["details", "map", "schedule"]
     if active_personal_items(status, config, now):
         views.append("personal")
-    return views
+    return [view for view in views if card_enabled(view, config)]
 
 
 def is_sleeping(config, now=None):
@@ -437,6 +443,46 @@ class BackendConnection:
         except (OSError, ValueError, TypeError, Image.DecompressionBombError):
             return None
 
+    def local_radar_frame(self, expected_sha256, elapsed_seconds):
+        """Read a bounded fixed APNG generation; never a remotely supplied path.
+
+        Decoded public frames are cached only for this file generation. Atomic
+        cache replacement invalidates the stat identity before another frame.
+        """
+        import re
+        from .radar import MAX_ANIMATION_BYTES, decode_cached, frame_index
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+            return None
+        try:
+            path = self.data_dir / "national-radar-loop.png"
+            if path.is_symlink():
+                return None
+            def identity():
+                stat = path.stat()
+                return stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino, stat.st_size
+            current = identity()
+            if not 0 < current[-1] <= MAX_ANIMATION_BYTES:
+                return None
+            cached = getattr(self, "_radar_animation_cache", None)
+            if cached is None or cached[:2] != (expected_sha256, current):
+                with path.open("rb") as stream:
+                    raw = stream.read(MAX_ANIMATION_BYTES + 1)
+                if (len(raw) > MAX_ANIMATION_BYTES or hashlib.sha256(raw).hexdigest() != expected_sha256
+                        or identity() != current or path.is_symlink()):
+                    self._radar_animation_cache = None
+                    return None
+                frames, durations = decode_cached(raw)
+                metadata = {"sha256": expected_sha256, "frame_count": len(frames), "durations_ms": durations,
+                            "total_duration_ms": sum(durations), "observed_at": [None] * len(frames)}
+                cached = self._radar_animation_cache = (expected_sha256, current, frames, metadata)
+            index = frame_index(cached[3], elapsed_seconds)
+            image = cached[2][index].copy()
+            image.info.clear()
+            return image, index, len(cached[2])
+        except (OSError, ValueError, TypeError, KeyError, OverflowError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+            self._radar_animation_cache = None
+            return None
+
 
 def display_viewport(screen_size, frame_size=(512, 256), mode="fit"):
     """Center a complete canvas with the same aspect ratio in both renderers.
@@ -482,7 +528,8 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
     The map is drawn after the LED pass, in the same animated content inset.
     Private coordinates are read locally and never attached to frame metadata.
     """
-    if (state.get("view") != "nearby" or config.get("demo") is True or state.get("demo", False) is not False
+    if (state.get("view") != "nearby" or not card_enabled("nearby", config)
+            or config.get("demo") is True or state.get("demo", False) is not False
             or config.get("nearby_enabled") is not True or config.get("nearby_detailed_map", True) is not True):
         return frame
     try:
@@ -506,7 +553,8 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
 def attach_flight_context(frame, state, config, connection, screen_size, now,
                           timer_progress=None, ticker_progress=None):
     """Present public geography/radar after LEDs, using the same live insets."""
-    if state.get("view") not in {"operating_map", "national_radar"}:
+    if (state.get("view") not in {"operating_map", "national_radar"}
+            or not card_enabled(state.get("view"), config)):
         return frame
     if (state.get("backend_available", True) is not True or config.get("demo") is True
             or state.get("demo", False) is not False):
@@ -522,12 +570,36 @@ def attach_flight_context(frame, state, config, connection, screen_size, now,
         if radar:
             from .flight_context_views import radar_ready
             meta = state.get("national_radar", {})
-            image = connection.local_radar_image(meta.get("image_sha256")) if radar_ready(state, config, now) else None
+            image, index, count = None, None, None
+            if radar_ready(state, config, now):
+                animation = meta.get("animation")
+                reader = getattr(connection, "local_radar_frame", None)
+                if isinstance(animation, dict) and callable(reader):
+                    value = reader(animation.get("sha256"), time.monotonic())
+                    if (isinstance(value, tuple) and len(value) == 3 and isinstance(value[0], Image.Image)
+                            and type(value[1]) is int and value[2] == animation.get("frame_count") and 0 <= value[1] < value[2]):
+                        image, index, count = value
+                if image is None:
+                    image = connection.local_radar_image(meta.get("image_sha256"))
             if image is not None:
                 from PIL import ImageOps
                 image = ImageOps.contain(image, size, Image.Resampling.LANCZOS)
                 panel = Image.new("RGB", size, (5, 15, 21))
                 panel.paste(image, ((size[0] - image.width) // 2, (size[1] - image.height) // 2))
+                from .render import MUTED, WHITE, _text
+                draw = ImageDraw.Draw(panel)
+                scale = max(1, min(2, size[1] // 180))
+                _text(draw, (8, 8), f"OBS {index + 1}/{count}" if index is not None and count > 1 else "STATIC NOAA", WHITE, scale)
+                _text(draw, (8, 8 + 12 * scale), "UTC IN IMAGE", MUTED, scale)
+                times = (meta.get("animation") or {}).get("observed_at", [])
+                observed = times[index if index is not None else -1] if isinstance(times, list) and times else None
+                if observed is not None:
+                    from .radar import stamp
+                    from .render import _tz
+                    from .time_format import format_time
+                    local = stamp(observed).astimezone(_tz(config))
+                    _text(draw, (8, 8 + 28 * scale), "OBS " + local.strftime("%m/%d"), MUTED, scale)
+                    _text(draw, (8, 8 + 40 * scale), format_time(local, include_zone=True), WHITE, scale)
                 image = panel
         else:
             from .operating_map import render_map
@@ -697,7 +769,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
     card_transition = CardTransition()
     analog_navigation = AnalogNavigation()
     automatic, settings_open, settings_row, help_open = True, False, 0, False
-    settings_rows = ["brightness", "glow", "dot_gap", "display_scale_mode", "rotation_seconds", "led_effect", "sleep_enabled", "shopping_ticker_visible"]
+    settings_group = 0
+    settings_rows = GROUPS[settings_group][1]
     last_fetch, frames = time.monotonic(), 0
     clock = pygame.time.Clock()
     running, error, backend_available = True, None, True
@@ -725,14 +798,13 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
     def change_setting(direction):
         nonlocal config, error
         name = settings_rows[settings_row]
-        if name in {"led_effect", "sleep_enabled", "shopping_ticker_visible"}:
-            value = not config.get(name, True)
-        elif name == "display_scale_mode":
-            value = "integer" if config.get(name, "fit") == "fit" else "fit"
-        else:
-            step, low, high = {"brightness": (.05, .05, 1), "glow": (.05, 0, 1), "dot_gap": (.05, 0, .65), "rotation_seconds": (1, 3, 300)}[name]
-            value = max(low, min(high, round(config[name] + direction * step, 2)))
+        value = next_value(config, name, direction)
         save_setting(name, value)
+
+    def change_group(direction=1):
+        nonlocal settings_group, settings_rows, settings_row
+        settings_group = (settings_group + direction) % len(GROUPS)
+        settings_rows, settings_row = GROUPS[settings_group][1], 0
 
     try:
         while running:
@@ -753,6 +825,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                         running = False
                     elif event.button in {1, 2}:
                         settings_open = not settings_open
+                    elif settings_open:
+                        change_group(-1 if event.button == 4 else 1)
                     else:
                         cursor.advance(entries, time.monotonic())
                 elif event.type == pygame.JOYHATMOTION:
@@ -781,7 +855,10 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                         automatic = not automatic
                         cursor.started_at = time.monotonic()
                     elif event.key == pygame.K_TAB:
-                        cursor.advance(entries, time.monotonic())
+                        if settings_open:
+                            change_group(-1 if getattr(event, "mod", 0) & pygame.KMOD_SHIFT else 1)
+                        else:
+                            cursor.advance(entries, time.monotonic())
                     elif pygame.K_1 <= event.key <= pygame.K_5:
                         chosen = event.key - pygame.K_1
                         if chosen < len(entries):
@@ -840,13 +917,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                 draw.rectangle((36, 28, 476, 229), fill=PANEL, outline=CYAN)
                 _text(draw, (52, 41), "FLIGHT WALL / " + ("SETTINGS" if settings_open else "CONTROLS"), CYAN)
                 if settings_open:
-                    for i, name in enumerate(settings_rows):
-                        color = AMBER if settings_row == i else WHITE
-                        value = config.get(name, "fit")
-                        label = ("ON" if value else "OFF") if isinstance(value, bool) else str(value)
-                        _text(draw, (52, 64 + i * 17), ("> " if i == settings_row else "  ") + name.replace("_", " ") + "  " + label, color)
-                    _text(draw, (52, 198), "UP/DOWN SELECT / LEFT/RIGHT CHANGE", MUTED)
-                    _text(draw, (52, 213), "S CLOSE / CHANGES SAVE AUTOMATICALLY", MUTED)
+                    draw_options(draw, config, settings_group, settings_row)
                 else:
                     for i, line in enumerate(["LEFT/RIGHT BACK/NEXT / TAB NEXT", "SPACE PAUSE / 1-5 SELECT CARD", "S SETTINGS / L LED EFFECT ON-OFF", "G HIDE MESSAGES & PRIVATE CARDS", "R REFRESH CALENDAR / ESC EXIT", "GAMEPAD: D-PAD/STICK BACK/NEXT", "A NEXT / B SETTINGS / SELECT EXIT"]):
                         _text(draw, (52, 66 + 20 * i), line, WHITE if i < 6 else MUTED)
@@ -882,7 +953,11 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             transitioning = (0 < timer_progress < 1 or timer_progress != timer_transition.target
                              or 0 < ticker_progress < 1 or ticker_progress != ticker_transition.target
                              or card_transition.active)
-            clock.tick((30 if screen.gl else 12) if transitioning or ticker_active else (12 if screen.gl else 4))
+            animated_radar = (state.get("view") == "national_radar"
+                              and card_enabled("national_radar", config)
+                              and isinstance(state.get("national_radar", {}).get("animation"), dict))
+            clock.tick((30 if screen.gl else 12) if transitioning or ticker_active else
+                       (12 if screen.gl or animated_radar else 4))
     finally:
         pygame.quit()
     return {"frames": frames, "shader": bool(screen.gl)}
