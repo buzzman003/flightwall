@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.8 candidate: display-only card flags never enable feeds, private consent or
+0.4.8 published/verified/active: display-only card flags never enable feeds, private consent or
 custody overrides. Apply them before priority interleaving and on every frame,
 including high-resolution image attachments and Home card summaries. Empty
 owner-selected decks fall back Home. Radius controls use statute miles; broad
@@ -14,6 +14,13 @@ without rewriting the saved meal date or extending expiry for ready estimates.
 Optional details must not make core personal.json unreadable by prior releases.
 The matching Alexa adapter/model uses optional follow-ups and normal reprompts;
 it cannot promise idle listening for minutes or access native Alexa lists.
+Signed native gates and independent artifact verification passed. Normal Ports
+activation preserved existing settings/private files, stable wrappers and the
+original pinned recovery. The matching Lambda/model are deployed; simulator
+follow-ups and cancellation passed without changing core meals. Physical speech,
+radar animation acceptance and the first eligible paid meal generation remain
+separate field checks. Meal generation has its own opt-in and local feature cap;
+it does not link ChatGPT projects or enable Lisa inspiration/private cards.
 
 
 0.4.7 published/verified/active: operating focus must not infer phone presence or airborne

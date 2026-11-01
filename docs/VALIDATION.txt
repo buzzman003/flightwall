@@ -1,4 +1,52 @@
-AUTOMATED SOURCE CHECKS FOR0.4.8 - NOVEMBER1,2026
+0.4.8 PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 1, 2026 UTC AND CENTRAL
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.8
+Build: https://github.com/buzzman003/flightwall/actions/runs/41360418223
+Source: eb2f499182c2dd851986471a72cd4aeff2aa8d7d
+Linux: 1278 tests + 538 subtests, zero skips/failures. Windows: 1227 tests +
+533 subtests, with 51 expected platform/optional-native skips. Frozen/source
+OpenGL, software fallback, fresh installation, original 0.3.0 and published
+0.4.7 executable upgrades/rollback passed. Maximum required glibc is 2.36.
+Independent published downloads verified the pinned Ed25519 manifest,
+checksums, native inventories, reviewed source and matching Alexa companions.
+Update ZIP SHA256: beae44e0ae357fd079f37d46deebc7e645478a6b43a83e7e2d3b28173c6dc2bd
+Installer SHA256: e2b38e294ccc90f1839c00885824ca27e4b8b349c50211478781bef8b810acdc
+
+Strict-host-key SSH staging verified a 54-file private backup and 10 protected
+files. The owner then exited and reopened Ports normally. Activation verified
+healthy current 0.4.8, no pending update or awaiting-health flag, all 54 existing
+private files, all 10 protected files, five stable wrappers and the unchanged
+original pinned 0.3.0 recovery. All original config values were preserved before
+separately approved preferences were applied with another private config backup.
+Staging did not force a GUI, service, game or operating-system restart.
+
+The approved dinner-ideas preferences are enabled with a $3 monthly app feature
+allowance, eight servings and a 60-minute maximum; the radar schedule allows
+all days. Unrelated settings and scoped credentials were preserved. The private
+OpenAI account/key setup is configured, independently of Lisa inspiration and
+ChatGPT projects. No paid meal-generation request has been performed. The first
+eligible Kids Home day without a selected dinner remains a live generation/
+food-picture check. Existing dinner and custody eligibility were not overridden
+to force a paid test.
+
+The deployed AWS Lambda ZIP matched the independently verified release hash,
+and the matching English (United States) voice model built successfully. Its
+SkillID, invocation, trigger and existing environment settings were retained.
+The Alexa simulator confirmed the short launch greeting, then "dinner today is
+setup test pasta" prompted "What sides? You can say skip." "Sides are peas"
+prompted for a ready time/window. "Cancel" replied "Okay, cancelled. I did not
+save an entry." No test dinner was saved. This verifies the deployed simulated
+dialogue, not physical speech recognition. New physical dinner dialogue remains
+a separate check; the owner previously confirmed "open Flight Wall skill" works.
+
+The running radar reports ready with a 10-frame loop in its selected scope. The owner
+confirmed Aircraft radius, Radar area and Radar schedule appear under S, then
+Tab twice, on the TV. Physical animation acceptance is still pending. Public
+source checks below cover all four scopes; no private Home pin was sent for
+radar. Lisa's iPhone, real-flight observations, native Alexa list access and
+ordinary Echo timer mirroring remain separate deferred/field work.
+
+HISTORICAL PRE-RELEASE AUTOMATED SOURCE CHECKS FOR 0.4.8 - NOVEMBER 1, 2026
 Final Windows source suite:1227 passed +533 subtests,51 expected platform/
 optional-native skips. The first complete run found a broad-map fallback label
 regression and an outdated safe-voice-context assertion; both were corrected,
@@ -21,7 +69,7 @@ running Batocera executable or deployed Lambda/model. Signed Linux/native
 acceptance, independent public artifact verification, private backup, next-safe-
 launch activation and matching Alexa deployment still remain required.
 
-0.4.8 SOURCE CANDIDATE - NOVEMBER 1, 2026 LOCAL
+HISTORICAL 0.4.8 SOURCE CANDIDATE - NOVEMBER 1, 2026 LOCAL
 
 The current patch adds optional dinner sides/ready metadata, today/tomorrow
 afternoon menus, bounded NOAA observation animation, display-only card choices,

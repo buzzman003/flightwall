@@ -1,5 +1,20 @@
 FLIGHT WALL 0.4.8 - DINNER, RADAR AND TV CHOICES
 
+PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 1, 2026
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.8
+Build: https://github.com/buzzman003/flightwall/actions/runs/41360418223
+Source: eb2f499182c2dd851986471a72cd4aeff2aa8d7d
+Linux passed 1278 tests and 538 subtests with zero skips/failures, plus frozen
+graphics, software fallback, fresh installation, original 0.3.0 and published
+0.4.7 executable upgrade/rollback gates. Independent published-artifact checks
+passed. A 54-file private backup with 10 protected files preceded normal Ports
+activation. Healthy 0.4.8, settings/private-file preservation, five stable
+wrappers and the original pinned recovery were verified; no pending update or
+awaiting-health flag remains. The matching Lambda ZIP is deployed and the voice
+model built. The simulator's meal/sides/ready dialogue and cancel path passed
+without saving a test dinner. Physical new-dialogue and radar-animation checks
+remain separate. The owner confirmed all three Maps controls on the TV.
+
 DINNER
 Optional sides and expected ready time or same-date time window accompany
 the meal. Today and tomorrow can rotate as separate dated cards during the
@@ -29,8 +44,11 @@ Daily generation defaults off, with a zero spending allowance until configured.
 The app's maximum allowance is$3/month, conservatively reserved before requests;
 failed/uncertain attempts count and are not automatically retried that day.
 This local feature allowance does not control other API clients or the whole
-provider account. API access/credits, food generation and real speech still
-need separate verification; a ChatGPT project is not automatically linked.
+provider account. The owner's private account/key setup and approved $3 feature
+allowance are configured, with eight servings and a 60-minute maximum. No paid
+food-generation request has yet been made; the first eligible Kids Home day
+without a selected dinner remains a field check. Real speech is also separate
+from simulator validation. A ChatGPT project is not automatically linked.
 
 OPTIONS ON THE TV
 Press S; Tab (Shift+Tab back) changes Display / Cards / Maps groups. Use Up/

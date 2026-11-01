@@ -1,4 +1,4 @@
-FLIGHT WALL 0.4.8 - SOURCE CANDIDATE
+FLIGHT WALL 0.4.8 - PUBLISHED, VERIFIED AND ACTIVE
 
 Adds four daily pictured meal ideas, dinner sides/ready clocks and tomorrow menus,
 animated NOAA radar and S options for card visibility, aircraft radius and
@@ -6,8 +6,16 @@ radar area. Defaults preserve existing consent, provider choices and Kids Home
 rules. Dinner's display window remains 14:30-19:00 in the configured timezone.
 The logical LED board remains 512x256; radar/geography use a clear image inset.
 See docs/RELEASE-0.4.8.txt and docs/VALIDATION.txt for checks and limitations.
-The matching Alexa Lambda/model must be deployed after native activation.
-Linux signed build, companion deployment and device activation are pending.
+Signed Linux/native acceptance, independent published-artifact verification
+and normal Ports activation passed. Strict-host-key SSH confirmed healthy
+0.4.8, preserved settings/private files and unchanged pinned recovery. The
+matching Alexa Lambda and voice model are deployed; the simulator completed
+the sides/ready-time prompts and cancellation without changing saved meals.
+The owner confirmed the three Maps controls on the TV. Physical richer dinner
+speech, radar animation acceptance and the first eligible paid meal generation
+remain separate field checks. The private meal key and approved $3 monthly
+feature allowance are configured; no paid food request has run yet.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.8
 
 PREVIOUS RELEASE:
 FLIGHT WALL 0.4.7 - PUBLISHED, VERIFIED AND ACTIVE

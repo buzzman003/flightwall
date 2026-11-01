@@ -1,13 +1,17 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Updated November 1, 2026 UTC (October 31 in Central Time)
+Updated November 1, 2026 UTC and Central Time
 
-CURRENT BASELINE: SIGNED 0.4.7 ACTIVATION VERIFIED
+CURRENT BASELINE: SIGNED 0.4.8 ACTIVATION VERIFIED
 
-The latest activation record is 0.4.7, with independent signature/inventory
-verification, Linux 1072 tests + 519 subtests (zero skips), native upgrades and
-rollback, private-data preservation and owner-confirmed Ports artwork/video.
-See RELEASE-0.4.7.txt and VALIDATION.txt. This is the last verified deployment
-record, not a claim that any phone or live-flight observation is connected now.
+The latest activation record is 0.4.8, with independent signature/inventory
+verification, Linux 1278 tests + 538 subtests (zero skips), native upgrades and
+rollback, and verified 54-file private backup / ten protected files. Normal
+Ports activation preserved all existing settings/private files, five stable
+wrappers and pinned 0.3.0 recovery; health passed without pending flags.
+The matching Lambda/model are deployed. The owner confirmed S / Maps controls;
+simulator dinner follow-ups/cancellation passed without changing saved meals.
+See RELEASE-0.4.8.txt and VALIDATION.txt. Real provider/phone observations and
+new physical richer-dinner/radar checks remain distinct field acceptance.
 
 Already delivered: full display fit/crisp no-glow preference, ten-day custody,
 dated VPS departure/Brief leave clocks, clean route maps, AM/PM, actual-deck
@@ -16,17 +20,19 @@ snack notice, home weather/overnight rain, high-resolution nearby/operating maps
 flight focus, budgeted route enrichment, airport weather/radar/FAA feeds and
 Ports logo/video. Do not recode these based on older planning sections below.
 
-CURRENT 0.4.8 CANDIDATE (BUILD/DEVICE/VOICE CHECKS PENDING)
+0.4.8 DELIVERED; FIELD ACCEPTANCE REMAINS SEPARATE
 
-The owner requested coding dinner sides/ready estimates, today/tomorrow menu
-previews, animated NOAA radar and S options for card visibility, aircraft ranges
-2.5/5/10/25/50/100 statute miles and National/Southeast/Local200mi/Hyperlocal
-radar. The Kids Home rule is explicitly retained. Rich dinner metadata stays
-outside the older-readable core personal store. No new Home Assistant or SMS
-setup is included. The owner now confirms the explicit launch "open Flight Wall
-skill" works; Amazon support attributes previous failures to recognition before
-the handler. Test the matching new model/adapter on a real Echo after deployment.
-See RELEASE-0.4.8.txt and VALIDATION.txt for actual progress.
+Dinner sides/ready estimates, today/tomorrow menus, animated NOAA radar and S
+options for card visibility, six aircraft ranges and four radar scopes are
+installed. Rich dinner metadata keeps the older core personal store readable.
+The owner explicitly retained Kids Home visibility. The separate daily pictured
+meal feature is enabled with the approved $3 monthly local allowance, eight
+servings, three shorter choices and a fourth up to one hour; its private API
+key is stored. No paid food request has run yet. Verify a first eligible Kids
+Home day without an existing meal.
+No household-state override or synthetic paid test is needed. Recipes remain
+on the authenticated setup page; ChatGPT projects are not automatically linked.
+No Home Assistant, native Alexa list import or SMS setup was added.
 
 FUTURE PANTRY IDEAS - RECORD ONLY
 Consider explicit pantry inventory and shopping-list import before exploring
@@ -54,12 +60,14 @@ The owner explicitly deferred implementation. Full requirements and ambiguity
 around rapid empty-ring discovery: NEARBY-AIRCRAFT-NEXT.txt. Do not change code,
 polling, installed version or live settings for this note.
 
-1. Reliable physical Alexa dinner commands. Short greeting/help and dinner
-   parsing exist; the unresolved issue is intermittent real Echo discovery/
-   routing. A support case was submitted. Follow up through the existing case
-   and correlate a short physical today/tomorrow dinner test with Lambda and
-   board observations. Do not promise that Home Assistant repairs invocation
-   or repeat already unsuccessful rename/re-enable loops without new evidence.
+1. Physical richer Alexa dinner dialogue. The owner confirmed the explicit
+   "Alexa, open Flight Wall skill" launch works; Amazon support attributed the
+   earlier failures to recognition before the handler. The deployed 0.4.8 model
+   passed simulator sides/ready prompts and cancellation without saving a meal.
+   Check dinner help and then a real today/tomorrow meal on the Echo/TV when
+   Kids are Home. Bare invocation reliability is still a separate recognition
+   limitation. Do not rename/re-enable again without evidence, or send/close
+   a support-case reply without explicit authorization.
 2. Lisa's iPhone setup and validation. The scoped one-use invitation/import
    flow is shipped, not awaiting feature coding. Lisa must choose consent,
    install OwnTracks, review/import or enter HTTP settings, grant her chosen
@@ -67,7 +75,7 @@ polling, installed version or live settings for this note.
    Away/Home plus stationary freshness. Do not copy Android 400m/1200s controls
    onto iOS or call Significant mode a guaranteed periodic heartbeat. No phone
    pairing implicitly enables Gmail, shopping SMS, notifications or private cards.
-3. Field validation of 0.4.7: actual provider flight association/positions and
+3. Field validation of 0.4.8: actual provider flight association/positions and
    progressive zoom, taxi coverage, nearby route enrichment, eligible airport
    weather/radar/advisory cards, and real phone outings. Tests and an idle feed
    cannot establish positive real-flight coverage. Keep the shared $5 app cap
@@ -83,7 +91,7 @@ polling, installed version or live settings for this note.
    the list source, Lisa's separate consent, stores/accuracy, sender/recipient
    and once-per-local-day delivery. Do not send messages or enable shopping now.
 
-SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.7
+SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.8
 
 * Return clear timer-limit/disabled errors rather than the generic personal-item
   rejection. Preserve five-active-timer safety and request deduplication.
