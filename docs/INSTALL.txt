@@ -151,12 +151,14 @@ reset to demo mode. There is no new Google permission needed for local cards.
    and settings. Personal cards join the rotation only while at least one
    saved card is currently within its display window.
 
-   Keyboard controls: Tab advances the view; 1-5 choose an available view and pause
-   the rotation; Space resumes/pauses rotation; S opens settings; H or F1
-   shows help; L toggles the LED effect; R refreshes the calendar; Escape
-   exits to Batocera; G toggles guest mode. Use the arrow keys inside settings.
-   Gamepad controls: A advances, B opens settings, the D-pad adjusts
-   settings, and Select exits.
+   Keyboard controls: Left/right selects previous/next; Tab also advances.
+   1-5 chooses an available card and pauses; Space resumes/pauses rotation.
+   S opens settings; H or F1 shows help; L toggles the LED effect; R refreshes
+   the calendar; Escape exits to Batocera; G toggles guest mode. Arrow keys
+   adjust settings while that panel is open.
+   Gamepad controls: horizontal D-pad/left stick moves between cards; A advances,
+   B opens settings, the D-pad adjusts settings, and Select exits. Remotes that
+   emit keyboard arrows use the same navigation; check the actual remote mapping.
 
 5. Start at 1920 x 1080 output using Batocera's display/video settings if
    you prefer. A 4K TV can accept that signal and scale it. The app also

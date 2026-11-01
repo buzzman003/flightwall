@@ -1,8 +1,8 @@
 OPTIONAL LIVE FLIGHTS, NEARBY TRAFFIC AND WEATHER
-Flight Wall 0.4.5 source - October 31, 2026
+Flight Wall 0.4.6 source - October 31, 2026
 
 The weather card and nearby-map changes below are included in published 0.4.2.
-The owner's board now runs 0.4.2. After explicit approval of both location
+The owner's board now runs verified 0.4.5. After explicit approval of both location
 queries, NWS returned a complete fresh forecast and ADSB.lol returned a valid
 fresh empty response. The owner confirmed that the weather card displays
 correctly. Positive-aircraft coverage remains a separate check. Normal first
@@ -18,8 +18,10 @@ YOUR OWN FLIGHT: FLIGHTAWARE AEROAPI (OPTIONAL, BILLED SEPARATELY)
 
 1. Open https://www.flightaware.com/commercial/aeroapi/ and create your own
    AeroAPI account. Review current pricing, allowed uses, availability and your
-   account's spending controls before enabling this feature. This app does not
-   include an AeroAPI subscription or access key.
+   account's spending controls before enabling this feature. The Personal tier
+   currently has no monthly minimum and up to $5 free monthly query usage; the
+   Standard tier has a $100 minimum and is not needed for this household display.
+   This app does not include an AeroAPI subscription or access key.
 
 2. In the Batocera SSH terminal, store the key with the hidden input prompt:
 

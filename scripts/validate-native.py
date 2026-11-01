@@ -30,8 +30,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 BASELINE_VERSION = "0.3.0"
 BASELINE_SHA256 = "086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08"
-CURRENT_BASELINE_VERSION = "0.4.4"
-CURRENT_BASELINE_SHA256 = "3ade101c93573d1ca091159616f3573b9c3c9fd83e2e81748f83e8c68a40f181"
+CURRENT_BASELINE_VERSION = "0.4.5"
+CURRENT_BASELINE_SHA256 = "68c87b6834d1bb90f3b57bcee455e4a5f509cecdf82d59660b45c48812a41e9f"
 MAX_GLIBC = (2, 36)
 
 
@@ -66,7 +66,7 @@ def verify_baseline(path):
 
 def verify_current_baseline(path):
     require(digest(path) == CURRENT_BASELINE_SHA256,
-            "Published 0.4.4 installer SHA-256 does not match the current baseline")
+            "Published 0.4.5 installer SHA-256 does not match the current baseline")
 
 
 def extract_installer(path, destination, version):
@@ -394,15 +394,15 @@ def upgrade_install(old_package, package, root, version, *, rollback=False, curr
         case.wait_health(BASELINE_VERSION)
         previous = BASELINE_VERSION
         if current_package is not None:
-            # Reproduce the actual installed history instead of making 0.4.4
-            # the recovery helper: original 0.3.0 -> healthy 0.4.4 -> candidate.
+            # Reproduce the actual installed history instead of making 0.4.5
+            # the recovery helper: original 0.3.0 -> healthy 0.4.5 -> candidate.
             case.install_package(current_package)
             require(case.selected() == BASELINE_VERSION, "Current baseline activated before a safe launch")
             case.wait_health(BASELINE_VERSION)
             case.launch(shader=True)
             previous = CURRENT_BASELINE_VERSION
             require(case.selected() == previous and case.app("--version").stdout.strip() == previous,
-                    "Current baseline is not the real published 0.4.4 executable")
+                    "Current baseline is not the real published 0.4.5 executable")
             case.wait_health(previous)
             require(case.state().get("awaiting_health") is False, "Current baseline did not pass startup health")
             assert_preserved(case, fixtures, recovery_hash)
@@ -471,7 +471,7 @@ def main():
     parser.add_argument("--installer", type=Path)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--current-baseline", type=Path,
-                        help="Separately test published 0.4.4 -> candidate with the original 0.3.0 recovery helper")
+                        help="Separately test published 0.4.5 -> candidate with the original 0.3.0 recovery helper")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
     parser.add_argument("--verify-current-report", type=Path)
@@ -493,7 +493,7 @@ def main():
     verify_baseline(args.baseline)
     if args.current_baseline:
         require(tuple(map(int, version.split("."))) > tuple(map(int, CURRENT_BASELINE_VERSION.split("."))),
-                "Candidate must be newer than the current 0.4.4 baseline")
+                "Candidate must be newer than the current 0.4.5 baseline")
         verify_current_baseline(args.current_baseline)
     report = {"version": version, "baseline_sha256": BASELINE_SHA256, "bundle_files": inventory(args.release)}
     print("Auditing frozen source, assets, architecture and glibc requirements.", flush=True)
@@ -508,7 +508,7 @@ def main():
         if args.current_baseline:
             current = extract_installer(args.current_baseline, root / "current-baseline", CURRENT_BASELINE_VERSION)
             report["current_baseline_sha256"] = CURRENT_BASELINE_SHA256
-            print("Checking genuine 0.4.4 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
+            print("Checking genuine 0.4.5 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
         else:
             print("Checking fresh frozen installation, graphics and local setup.", flush=True)
             report["fresh_install"] = fresh_install(package, root / "fresh", args.source, version)

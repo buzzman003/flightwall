@@ -1,3 +1,12 @@
+ACTIVATION FOLLOW-UP
+
+The owner's normal Ports relaunch activated 0.4.5 and passed private-file,
+settings, protected-credential, wrapper and original-recovery verification.
+Current/health is 0.4.5 with no pending/awaiting-health flags. One Google token
+cache changed only permitted ephemeral fields. The owner reports the overall
+updated display and progress blocks look good. Historical staging evidence
+below describes the earlier pre-activation snapshot; it is not current status.
+
 FLIGHT WALL 0.4.5 - DECK PROGRESS, AM/PM, WEATHER AND FLIGHT STATUS
 
 PUBLISHED, VERIFIED AND STAGED - NEXT SAFE PORTS LAUNCH

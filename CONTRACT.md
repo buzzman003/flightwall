@@ -1,5 +1,13 @@
 # Flight Wall implementation contract
 
+0.4.6 candidate: left/right navigation operates on the current eligible deck,
+wrapping in either direction; settings retain directional adjustment behavior.
+Short retro reveals must never extend card privacy or visibility. Discard old
+frames on eligibility/config/backend changes, and keep timers/ticker fresh
+outside card effects. A removed/private card must disappear immediately.
+Weather distinguishes provider-issued time from successful retrieval time.
+Missing daytime temperature data is not replaced with an invented high.
+
 Target: Batocera v42 x86_64 HP ProDesk Ryzen 2400GE, 1080p HDMI. Native pygame + optional OpenGL LED postprocessing, logical 512x256. No emulator shader assumption. Python 3.12 development, frozen Linux build. Config/state separate from versioned app. App launcher in Ports. Offline demo works without credentials, with visible DEMO labels. FC View via read-only Google OAuth; no user secrets included in distribution.
 
 Shared data conventions (plain JSON dictionaries):

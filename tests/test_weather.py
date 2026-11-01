@@ -94,6 +94,43 @@ class WeatherTests(unittest.TestCase):
         self.assertTrue(night["coverage_complete"])
         self.assertNotIn("forecast", state)
 
+    def test_evening_future_only_feed_keeps_tonight_low_without_inventing_past_high(self):
+        now = datetime(2026, 11, 1, 0, 15, tzinfo=UTC)  # 7:15 PM CDT on October 31
+        docs = documents(now)
+        docs[1]["properties"]["periods"] = [row for row in docs[1]["properties"]["periods"]
+                                             if datetime.fromisoformat(row["endTime"]) > now]
+        # An extreme future hourly value is not today's observed/forecast high.
+        docs[0]["properties"]["periods"][0]["temperature"] = 120
+        for document in docs:
+            document["properties"]["updateTime"] = "2026-10-31T20:01:00Z"
+        result, _ = self.poll(docs, now)
+        today = result["today"]
+        self.assertIsNone(today["high"])
+        self.assertEqual(today["low"], 50)
+        self.assertEqual(today["high_status"], "not_provided")
+        self.assertTrue(today["night_only"])
+        self.assertTrue(today["remaining_complete"])
+        self.assertFalse(today["complete"])
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["hourly_updated_at"], "2026-10-31T20:01:00+00:00")
+        self.assertEqual(result["hourly_fetched_at"], now.isoformat())
+        self.assertEqual(result["daily_fetched_at"], now.isoformat())
+
+    def test_missing_day_before_night_or_duplicate_periods_do_not_claim_tonight(self):
+        for now, duplicate in ((NOW, False), (datetime(2026, 11, 1, 0, 15, tzinfo=UTC), True)):
+            with self.subTest(now=now, duplicate=duplicate):
+                self.feed = WeatherFeed(self.path, lambda: self.config)
+                docs = documents(now)
+                day = docs[1]["properties"]["periods"][0]
+                if duplicate:
+                    docs[1]["properties"]["periods"].append(deepcopy(day))
+                else:
+                    docs[1]["properties"]["periods"].remove(day)
+                result, _ = self.poll(docs, now)
+                self.assertFalse(result["today"]["night_only"])
+                self.assertFalse(result["today"]["remaining_complete"])
+                self.assertIsNone(result["today"]["high"])
+
     def test_spring_dst_and_repeated_fall_hour_are_counted_in_utc(self):
         now = datetime(2026, 3, 7, 17, tzinfo=UTC)
         state, _ = self.poll(now=now)

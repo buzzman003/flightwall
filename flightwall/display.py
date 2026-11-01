@@ -7,10 +7,12 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 from datetime import datetime, timezone
 from functools import lru_cache
 import base64
+import hashlib
 import io
 import json
 import math
 from pathlib import Path
+import random
 import time
 import urllib.request
 from zoneinfo import ZoneInfo
@@ -165,11 +167,135 @@ class RotationCursor:
     def advance(self, entries, now):
         self.select(entries, self.index + 1, now)
 
+    def retreat(self, entries, now):
+        self.select(entries, self.index - 1, now)
+
     def tick(self, entries, now, automatic=True):
         self.reconcile(entries, now)
         if entries and automatic and now - self.started_at >= entries[self.index]["duration_seconds"]:
             self.advance(entries, now)
         return entries[self.index] if entries else None
+
+
+class AnalogNavigation:
+    """One navigation step per horizontal stick excursion, per controller."""
+    def __init__(self):
+        self.held = {}
+
+    def direction(self, instance, value):
+        if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value):
+            return 0
+        if abs(value) <= .3:
+            self.held.pop(instance, None)
+            return 0
+        if instance in self.held or abs(value) < .6:
+            return 0
+        direction = 1 if value > 0 else -1
+        self.held[instance] = direction
+        return direction
+
+    def remove(self, instance):
+        self.held.pop(instance, None)
+
+
+ANIMATED_VIEWS = frozenset({
+    "details", "map", "schedule", "trip_summary", "trip_map", "home",
+    "flight_status", "custody_outlook", "personal", "local_visit",
+})
+
+
+def transition_signature(status, config, entries, backend_available, now=None):
+    """Hash eligibility and card contents, retaining no private text or images.
+
+    The signature is independent of the selected slot and moving clock/timer
+    labels. Changes to settings, fresh presence, expired/changed cards or the
+    eligible deck invalidate every old pixel, including same-key replacements.
+    """
+    def bounded(value):
+        if isinstance(value, dict):
+            return {key: (hashlib.sha256(item.encode()).hexdigest()
+                          if key == "image_data" and isinstance(item, str) else bounded(item))
+                    for key, item in value.items()}
+        if isinstance(value, list):
+            return [bounded(item) for item in value]
+        return value
+    safe = {key: value for key, value in status.items() if key not in {"timers", "shopping_list", "now"}}
+    try:
+        now = now or datetime.now(timezone.utc)
+        from .render import _tz
+        local = now.astimezone(_tz(config))
+        live = status.get("live")
+        live_fresh = False
+        if isinstance(live, dict):
+            try:
+                age = (now - parse_time(live.get("observed_at"))).total_seconds()
+                live_fresh = 0 <= age <= 300
+            except (ValueError, TypeError, OverflowError):
+                pass
+        # Weather/nearby/watch views never enter the frame cache. A live route
+        # marker and dinner's snack phase still have exact per-frame cutoffs.
+        temporal = (local.date().isoformat(), local.hour >= 17, live_fresh)
+        payload = json.dumps(bounded([safe, config, entries, bool(backend_available), temporal]), sort_keys=True,
+                             separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+        return hashlib.sha256(payload.encode()).digest() if len(payload) <= 8_000_000 else None
+    except (ValueError, TypeError, RecursionError):
+        return None
+
+
+class CardTransition:
+    """Short public/household card transitions with an explicit privacy guard.
+
+    Messages, artwork, health, hotel, weather and nearby/watch cards never enter
+    this cache. Their eligibility/freshness is handled by the current renderer.
+    Every guard/eligibility change immediately forgets all prior image objects.
+    Live timer/ticker layers are composed by the GUI after this class returns.
+    """
+    def __init__(self, duration=.25, chooser=None):
+        self.duration = duration if isinstance(duration, (int, float)) and .05 <= duration <= 1 else .25
+        self._choose = chooser or random.SystemRandom().choice
+        self._seed = 0
+        self.cancel()
+
+    @property
+    def active(self):
+        return self._previous is not None
+
+    def cancel(self):
+        self._previous = self._last = None
+        self._guard = self._key = self._effect = self._started = None
+
+    @staticmethod
+    def _copy(frame):
+        image = frame.copy()
+        image.info.clear()
+        return image
+
+    def render(self, frame, key, guard, now, *, view, enabled=True):
+        from .transitions import EFFECTS, compose
+        if (not enabled or view not in ANIMATED_VIEWS or guard is None
+                or isinstance(now, bool) or not isinstance(now, (int, float)) or not math.isfinite(now)):
+            self.cancel()
+            return frame
+        if guard != self._guard:
+            self.cancel()
+            self._guard, self._key, self._last = guard, key, self._copy(frame)
+            return frame
+        if key != self._key:
+            self._previous = self._last
+            self._key, self._started = key, now
+            choices = tuple(effect for effect in EFFECTS if effect != self._effect)
+            self._effect, self._seed = self._choose(choices), self._seed + 1
+        if self._previous is not None:
+            elapsed = now - self._started
+            if elapsed < 0:
+                self.cancel()
+                return frame
+            if elapsed >= self.duration:
+                self._previous = None
+            else:
+                frame = compose(self._previous, frame, elapsed / self.duration, self._effect, seed=self._seed)
+        self._last = self._copy(frame)
+        return frame
 
 
 def active_personal_items(status, config, now=None):
@@ -497,6 +623,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
     initial_status = fresh_household_status(status, config, datetime.now(timezone.utc))
     entries = build_rotation(initial_status, config, datetime.now(timezone.utc))
     cursor = RotationCursor(entries, time.monotonic())
+    card_transition = CardTransition()
+    analog_navigation = AnalogNavigation()
     automatic, settings_open, settings_row, help_open = True, False, 0, False
     settings_rows = ["brightness", "glow", "dot_gap", "display_scale_mode", "rotation_seconds", "led_effect", "sleep_enabled", "shopping_ticker_visible"]
     last_fetch, frames = time.monotonic(), 0
@@ -546,6 +674,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                     joysticks[joystick.get_instance_id()] = joystick
                 elif event.type == pygame.JOYDEVICEREMOVED:
                     joystick = joysticks.pop(event.instance_id, None)
+                    analog_navigation.remove(event.instance_id)
                     if joystick:
                         joystick.quit()
                 elif event.type == pygame.JOYBUTTONDOWN:
@@ -555,11 +684,18 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                         settings_open = not settings_open
                     else:
                         cursor.advance(entries, time.monotonic())
-                elif event.type == pygame.JOYHATMOTION and settings_open:
-                    if event.value[1]:
-                        settings_row = (settings_row - event.value[1]) % len(settings_rows)
-                    if event.value[0]:
-                        change_setting(event.value[0])
+                elif event.type == pygame.JOYHATMOTION:
+                    if settings_open:
+                        if event.value[1]:
+                            settings_row = (settings_row - event.value[1]) % len(settings_rows)
+                        if event.value[0]:
+                            change_setting(event.value[0])
+                    elif event.value[0]:
+                        (cursor.advance if event.value[0] > 0 else cursor.retreat)(entries, time.monotonic())
+                elif event.type == pygame.JOYAXISMOTION and event.axis == 0:
+                    direction = analog_navigation.direction(getattr(event, "instance_id", getattr(event, "joy", 0)), event.value)
+                    if direction and not settings_open:
+                        (cursor.advance if direction > 0 else cursor.retreat)(entries, time.monotonic())
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         if settings_open or help_open:
@@ -584,6 +720,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                         settings_row = (settings_row + (1 if event.key == pygame.K_DOWN else -1)) % len(settings_rows)
                     elif settings_open and event.key in {pygame.K_LEFT, pygame.K_RIGHT, pygame.K_RETURN}:
                         change_setting(-1 if event.key == pygame.K_LEFT else 1)
+                    elif event.key in {pygame.K_LEFT, pygame.K_RIGHT}:
+                        (cursor.advance if event.key == pygame.K_RIGHT else cursor.retreat)(entries, time.monotonic())
                     elif event.key == pygame.K_l:
                         save_setting("led_effect", not config["led_effect"])
                     elif event.key == pygame.K_g:
@@ -618,8 +756,14 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             state["deck_count"], state["deck_index"] = len(entries), cursor.index
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
-            if is_sleeping(config) and not settings_open and not help_open:
+            sleeping = is_sleeping(config, wall_now)
+            if sleeping and not settings_open and not help_open:
                 frame = Image.new("RGB", frame.size)
+            animations_allowed = not (settings_open or help_open or sleeping or error
+                                      or config.get("guest_mode") is True or not backend_available)
+            guard = (transition_signature(current_status, config, entries, backend_available, wall_now)
+                     if animations_allowed and state["view"] in ANIMATED_VIEWS else None)
+            frame = card_transition.render(frame, entry["key"], guard, now, view=state["view"], enabled=animations_allowed)
             if settings_open or help_open:
                 draw = ImageDraw.Draw(frame)
                 draw.rectangle((36, 28, 476, 229), fill=PANEL, outline=CYAN)
@@ -633,7 +777,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                     _text(draw, (52, 198), "UP/DOWN SELECT / LEFT/RIGHT CHANGE", MUTED)
                     _text(draw, (52, 213), "S CLOSE / CHANGES SAVE AUTOMATICALLY", MUTED)
                 else:
-                    for i, line in enumerate(["TAB NEXT VIEW / 1-5 SELECT VIEW", "SPACE PAUSE / RESUME ROTATION", "S SETTINGS / L LED EFFECT ON-OFF", "G HIDE MESSAGES & PRIVATE CARDS", "R REFRESH CALENDAR / ESC EXIT", "GAMEPAD: A NEXT / B SETTINGS", "D-PAD SETTINGS / SELECT EXIT"]):
+                    for i, line in enumerate(["LEFT/RIGHT BACK/NEXT / TAB NEXT", "SPACE PAUSE / 1-5 SELECT CARD", "S SETTINGS / L LED EFFECT ON-OFF", "G HIDE MESSAGES & PRIVATE CARDS", "R REFRESH CALENDAR / ESC EXIT", "GAMEPAD: D-PAD/STICK BACK/NEXT", "A NEXT / B SETTINGS / SELECT EXIT"]):
                         _text(draw, (52, 66 + 20 * i), line, WHITE if i < 6 else MUTED)
             if error:
                 draw = ImageDraw.Draw(frame)
@@ -651,7 +795,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             ticker_progress = ticker_transition.value(now, ticker_active)
             state["shopping_ticker_offset"] = max(0, now - ticker_started_at) * 12
             frame = compose_display_overlays(frame, state, wall_now, timer_progress, ticker_progress)
-            if not settings_open and not help_open and not is_sleeping(config):
+            if not settings_open and not help_open and not sleeping and not card_transition.active:
                 display_surface = getattr(screen, "screen", None)
                 if display_surface is not None:
                     attach_nearby_map(frame, state, config, connection, display_surface.get_size(),
@@ -663,7 +807,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             if max_frames and frames >= max_frames:
                 break
             transitioning = (0 < timer_progress < 1 or timer_progress != timer_transition.target
-                             or 0 < ticker_progress < 1 or ticker_progress != ticker_transition.target)
+                             or 0 < ticker_progress < 1 or ticker_progress != ticker_transition.target
+                             or card_transition.active)
             clock.tick((30 if screen.gl else 12) if transitioning or ticker_active else (12 if screen.gl else 4))
     finally:
         pygame.quit()

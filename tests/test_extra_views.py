@@ -55,7 +55,8 @@ class WeatherViewTests(unittest.TestCase):
         for value in ("TODAY", "TOMORROW", "72", "51", "68", "48", "RAIN POSSIBLE", "PUT CUSHIONS IN", "PEAK HOUR 60%"):
             self.assertIn(value, labels)
         self.assertIn("6 PM-8 AM LOCAL", labels)
-        self.assertIn("NWS / AS OF 10/31 12:00 PM CDT", labels)
+        self.assertIn("NWS ISSUED 10/31 12:00 PM CDT", labels)
+        self.assertIn("CHECKED 10/31 12:00 PM CDT", labels)
         self.assertEqual(image.size, (512, 256))
         self.assertEqual(image.mode, "RGB")
         self.assertNotIn("4 DAY", " ".join(labels))
@@ -85,7 +86,8 @@ class WeatherViewTests(unittest.TestCase):
         state["weather"]["hourly_updated_at"] = "2026-11-01T07:30:00Z"
         labels, _ = capture(render_weather, state, self.config, now)
         self.assertIn("NOW-8 AM LOCAL", labels)
-        self.assertIn("NWS / AS OF 11/01 1:30 AM CST", labels)
+        self.assertIn("NWS OLDEST ISSUE 10/31 12:00 PM CDT", labels)
+        self.assertIn("OLDEST CHECK 10/31 12:00 PM CDT", labels)
         self.assertNotIn("NOW-08:00 LOCAL", labels)
         self.assertNotIn("18:00-08:00 LOCAL", labels)
 
@@ -101,6 +103,79 @@ class WeatherViewTests(unittest.TestCase):
                 image = Image.new("RGB", (24, 18))
                 _weather_icon(ImageDraw.Draw(image), (0, 0), expected)
                 self.assertIsNotNone(image.getbbox())
+
+    def test_tonight_low_replaces_missing_day_high_with_an_explanation(self):
+        now = datetime(2026, 11, 1, 0, 15, tzinfo=timezone.utc)
+        state = weather_state()
+        for key in ("hourly", "daily"):
+            state["weather"][key + "_fetched_at"] = now.isoformat()
+            state["weather"][key + "_updated_at"] = "2026-10-31T20:01:00Z"
+        state["weather"]["today"].update(high=None, low=58, night_only=True, summary="Mostly clear",
+            low_start="2026-10-31T18:00:00-05:00", low_end="2026-11-01T06:00:00-06:00")
+        state["weather"]["overnight"].update(coverage_start=now.isoformat(), covered_hours=13.75, expected_hours=13.75)
+        with patch("flightwall.extra_views._weather_icon") as icon:
+            labels, _ = capture(render_weather, state, self.config, now)
+        self.assertIn("TONIGHT", labels)
+        self.assertIn("LOW", labels)
+        self.assertIn("58", labels)
+        self.assertIn("DAY HIGH", labels)
+        self.assertIn("NOT PROVIDED", labels)
+        self.assertNotIn("TODAY", labels)
+        self.assertNotIn("--", labels)
+        self.assertIn("NWS ISSUED 10/31 3:01 PM CDT", labels)
+        self.assertIn("CHECKED 10/31 7:15 PM CDT", labels)
+        self.assertEqual(icon.call_args_list[0].args[-1], "moon")
+        self.assertIn("PUT CUSHIONS IN", labels)
+        self.assertNotIn("AS OF", " ".join(labels))
+
+    def test_night_only_requires_current_matching_period_and_fresh_data_every_frame(self):
+        now = datetime(2026, 11, 1, 0, 15, tzinfo=timezone.utc)
+        original = weather_state()
+        original["weather"]["today"].update(high=None, night_only=True,
+            low_start="2026-10-31T18:00:00-05:00", low_end="2026-11-01T06:00:00-06:00")
+        for key in ("hourly", "daily"):
+            original["weather"][key + "_fetched_at"] = now.isoformat()
+            original["weather"][key + "_updated_at"] = now.isoformat()
+        self.assertIn("TONIGHT", capture(render_weather, original, self.config, now)[0])
+        for changes in ({"low_start": (now + timedelta(seconds=1)).isoformat()},
+                        {"low_end": now.isoformat()}, {"date": "2026-11-01"}, {"temperature_unit": "C"},
+                        {"stale": True}, {"night_only": False}):
+            with self.subTest(changes=changes):
+                state = deepcopy(original)
+                state["weather"]["today"].update(changes)
+                self.assertNotIn("TONIGHT", capture(render_weather, state, self.config, now)[0])
+        self.assertNotIn("TONIGHT", capture(render_weather, original, self.config, now + timedelta(hours=2))[0])
+
+    def test_issue_and_checked_section_clocks_remain_distinct_after_partial_refresh(self):
+        from flightwall.extra_views import _weather_timing_label
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo("America/Chicago")
+        weather = weather_state()["weather"]
+        weather["hourly_updated_at"] = "2026-10-31T16:01:00Z"
+        weather["daily_updated_at"] = "2026-10-31T16:02:00Z"
+        weather["daily_fetched_at"] = "2026-10-31T16:45:00Z"
+        issue = _weather_timing_label(weather, "updated_at", zone, NOW)
+        checked = _weather_timing_label(weather, "fetched_at", zone, NOW)
+        self.assertEqual(issue, "NWS ISSUED 10/31 RAIN 11:01AM DAY 11:02AM CDT")
+        self.assertEqual(checked, "CHECKED 10/31 RAIN 12:00PM DAY 11:45AM CDT")
+        self.assertLessEqual(render._width(issue), 280)
+        self.assertLessEqual(render._width(checked), 280)
+        self.assertEqual(_weather_timing_label({}, "fetched_at", zone, NOW), "CHECKED TIME UNAVAILABLE")
+        # The repeated 1:30 AM clocks are different instants. Do not collapse
+        # them into a common issuance just because their local wall time matches.
+        weather["hourly_updated_at"] = "2026-11-01T06:30:00Z"
+        weather["daily_updated_at"] = "2026-11-01T07:30:00Z"
+        after_fall_back = datetime(2026, 11, 1, 8, tzinfo=timezone.utc)
+        self.assertEqual(_weather_timing_label(weather, "updated_at", zone, after_fall_back),
+                         "NWS OLDEST ISSUE 11/01 1:30 AM CDT")
+
+    def test_day_missing_outside_night_shows_unavailable_without_replacing_the_high(self):
+        state = weather_state()
+        state["weather"]["today"]["high"] = None
+        labels, _ = capture(render_weather, state, self.config)
+        self.assertIn("DAY HIGH NOT PROVIDED", labels)
+        self.assertIn("TODAY", labels)
+        self.assertNotIn("TONIGHT", labels)
 
     def test_low_requires_complete_exact_window_and_probability(self):
         state = weather_state()

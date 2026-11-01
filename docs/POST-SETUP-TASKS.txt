@@ -1,6 +1,19 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
 Updated October 31, 2026
 
+CURRENT PATCH FOLLOW-UP - 0.4.6 CANDIDATE
+
+0.4.5 normal Ports activation and preservation are now verified. The owner
+confirmed the progress blocks and overall display. The 15-minute NWS worker is
+running; its issue clock can precede its retrieval clock by several hours.
+0.4.6 addresses previous/next navigation, 24 retro reveals and clear weather
+clocks/night-only temperature wording. Validate controller/remote mappings and
+visual transitions after signed next-launch activation; keep crisp no-glow LEDs.
+AeroAPI account/key setup is separate from release installation. Keep paid
+requests disabled until its Personal account and private credential are ready.
+The nominal app budget remains capped at $5/month and cannot cap other clients
+or provider-account charges. Do not publish keys or account billing details.
+
 OWNER PRIORITY UPDATE - OCTOBER 31, 2026
 
 Shopping-list integration, email export, IFTTT, store-arrival delivery and SMS

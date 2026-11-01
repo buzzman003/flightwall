@@ -1,11 +1,29 @@
-FLIGHT WALL 0.4.5
+FLIGHT WALL 0.4.6 SOURCE CANDIDATE
 
-The signed 0.4.5 release is published, independently verified and staged for
-the owner's next safe Ports launch. Linux passed 745 tests and 434 subtests,
+0.4.5 activation is verified healthy, with no pending update/startup-health
+flag. Existing private files, preferences, protected credentials, launchers
+and the original pinned recovery helper were preserved. The owner confirmed
+the updated deck indicators and overall display look good.
+
+0.4.6 adds left/right previous/next card navigation and 24 short retro reveal
+patterns, with immediate privacy cancellation. Weather separates NWS issuance
+from the last successful check, and explains a missing daytime high when the
+provider supplies only tonight's low. Routine weather checks remain automatic
+every 15 minutes while the display or background service runs.
+
+This is source work until the signed workflow builds and validates its Linux
+executable. Physical 0.4.6 controller/remote and transition checks are pending.
+AeroAPI requires a separate Personal account/key; the app's capped nominal
+request allowance does not control other account usage or provider billing.
+
+PREVIOUS RELEASE: FLIGHT WALL 0.4.5 (NOW ACTIVE)
+
+The signed 0.4.5 release is published, independently verified and active after
+the owner's normal Ports relaunch. Linux passed 745 tests and 434 subtests,
 zero skips/failures, plus native installation/upgrade/rollback gates. The
-current 0.4.4 display was left running; 41 coherent private-file snapshots and
-protected-credential checks passed before staging. Existing settings and
-the original recovery helper are preserved.
+41-file private backup and protected-credential checks passed. Activation
+verified existing settings, launchers and the original pinned recovery helper;
+no pending update or startup-health flag remains.
 
 0.4.5 adds actual-deck progress squares, AM/PM clocks throughout the
 TV, automatic 15-minute weather polling and crisp weather icons. Operating

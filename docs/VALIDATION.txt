@@ -1,5 +1,28 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.5 ACTIVATION VERIFIED - NOVEMBER 1, 2026 UTC
+
+The owner performed a normal close/reopen and reported the updated display
+looks good. Strict-host-key SSH verified active current/health 0.4.5, no pending
+update and no awaiting-health flag. All 41 backed-up private files remained;
+eight protected files and five stable wrappers verified, existing config values
+matched, and original pinned 0.3.0 recovery stayed intact. One Google access-token
+cache had only permitted ephemeral refresh changes; its stable authentication
+fields were preserved. No new code/config changes were needed for activation.
+
+0.4.6 SOURCE CANDIDATE
+
+Windows source validation passed 772 tests and 438 subtests, with 49 expected
+platform/dependency skips. Focused GUI/effect tests and an independent privacy
+review passed. Linux zero-skip graphics/native upgrade gates remain required.
+
+Requested: previous/next navigation, short random retro card transitions and
+clear weather issuance/check clocks. The current installed 0.4.5 already polls
+NWS every 900 seconds without a display restart. A read-only probe confirmed a
+freshly fetched evening forecast with an older NWS issuance and no daytime
+high; only tonight's low was supplied. This is not a failed weather refresh.
+Do not claim native/physical 0.4.6 acceptance until those checks run.
+
 PUBLISHED AND STAGED 0.4.5 - OCTOBER 31, 2026
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.5
@@ -59,7 +82,7 @@ Source: e24b99db9971fd568633038806001602f4efff65
 Linux: 688 tests and 403 subtests passed with zero skips/failures. Native source/
 frozen OpenGL and software rendering, fresh installation, original 0.3.0 and
 published 0.4.2 executable upgrades and failed-start rollback passed. Original
-pinned0.3.0 recovery remains intact; maximum required glibc 2.36. Public downloads
+pinned 0.3.0 recovery remains intact; maximum required glibc 2.36. Public downloads
 independently matched pinned Ed25519 signature, checksums, both native reports'
 full file inventories, source bytes and companion model/handler bytes.
 Update ZIP SHA256: 7be2c81a90e2d3de595be63af0ff9632820efe0a6a5fd4f5cd94197fb6141245

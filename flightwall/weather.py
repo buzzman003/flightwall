@@ -181,12 +181,20 @@ def _daily(feed, date, zone, now):
     # Ambiguous duplicate daytime/nighttime periods do not invent a high/low.
     day = days[0] if len(days) == 1 else {}
     night = nights[0] if len(nights) == 1 else {}
+    has_high, has_low = day.get("temperature") is not None, night.get("temperature") is not None
+    # The 12-hour endpoint is a forecast of upcoming periods. Once its daytime
+    # period has expired, it may legitimately return only Tonight. Do not turn
+    # the remaining hourly temperatures or an older cache into an observed high.
+    night_only = (not days and bool(night) and _stamp(night["start"]) <= now < _stamp(night["end"]))
     return {"date": date.isoformat(), "high": day.get("temperature"), "low": night.get("temperature"),
             "temperature_unit": "F", "high_label": "day high", "low_label": "night low",
+            "high_status": "available" if has_high else "ambiguous" if len(days) > 1 else "not_provided" if not days else "unknown",
+            "low_status": "available" if has_low else "ambiguous" if len(nights) > 1 else "not_provided" if not nights else "unknown",
+            "night_only": night_only, "remaining_complete": (has_high and has_low) or (night_only and has_low),
             "summary": day.get("summary") or night.get("summary") or "Forecast unavailable",
             "high_start": day.get("start"), "high_end": day.get("end"),
             "low_start": night.get("start"), "low_end": night.get("end"),
-            "stale": not _fresh(feed, now), "complete": day.get("temperature") is not None and night.get("temperature") is not None}
+            "stale": not _fresh(feed, now), "complete": has_high and has_low}
 
 
 def overnight_bounds(now, zone):
@@ -357,7 +365,7 @@ class WeatherFeed:
             stamps = [feed["fetched_at"] for feed in (hourly, daily) if feed]
             result["fetched_at"] = min(stamps, key=_stamp) if stamps else None
             stale = any(feed and not _fresh(feed, now) for feed in (hourly, daily))
-            complete = (result["today"]["complete"] and result["tomorrow"]["complete"]
+            complete = (result["today"]["remaining_complete"] and result["tomorrow"]["complete"]
                         and result["overnight"]["coverage_complete"])
             result["status"] = ("unavailable" if not stamps else "stale" if stale else
                                 "ready" if complete and not result["error"] else "partial")

@@ -10,6 +10,7 @@ import re
 import textwrap
 
 from .weather import CACHE_MAX_AGE, FORECAST_MAX_AGE, overnight_bounds
+from .time_format import format_time
 
 
 def _number(value):
@@ -31,7 +32,7 @@ def _section_fresh(weather, section, now):
             and _fresh(weather.get(section + "_updated_at"), now, FORECAST_MAX_AGE))
 
 
-def _weather_icon_kind(summary):
+def _weather_icon_kind(summary, *, night=False):
     """A small visual aid for the supplied summary, never a new forecast."""
     text = summary.casefold() if isinstance(summary, str) else ""
     if re.search(r"\bthunderstorms?\b", text):
@@ -43,17 +44,17 @@ def _weather_icon_kind(summary):
     if re.search(r"\b(fog|mist|haze)\b", text):
         return "fog"
     if re.search(r"\bpartly\s+(cloudy|sunny)\b", text):
-        return "partly"
+        return "night_partly" if night else "partly"
     if re.search(r"\b(cloudy|overcast)\b", text):
         return "cloud"
     if re.search(r"\b(clear|sunny)\b", text):
-        return "sun"
+        return "moon" if night else "sun"
     return "unknown"
 
 
 def _weather_icon(draw, xy, kind):
     """Original crisp 24x17 pixel symbols; no glow, font or raster assets."""
-    from .render import AMBER, CYAN, MUTED, WHITE, _text
+    from .render import AMBER, CYAN, MUTED, PANEL, WHITE, _text
     x, y = xy
 
     def sun():
@@ -64,8 +65,11 @@ def _weather_icon(draw, xy, kind):
 
     if kind in {"sun", "partly"}:
         sun()
-    if kind in {"cloud", "rain", "thunder", "snow", "fog", "partly"}:
-        cloud = WHITE if kind == "partly" else MUTED
+    elif kind in {"moon", "night_partly"}:
+        draw.ellipse((x + 2, y + 1, x + 12, y + 11), fill=AMBER)
+        draw.ellipse((x + 6, y - 1, x + 14, y + 8), fill=PANEL)
+    if kind in {"cloud", "rain", "thunder", "snow", "fog", "partly", "night_partly"}:
+        cloud = WHITE if kind in {"partly", "night_partly"} else MUTED
         draw.ellipse((x + 3, y + 5, x + 12, y + 11), fill=cloud)
         draw.ellipse((x + 8, y + 2, x + 17, y + 10), fill=cloud)
         draw.ellipse((x + 14, y + 5, x + 22, y + 11), fill=cloud)
@@ -87,6 +91,34 @@ def _weather_icon(draw, xy, kind):
         _text(draw, (x + 9, y + 5), "?", MUTED)
 
 
+def _weather_timing_label(weather, suffix, zone, now):
+    """Keep NWS issuance and successful retrieval clocks separate on the TV.
+
+    Rain and daytime summaries are fetched independently. If their clocks
+    differ, name the section instead of re-dating old data after a partial
+    refresh. Rare cross-date/DST cases show an explicitly conservative oldest
+    clock so the complete label still fits beside the deck indicator.
+    """
+    from .render import _dt
+    prefix = "NWS ISSUED" if suffix == "updated_at" else "CHECKED"
+    stamps = {key: _dt(weather.get(key + "_" + suffix)) for key in ("hourly", "daily")}
+    stamps = {key: stamp for key, stamp in stamps.items() if stamp is not None and stamp <= now + timedelta(minutes=5)}
+    if not stamps:
+        return prefix + " TIME UNAVAILABLE"
+    if len(stamps) == 1:
+        key, stamp = next(iter(stamps.items()))
+        section = "RAIN" if key == "hourly" else "DAY"
+        return prefix + " " + section + " " + format_time(stamp.astimezone(zone), date_format="%m/%d", include_zone=True)
+    hourly, daily = stamps["hourly"].astimezone(zone), stamps["daily"].astimezone(zone)
+    if stamps["hourly"] == stamps["daily"]:
+        return prefix + " " + format_time(hourly, date_format="%m/%d", include_zone=True)
+    if hourly.date() == daily.date() and hourly.strftime("%Z") == daily.strftime("%Z"):
+        return (prefix + " " + hourly.strftime("%m/%d") + " RAIN " + format_time(hourly).replace(" ", "")
+                + " DAY " + format_time(daily).replace(" ", "") + " " + hourly.strftime("%Z"))
+    prefix = "NWS OLDEST ISSUE" if suffix == "updated_at" else "OLDEST CHECK"
+    return prefix + " " + format_time(min(stamps.values()).astimezone(zone), date_format="%m/%d", include_zone=True)
+
+
 def render_weather(draw, image, state, config, now):
     from .render import AMBER, CYAN, GREEN, LINE, MUTED, PANEL, WHITE, _dt, _header, _text, _tz, deck_footer_width
     zone = _tz(config)
@@ -104,10 +136,15 @@ def render_weather(draw, image, state, config, now):
         card = card if usable and isinstance(card, dict) else {}
         valid = card.get("date") == date.isoformat()
         stale = valid and (not daily_fresh or card.get("stale") is True)
+        low_start, low_end = _dt(card.get("low_start")), _dt(card.get("low_end"))
+        night_only = (name == "today" and valid and not stale and card.get("night_only") is True
+                      and card.get("high") is None and _number(card.get("low"))
+                      and low_start is not None and low_end is not None and low_start <= now < low_end
+                      and card.get("temperature_unit") == "F")
         draw.rectangle((x, 56, x + 236, 137), fill=PANEL, outline=LINE)
-        _text(draw, (x + 8, 62), name.upper(), CYAN, 2)
+        _text(draw, (x + 8, 62), "TONIGHT" if night_only else name.upper(), CYAN, 2)
         _text(draw, (x + 228, 65), date.strftime("%m/%d"), MUTED, align="right")
-        _weather_icon(draw, (x + 108, 60), _weather_icon_kind(card.get("summary")) if valid and not stale else "unknown")
+        _weather_icon(draw, (x + 108, 60), _weather_icon_kind(card.get("summary"), night=night_only) if valid and not stale else "unknown")
         color = MUTED if stale else WHITE
         high = _temperature(card.get("high")) if valid else "--"
         low = _temperature(card.get("low")) if valid else "--"
@@ -115,14 +152,32 @@ def render_weather(draw, image, state, config, now):
         # silently turn into Fahrenheit on the TV.
         if card.get("temperature_unit") != "F":
             high = low = "--"
-        _text(draw, (x + 8, 92), "HI", MUTED)
-        _text(draw, (x + 28, 83), high, color, 3, max_width=78)
-        _text(draw, (x + 116, 92), "LO", MUTED)
-        _text(draw, (x + 136, 83), low, color, 3, max_width=78)
-        _text(draw, (x + 222, 92), "F", MUTED)
+        if night_only:
+            _text(draw, (x + 8, 92), "LOW", MUTED)
+            _text(draw, (x + 35, 83), low, color, 3, max_width=78)
+            _text(draw, (x + 101, 92), "F", MUTED)
+            _text(draw, (x + 133, 87), "DAY HIGH", MUTED)
+            _text(draw, (x + 133, 99), "NOT PROVIDED", MUTED)
+        else:
+            _text(draw, (x + 8, 92), "HI", MUTED)
+            _text(draw, (x + 28, 83), high, color, 3, max_width=78)
+            _text(draw, (x + 116, 92), "LO", MUTED)
+            _text(draw, (x + 136, 83), low, color, 3, max_width=78)
+            _text(draw, (x + 222, 92), "F", MUTED)
         summary = ("STALE FORECAST / CHECK UPDATE" if stale else
                    str(card.get("summary") or "Forecast unavailable") if valid else "Forecast unavailable")
-        for line, text in enumerate(textwrap.wrap(summary[:160], width=36)[:2]):
+        note = None
+        if valid and not stale and not night_only:
+            if high == "--" and low == "--":
+                note = "TEMPERATURE DATA UNAVAILABLE"
+            elif high == "--":
+                note = "DAY HIGH NOT PROVIDED"
+            elif low == "--":
+                note = "NIGHT LOW NOT PROVIDED"
+        lines = textwrap.wrap(summary[:160], width=36)[:1 if note else 2]
+        if note:
+            lines.append(note)
+        for line, text in enumerate(lines):
             _text(draw, (x + 8, 113 + line * 12), text, AMBER if stale else WHITE, max_width=220)
 
     night = weather.get("overnight")
@@ -169,12 +224,10 @@ def render_weather(draw, image, state, config, now):
     if not usable:
         reason = "WEATHER OFF" if not enabled else "FORECAST UNAVAILABLE"
         _text(draw, (490, 42), reason, AMBER, align="right")
-    draw.line((14, 232, 498, 232), fill=LINE)
-    issued = _dt(weather.get("hourly_updated_at")) if usable else None
-    source = "NWS / AS OF " + issued.astimezone(zone).strftime("%m/%d %I:%M %p %Z").replace(" 0", " ") if issued else "NWS / FORECAST TIME UNAVAILABLE"
-    _text(draw, (15, 241), source, MUTED, max_width=deck_footer_width(state))
-    if not state.get("deck_count"):
-        _text(draw, (498, 241), "WEATHER.GOV", MUTED, align="right")
+    draw.line((14, 228, 498, 228), fill=LINE)
+    timing = weather if usable else {}
+    _text(draw, (15, 232), _weather_timing_label(timing, "updated_at", zone, now), MUTED, max_width=deck_footer_width(state))
+    _text(draw, (15, 245), _weather_timing_label(timing, "fetched_at", zone, now), MUTED, max_width=deck_footer_width(state))
 
 
 def _nearby_rows(state, config, now):

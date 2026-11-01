@@ -50,8 +50,10 @@ For household Google accounts, phones and optional personal content, continue
 with docs/HOUSEHOLD-SETUP.txt. Use docs/INSTALL.txt for services, Tailscale and
 troubleshooting. Remote connection instructions are docs/REMOTE.txt.
 Personal dinner/appointment cards and Alexa setup are docs/ALEXA-SETUP.txt.
-Keyboard Tab changes views; 1-5 choose available views; Space resumes the
-automatic rotation. G toggles guest mode; Escape returns to Batocera.
+Left/right selects the previous/next card; Tab also advances. A gamepad D-pad
+or left stick can move between cards, as can a remote that sends arrow keys.
+1-5 selects and pauses; Space resumes/pauses rotation. G toggles guest mode;
+Escape returns to Batocera. In settings, arrows adjust the selected setting.
 
 This is a working software package with automated and Linux checks.
 Your actual Batocera video driver, TV, and account authorization still
