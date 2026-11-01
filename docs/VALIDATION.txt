@@ -1,6 +1,6 @@
 FLIGHT WALL: VALIDATION RECORD
 
-PUBLISHED AND STAGED 0.4.6 - NOVEMBER 1, 2026 UTC
+PUBLISHED AND ACTIVATED 0.4.6 - NOVEMBER 1, 2026 UTC
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
 Build: https://github.com/buzzman003/flightwall/actions/runs/41257528456
@@ -15,12 +15,22 @@ inventories, reviewed Python source and unchanged Alexa handler/model content.
 Update ZIP SHA256: 90a75a520ad834c8cfea3156ac8334d4fa9c519162ceaf4bfe86169124b64d03
 Installer SHA256: f89e2c878cd1befc70bfc9668b7f7879a76da2ec023417746854fea6115ff3e4
 
-GUI-live staging verified 41 coherent individual-file backups, eight protected
-files and stable launchers/recovery. Zero ephemeral Google token exceptions.
-Existing config and automatic-update preference preserved; no GUI, services,
-games or OS restarted. Current/health remains 0.4.5; pending 0.4.6 awaits the next
-normal Ports launch. The staged hash matches the independently checked archive.
-Physical 0.4.6 navigation/transitions and real paid-provider results are pending.
+Before activation, GUI-live staging verified 41 coherent individual-file
+backups, eight protected files and stable launchers/recovery. That staging
+snapshot needed zero ephemeral Google token exceptions. Existing config and
+automatic-update preference were preserved; no GUI, services, games or OS were
+restarted during staging. Its archive hash matched the public download.
+
+The owner then reopened Ports. Strict-host-key SSH activation verification
+confirmed active current/health 0.4.6, no pending update and no awaiting-health
+flag. All 41 existing private files remained. Eight protected files preserved
+their stable authentication fields; one Google cache had only allowed ephemeral
+refresh changes. Five stable wrappers and the original pinned 0.3.0 recovery
+verified unchanged. Every original config value was preserved; one added field
+matched its exact default. These activation checks do not establish physical
+controller/remote navigation or transition acceptance, which remain pending.
+AeroAPI account/key connection and positive paid-provider results are not
+claimed; their setup remains a separate user step.
 
 0.4.5 automatic weather refresh was observed twice 15 minutes 1 second apart while
 its display stayed open. NWS issuance stayed older; the worker was refreshing.

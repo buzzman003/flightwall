@@ -1,6 +1,13 @@
 # Flight Wall implementation contract
 
-0.4.6 published, verified and staged for next normal Ports launch: left/right navigation operates on the current eligible deck,
+0.4.6 published, verified and active after the owner reopened Ports. Strict-host-key
+SSH verified healthy 0.4.6, no pending/startup-health flags, all original private
+files/config values, protected credentials, stable wrappers and pinned 0.3.0
+recovery. One allowed Google ephemeral refresh and one exact-default added config
+field were accepted. Physical navigation/transition acceptance is still pending;
+AeroAPI account/key connection is a separate unfinished step.
+
+Left/right navigation operates on the current eligible deck,
 wrapping in either direction; settings retain directional adjustment behavior.
 Short retro reveals must never extend card privacy or visibility. Discard old
 frames on eligibility/config/backend changes, and keep timers/ticker fresh

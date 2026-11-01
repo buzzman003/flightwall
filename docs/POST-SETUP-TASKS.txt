@@ -1,19 +1,23 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Updated October 31, 2026
+Updated November 1, 2026 UTC (October 31 in Central Time)
 
-CURRENT RELEASE: SIGNED 0.4.6 STAGED
+CURRENT RELEASE: SIGNED 0.4.6 ACTIVE
 
 Final Linux 822 tests + 443 subtests and both native upgrade/rollback gates passed.
 Independent signature/inventory/source checks and GUI-live 41-file backup passed.
-0.4.5 remains active; perform one normal Ports relaunch, then run the private
-activation verifier before additional intentional settings changes. Check real
-keyboard/controller/remote navigation and short reveals on the TV. Weather
-refresh needs no routine restart; issued/check clocks are separate in 0.4.6.
+The owner reopened Ports and strict-host-key SSH verified active 0.4.6, with
+no pending update/startup-health flag. All 41 original private files and config
+values were preserved, along with eight protected files, five stable wrappers
+and the original 0.3.0 recovery. One Google cache had only allowed ephemeral
+refresh changes; one added config field matches its exact default.
+Still check actual keyboard/controller/remote navigation and short reveals on
+the TV; physical acceptance is not yet recorded. Routine weather refresh needs
+no restart; issued/check clocks are separate in 0.4.6.
 AeroAPI connection still awaits user sign-in/account completion and private key
 entry. Keep paid requests off until ready. Shopping and Lisa phone consent
 remain separate deferred tasks. No new Alexa deployment is needed here.
 
-CURRENT PATCH FOLLOW-UP - 0.4.6 CANDIDATE
+EARLIER PATCH PLANNING - 0.4.6 CANDIDATE (HISTORICAL)
 
 0.4.5 normal Ports activation and preservation are now verified. The owner
 confirmed the progress blocks and overall display. The 15-minute NWS worker is

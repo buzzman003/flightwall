@@ -1,4 +1,4 @@
-FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND STAGED
+FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND ACTIVE
 
 0.4.6 adds left/right previous/next card navigation, 24 brief random retro
 reveals and clearer weather clocks. Keyboard arrows, controller D-pad/left
@@ -15,8 +15,12 @@ Linux passed 822 tests and 443 subtests with zero skips/failures. Frozen
 OpenGL/software, fresh install, original 0.3.0 and published 0.4.5 executable
 upgrades and rollback passed. Public signature, inventories and source verified.
 A 41-file private backup and protected-credential/settings checks passed.
-0.4.5 remains healthy on the TV; 0.4.6 activates on the next normal Ports launch.
-No services, games or OS were restarted. Original pinned recovery is intact.
+The owner reopened Ports and strict-host-key SSH verified active 0.4.6, with
+no pending update or startup-health flag. All original settings and private
+files, five stable wrappers and the pinned 0.3.0 recovery are preserved. One
+Google cache changed only through permitted ephemeral token refresh; one added
+config field matches its exact default. Staging did not restart services, games
+or the OS. Physical navigation/transition acceptance is still pending.
 
 AeroAPI requires a separate Personal account and private key. Its optional
 app request budget is capped at $5/month; that is not a provider-account-wide
@@ -24,7 +28,7 @@ spending cap. No account/key or paid-provider result is claimed by this build.
 Physical 0.4.6 navigation/transition checks remain pending. See docs/RELEASE-0.4.6.txt.
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
 
-PREVIOUS RELEASE: FLIGHT WALL 0.4.5 (NOW ACTIVE)
+PREVIOUS RELEASE: FLIGHT WALL 0.4.5 (HISTORICAL ACTIVATION RECORD)
 
 The signed 0.4.5 release is published, independently verified and active after
 the owner's normal Ports relaunch. Linux passed 745 tests and 434 subtests,

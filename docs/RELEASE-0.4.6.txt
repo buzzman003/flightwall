@@ -1,12 +1,12 @@
 FLIGHT WALL 0.4.6 - NAVIGATION, RETRO REVEALS AND WEATHER CLOCKS
 
-PUBLISHED, INDEPENDENTLY VERIFIED AND STAGED
+PUBLISHED, INDEPENDENTLY VERIFIED AND ACTIVE
 
 * Left/right selects the previous/next eligible card, wrapping at either end.
   Keyboard arrows, controller horizontal D-pad/left stick and remotes that emit
   arrow keys are supported. Stick movement is edge-triggered to avoid rapid
   repeats. Settings retain directional adjustments. Actual device mapping and
-  TV navigation still need physical acceptance after activation.
+  TV navigation still need physical acceptance.
 * Twenty-four quarter-second retro reveals add movement without bright flashes
   or glow. The software fallback remains. Eligibility/config/guest/backend
   changes discard old pixels immediately. Message/artwork/health/hotel and
@@ -39,13 +39,18 @@ both native inventories, reviewed application source and Alexa companions.
 No new Alexa Lambda/model deployment is required for this display patch.
 
 A verified 41-file coherent individual-file backup preceded GUI-live staging;
-it is not a globally quiesced snapshot. Eight protected files matched with no
-Google ephemeral-refresh exception. Existing configuration and automatic-update
-preference verified preserved; original pinned 0.3.0 helper and stable launchers
-remain. Active current/health stays 0.4.5, pending 0.4.6; no GUI/service/OS restart.
-The staged archive hash matches the independently verified public download.
-Close normally and reopen Ports to activate; no Batocera reboot is needed.
-Physical 0.4.6 navigation/transitions and positive paid tracking remain pending.
+it is not a globally quiesced snapshot. Eight protected files matched at staging
+with no Google ephemeral-refresh exception. Its archive hash matched the
+independently verified public download; staging did not restart GUI/services/OS.
+
+The owner reopened Ports and strict-host-key SSH verified active current/health
+0.4.6, no pending update and no awaiting-health flag. All 41 existing private
+files remained. Eight protected files preserved stable authentication fields;
+one Google cache changed only through permitted ephemeral refresh. Five stable
+wrappers and the original pinned 0.3.0 recovery verified unchanged. Every original
+config value was preserved, with one added field matching its exact default.
+Physical navigation/transitions still await acceptance. No AeroAPI account/key
+connection or positive paid tracking result is claimed.
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
 Build: https://github.com/buzzman003/flightwall/actions/runs/41257528456
