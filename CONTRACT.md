@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.7 candidate: operating focus must not infer phone presence or airborne
+0.4.7 published/verified/staged: operating focus must not infer phone presence or airborne
 state from a calendar. Geographic zoom uses only a fresh, exactly associated
 provider position; no synthetic aircraft motion. All paid requests share the
 existing monthly/daily ledger; optional nearby route enrichment has a stricter

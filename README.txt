@@ -1,4 +1,4 @@
-FLIGHT WALL 0.4.7 - SOURCE CANDIDATE
+FLIGHT WALL 0.4.7 - PUBLISHED, VERIFIED AND STAGED
 
 Adds a position-driven operating map, current-flight focus, optional nearby
 origin/destination packets under the shared $5 app budget, decoded airport
@@ -9,9 +9,16 @@ assets and a rare split-flap reveal are included. The logical LED board stays
 New network connections default off and DEMO stays offline. Existing settings,
 credentials, games and the original pinned recovery helper remain outside the
 release. No global Echo timer or native Alexa list access is claimed.
-Native build, publication, device activation and real-flight acceptance remain
-pending; 0.4.6 may continue running during development. See docs/RELEASE-0.4.7.txt
-and docs/VALIDATION.txt for scope and separate checks.
+Linux passed 1072 tests and 519 subtests, zero skips/failures, plus frozen
+graphics, fresh install, original 0.3.0 and published 0.4.6 upgrade/rollback
+gates. Independent signature/inventory/source verification passed. A verified
+42-file private backup and nine protected files preceded GUI-live staging.
+Settings and pinned recovery were preserved. Ports image/logo/video metadata
+and safe frontend reload passed with other game entries/artwork unchanged.
+Activation is awaiting the owner's normal Ports launch; new physical context
+cards and real-flight coverage remain separate checks. See docs/RELEASE-0.4.7.txt
+and docs/VALIDATION.txt. No Alexa companion redeployment is needed.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
 
 PREVIOUS RELEASE: FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND ACTIVE
 

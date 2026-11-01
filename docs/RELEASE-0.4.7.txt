@@ -1,6 +1,6 @@
 FLIGHT WALL 0.4.7 - OPERATING MAP, TRIP WEATHER AND PORTS PREVIEW
 
-SOURCE CANDIDATE - NATIVE RELEASE AND DEVICE ACCEPTANCE PENDING
+PUBLISHED, INDEPENDENTLY VERIFIED AND STAGED - ACTIVATION PENDING
 
 DISPLAY AND FLIGHT CONTEXT
 
@@ -78,15 +78,35 @@ VALIDATION AND LIMITATIONS
 
 Windows full source validation passed 1023 tests and 514 subtests, with 49
 expected platform/dependency skips. Source tests, synthetic rendering and
-official public-feed sample parsing are
-separate from native Linux, physical TV, live paid-provider and real flight
+official public-feed sample parsing are separate from physical TV,
+live paid-provider and real flight
 checks. The owner watched the fifteen-second preview in a Windows player and
 accepted its pacing. The assistant did not claim normal-speed playback.
-The signed workflow must pass the complete zero-skip Linux suite, frozen
-OpenGL/software, fresh installation, original 0.3.0 and published 0.4.6 native
-upgrade/rollback checks before publishing. Versioned code activates at the next
-safe Ports launch. Existing settings, private credentials and the original
-pinned 0.3.0 recovery helper must remain intact.
+Linux passed 1072 tests and 519 subtests with zero skips/failures. Both native
+gates passed source/frozen OpenGL, software fallback, fresh installation,
+original 0.3.0 and published 0.4.6 executable upgrades and rollback. Maximum
+required glibc is 2.36. Independent downloads matched the pinned Ed25519
+manifest, checksums, both full native inventories, reviewed application source,
+media/reference assets and unchanged Alexa companions.
+
+GUI-live staging verified a 42-file coherent individual-file private backup,
+nine protected files and the original pinned 0.3.0 recovery. Existing settings
+and automatic-update preference were preserved; no GUI/service/OS restart was
+performed during staging. The next normal Ports launch activates 0.4.7.
+
+After normal exit to the games menu, Ports metadata/media registration and
+graceful frontend reload passed. Ten other game entries and thirteen referenced
+media files verified unchanged; compositor and background application service
+were preserved. Exact image/logo/video hashes matched approved assets and the
+transfer archive remains intact. The owner still needs to confirm the theme's
+hover preview and launch the new version. Activation/settings preservation and
+new physical map/weather appearance are not yet claimed.
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
+Build: https://github.com/buzzman003/flightwall/actions/runs/41263038376
+Source: b03fbd2062c75425be081c153fbc8ce02c49ce92
+Update ZIP SHA256: 523e69e568cc5d09a31dbdebd860408137fc67ca9a67e28d6a98604c1c78f5cc
+Installer SHA256: be44df8c588283c347ba2f6447fbd11860ee578336b10a68e8f599f0280704af
 
 No Alexa Lambda/model change is required by this release. It does not repair
 Amazon's intermittent invocation routing, expose global Echo timers or import

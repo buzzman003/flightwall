@@ -1,5 +1,32 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.7 PUBLISHED, VERIFIED AND STAGED - NOVEMBER 1, 2026 UTC
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
+Build: https://github.com/buzzman003/flightwall/actions/runs/41263038376
+Source: b03fbd2062c75425be081c153fbc8ce02c49ce92
+Linux: 1072 tests + 519 subtests, zero skips/failures. Frozen/source OpenGL,
+software fallback, fresh installation, original 0.3.0 and published 0.4.6
+executable upgrades/rollback and both exact bundle inventories passed.
+Maximum required glibc 2.36. Independent published downloads verified the
+pinned Ed25519 manifest, checksums, both native inventories, reviewed Python
+source, Ports media/reference/helper assets and unchanged Alexa companions.
+Update ZIP SHA256: 523e69e568cc5d09a31dbdebd860408137fc67ca9a67e28d6a98604c1c78f5cc
+Installer SHA256: be44df8c588283c347ba2f6447fbd11860ee578336b10a68e8f599f0280704af
+
+Strict-host-key SSH staging verified 42 coherent individual-file private backup
+entries, nine protected files with no ephemeral refresh exceptions, existing
+settings/automatic-update preference, stable wrappers and pinned 0.3.0 recovery.
+0.4.6 stayed active during staging; no display/service/OS restart was performed.
+After the owner exited normally, exact Ports image/logo/video registration,
+private gamelist/media backup and graceful frontend suspend/resume passed.
+Ten other raw game entries and thirteen referenced media files were unchanged.
+The compositor/standalone session remained; no force restart or kill was used.
+The transfer archive remains intact. Hover-theme acceptance and normal Ports
+launch are requested. Device activation/private preservation and new physical
+map/weather/real-flight behavior remain pending, rather than being inferred
+from the successful synthetic source/native tests.
+
 0.4.7 SOURCE CANDIDATE - OCTOBER 31, 2026 LOCAL / NOVEMBER 1 UTC
 
 The owner accepted the fifteen-second silent preview's pacing after playing it
