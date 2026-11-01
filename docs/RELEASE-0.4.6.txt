@@ -1,41 +1,58 @@
 FLIGHT WALL 0.4.6 - NAVIGATION, RETRO REVEALS AND WEATHER CLOCKS
 
-SOURCE CANDIDATE - NOT YET A PUBLISHED EXECUTABLE
+PUBLISHED, INDEPENDENTLY VERIFIED AND STAGED
 
-* Left/right selects the previous/next currently eligible card, wrapping at
-  either end. Keyboard and remotes that emit arrow keys are supported, along
-  with controller horizontal D-pad and left stick. Settings keep their existing
-  directional controls. Physical controller/remote mapping needs device checks.
-* Twenty-four brief retro reveals add card movement without bright flashes or
-  glow. The software display fallback remains. Privacy/expiry/guest/backend
-  changes discard previous pixels immediately. Timer and ticker overlays keep
-  updating outside the card transition; no transition extends a private card.
-* Weather labels NWS issuance separately from its last successful retrieval.
-  The 15-minute automatic poll remains. After the daytime period disappears from
-  the NWS forecast, the card can show TONIGHT and its supplied low, with an
-  explicit missing-daytime-high explanation. No historical high is invented.
-* All private data stays outside releases. Signed next-launch activation,
-  monotonic version floor, startup rollback, original pinned 0.3.0 recovery and
-  the software rendering path remain required gates. Native upgrade validation
-  uses original 0.3.0 and published 0.4.5 executables.
-* AeroAPI remains a separate optional connection. The Personal tier currently
-  has no monthly minimum and up to $5 monthly free query usage. The app limits
-  nominal lookup/position fees to at most $5/month, shared with flight watches.
-  This does not impose an account-wide provider spending cap or cover other
-  clients/taxes/fees. No API key is included in this release.
+* Left/right selects the previous/next eligible card, wrapping at either end.
+  Keyboard arrows, controller horizontal D-pad/left stick and remotes that emit
+  arrow keys are supported. Stick movement is edge-triggered to avoid rapid
+  repeats. Settings retain directional adjustments. Actual device mapping and
+  TV navigation still need physical acceptance after activation.
+* Twenty-four quarter-second retro reveals add movement without bright flashes
+  or glow. The software fallback remains. Eligibility/config/guest/backend
+  changes discard old pixels immediately. Message/artwork/health/hotel and
+  weather/nearby/watch views do not enter the cache. Timers and shopping ticker
+  stay live outside effects. Exact dinner/live-position cutoff changes cancel
+  effects; high-resolution map layers attach only after a reveal finishes.
+* Weather shows NWS ISSUED separately from CHECKED. The automatic 15-minute poll
+  remains. Two actual retrievals occurred 15 minutes 1 second apart while 0.4.5
+  stayed open. An evening forecast can legitimately lack the daytime high;
+  TONIGHT/LOW and DAY HIGH NOT PROVIDED explain this. No past high is guessed.
+* Canonical ASCII/LF VERSION validation runs before building. Installer semver,
+  signed archive checks, monotonic floor, next-launch activation, startup
+  rollback and original pinned 0.3.0 recovery remain intact.
+* AeroAPI is a separate optional connection. Personal currently has no monthly
+  minimum and up to $5 free monthly usage. The app caps nominal lookup/position
+  request fees at $5/month, shared with watches. It does not cap provider-wide
+  usage, other clients or taxes/fees. No key is included and no positive paid
+  provider result is claimed. Account/key setup remains a separate user step.
 
-Windows source validation passed 772 tests and 438 subtests, with 49 expected
-platform/dependency skips. Focused GUI/effect tests and an independent privacy
-review passed. Linux zero-skip graphics/native upgrade gates remain required.
-Canonical ASCII/LF VERSION validation now runs before building; its new
-repository regression and baseline/report tests passed (3tests+18subtests).
-The first Linux unit run passed821tests+443subtests with no skips, but native
-installation rejected the Windows newline in VERSION before publication.
-The unpublished candidate was corrected; native acceptance must rerun.
+VALIDATION
 
-No physical 0.4.6 navigation, positive paid-provider or transition check is yet
-claimed. Alexa's existing invocation issue is separate from this display patch.
+Windows full source suite: 772 tests + 438 subtests, 49 expected platform/dependency
+skips. The later LF-version regression/baseline/report selection passed 3 tests
+and 18 subtests. Final Linux source: 822 tests + 443 subtests, zero skips/failures.
+Both native gates passed frozen/source OpenGL, software fallback, fresh install,
+original 0.3.0 and published 0.4.5 executable upgrade/rollback paths. Full bundle
+inventories and original recovery verified; maximum required glibc remains 2.36.
+Independent public downloads matched the pinned Ed25519 manifest, all checksums,
+both native inventories, reviewed application source and Alexa companions.
+No new Alexa Lambda/model deployment is required for this display patch.
 
-Primary pricing reference, checked October 31, 2026:
+A verified 41-file coherent individual-file backup preceded GUI-live staging;
+it is not a globally quiesced snapshot. Eight protected files matched with no
+Google ephemeral-refresh exception. Existing configuration and automatic-update
+preference verified preserved; original pinned 0.3.0 helper and stable launchers
+remain. Active current/health stays 0.4.5, pending 0.4.6; no GUI/service/OS restart.
+The staged archive hash matches the independently verified public download.
+Close normally and reopen Ports to activate; no Batocera reboot is needed.
+Physical 0.4.6 navigation/transitions and positive paid tracking remain pending.
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
+Build: https://github.com/buzzman003/flightwall/actions/runs/41257528456
+Source: b6d41821903f947074f58b9a1b82023c592e409b
+Update ZIP SHA256: 90a75a520ad834c8cfea3156ac8334d4fa9c519162ceaf4bfe86169124b64d03
+Installer SHA256: f89e2c878cd1befc70bfc9668b7f7879a76da2ec023417746854fea6115ff3e4
+
+Primary references, checked October 31, 2026:
 https://www.flightaware.com/commercial/aeroapi/
 https://static.flightaware.com/rsrc/aeroapi/aeroapi-openapi.yml

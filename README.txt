@@ -1,20 +1,28 @@
-FLIGHT WALL 0.4.6 SOURCE CANDIDATE
+FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND STAGED
 
-0.4.5 activation is verified healthy, with no pending update/startup-health
-flag. Existing private files, preferences, protected credentials, launchers
-and the original pinned recovery helper were preserved. The owner confirmed
-the updated deck indicators and overall display look good.
+0.4.6 adds left/right previous/next card navigation, 24 brief random retro
+reveals and clearer weather clocks. Keyboard arrows, controller D-pad/left
+stick and remotes that send arrow keys navigate the current eligible deck.
+Settings keep their directional controls. Sensitive and freshness-critical
+cards switch immediately; timers and ticker remain live outside reveals.
 
-0.4.6 adds left/right previous/next card navigation and 24 short retro reveal
-patterns, with immediate privacy cancellation. Weather separates NWS issuance
-from the last successful check, and explains a missing daytime high when the
-provider supplies only tonight's low. Routine weather checks remain automatic
-every 15 minutes while the display or background service runs.
+Weather separates NWS ISSUED from CHECKED, with honest TONIGHT/LOW wording
+when the provider no longer supplies a daytime high. Two live fetches occurred
+15 minutes and one second apart while the display stayed open; no routine
+restart is needed. The crisp no-glow LED preference is preserved.
 
-This is source work until the signed workflow builds and validates its Linux
-executable. Physical 0.4.6 controller/remote and transition checks are pending.
-AeroAPI requires a separate Personal account/key; the app's capped nominal
-request allowance does not control other account usage or provider billing.
+Linux passed 822 tests and 443 subtests with zero skips/failures. Frozen
+OpenGL/software, fresh install, original 0.3.0 and published 0.4.5 executable
+upgrades and rollback passed. Public signature, inventories and source verified.
+A 41-file private backup and protected-credential/settings checks passed.
+0.4.5 remains healthy on the TV; 0.4.6 activates on the next normal Ports launch.
+No services, games or OS were restarted. Original pinned recovery is intact.
+
+AeroAPI requires a separate Personal account and private key. Its optional
+app request budget is capped at $5/month; that is not a provider-account-wide
+spending cap. No account/key or paid-provider result is claimed by this build.
+Physical 0.4.6 navigation/transition checks remain pending. See docs/RELEASE-0.4.6.txt.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
 
 PREVIOUS RELEASE: FLIGHT WALL 0.4.5 (NOW ACTIVE)
 

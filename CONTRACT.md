@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.6 candidate: left/right navigation operates on the current eligible deck,
+0.4.6 published, verified and staged for next normal Ports launch: left/right navigation operates on the current eligible deck,
 wrapping in either direction; settings retain directional adjustment behavior.
 Short retro reveals must never extend card privacy or visibility. Discard old
 frames on eligibility/config/backend changes, and keep timers/ticker fresh

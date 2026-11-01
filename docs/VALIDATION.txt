@@ -1,5 +1,32 @@
 FLIGHT WALL: VALIDATION RECORD
 
+PUBLISHED AND STAGED 0.4.6 - NOVEMBER 1, 2026 UTC
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
+Build: https://github.com/buzzman003/flightwall/actions/runs/41257528456
+Source: b6d41821903f947074f58b9a1b82023c592e409b
+
+Final Linux: 822 tests + 443 subtests, zero skips/failures. Both native gates passed
+source/frozen OpenGL, software fallback, fresh installation, original 0.3.0 and
+published 0.4.5 executable upgrades and rollback. Original pinned 0.3.0 recovery
+and full inventories preserved; glibc maximum 2.36. Independent public download
+verification matched pinned Ed25519 signature, all checksums, both native full
+inventories, reviewed Python source and unchanged Alexa handler/model content.
+Update ZIP SHA256: 90a75a520ad834c8cfea3156ac8334d4fa9c519162ceaf4bfe86169124b64d03
+Installer SHA256: f89e2c878cd1befc70bfc9668b7f7879a76da2ec023417746854fea6115ff3e4
+
+GUI-live staging verified 41 coherent individual-file backups, eight protected
+files and stable launchers/recovery. Zero ephemeral Google token exceptions.
+Existing config and automatic-update preference preserved; no GUI, services,
+games or OS restarted. Current/health remains 0.4.5; pending 0.4.6 awaits the next
+normal Ports launch. The staged hash matches the independently checked archive.
+Physical 0.4.6 navigation/transitions and real paid-provider results are pending.
+
+0.4.5 automatic weather refresh was observed twice 15 minutes 1 second apart while
+its display stayed open. NWS issuance stayed older; the worker was refreshing.
+0.4.6 distinguishes these clocks and explains a night-only forecast's missing
+high. Earlier candidate/activation records below describe their own snapshots.
+
 0.4.5 ACTIVATION VERIFIED - NOVEMBER 1, 2026 UTC
 
 The owner performed a normal close/reopen and reported the updated display

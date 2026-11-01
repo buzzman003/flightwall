@@ -1,6 +1,18 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
 Updated October 31, 2026
 
+CURRENT RELEASE: SIGNED 0.4.6 STAGED
+
+Final Linux 822 tests + 443 subtests and both native upgrade/rollback gates passed.
+Independent signature/inventory/source checks and GUI-live 41-file backup passed.
+0.4.5 remains active; perform one normal Ports relaunch, then run the private
+activation verifier before additional intentional settings changes. Check real
+keyboard/controller/remote navigation and short reveals on the TV. Weather
+refresh needs no routine restart; issued/check clocks are separate in 0.4.6.
+AeroAPI connection still awaits user sign-in/account completion and private key
+entry. Keep paid requests off until ready. Shopping and Lisa phone consent
+remain separate deferred tasks. No new Alexa deployment is needed here.
+
 CURRENT PATCH FOLLOW-UP - 0.4.6 CANDIDATE
 
 0.4.5 normal Ports activation and preservation are now verified. The owner
