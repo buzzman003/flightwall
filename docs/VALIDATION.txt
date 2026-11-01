@@ -27,10 +27,12 @@ flag. All 41 existing private files remained. Eight protected files preserved
 their stable authentication fields; one Google cache had only allowed ephemeral
 refresh changes. Five stable wrappers and the original pinned 0.3.0 recovery
 verified unchanged. Every original config value was preserved; one added field
-matched its exact default. These activation checks do not establish physical
-controller/remote navigation or transition acceptance, which remain pending.
-AeroAPI account/key connection and positive paid-provider results are not
-claimed; their setup remains a separate user step.
+matched its exact default. The owner then reported that left/right navigation
+works in both directions on the physical TV. The input device type was not
+identified, and visual transition acceptance remains unverified. These owner
+observations are separate from the SSH and automated source/native checks.
+The release contains no credential. AeroAPI account/key onboarding and real-
+provider verification are separate private setup steps.
 
 0.4.5 automatic weather refresh was observed twice 15 minutes 1 second apart while
 its display stayed open. NWS issuance stayed older; the worker was refreshing.

@@ -4,8 +4,10 @@
 SSH verified healthy 0.4.6, no pending/startup-health flags, all original private
 files/config values, protected credentials, stable wrappers and pinned 0.3.0
 recovery. One allowed Google ephemeral refresh and one exact-default added config
-field were accepted. Physical navigation/transition acceptance is still pending;
-AeroAPI account/key connection is a separate unfinished step.
+field were accepted. The owner reports that left/right navigation works in both
+directions on the physical TV; the input device type and transition appearance
+remain unverified. The release contains no credential. AeroAPI account/key
+onboarding and real-provider verification are separate private setup steps.
 
 Left/right navigation operates on the current eligible deck,
 wrapping in either direction; settings retain directional adjustment behavior.

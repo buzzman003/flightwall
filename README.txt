@@ -20,12 +20,15 @@ no pending update or startup-health flag. All original settings and private
 files, five stable wrappers and the pinned 0.3.0 recovery are preserved. One
 Google cache changed only through permitted ephemeral token refresh; one added
 config field matches its exact default. Staging did not restart services, games
-or the OS. Physical navigation/transition acceptance is still pending.
+or the OS. The owner reports that left/right navigation works in both directions
+on the TV. The input device type and transition appearance remain unverified.
 
 AeroAPI requires a separate Personal account and private key. Its optional
 app request budget is capped at $5/month; that is not a provider-account-wide
-spending cap. No account/key or paid-provider result is claimed by this build.
-Physical 0.4.6 navigation/transition checks remain pending. See docs/RELEASE-0.4.6.txt.
+spending cap. The release contains no credential; account/key onboarding and
+real-provider verification are separate private setup steps. Physical input
+device identification and transition appearance checks remain separate from
+the owner-reported navigation success. See docs/RELEASE-0.4.6.txt.
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6
 
 PREVIOUS RELEASE: FLIGHT WALL 0.4.5 (HISTORICAL ACTIVATION RECORD)

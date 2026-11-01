@@ -10,11 +10,12 @@ no pending update/startup-health flag. All 41 original private files and config
 values were preserved, along with eight protected files, five stable wrappers
 and the original 0.3.0 recovery. One Google cache had only allowed ephemeral
 refresh changes; one added config field matches its exact default.
-Still check actual keyboard/controller/remote navigation and short reveals on
-the TV; physical acceptance is not yet recorded. Routine weather refresh needs
-no restart; issued/check clocks are separate in 0.4.6.
-AeroAPI connection still awaits user sign-in/account completion and private key
-entry. Keep paid requests off until ready. Shopping and Lisa phone consent
+The owner reports that left/right navigation works in both directions on the
+physical TV. Identify the input device separately and still check the visual
+transitions; neither is yet verified. Routine weather refresh needs no restart;
+issued/check clocks are separate in 0.4.6.
+The release contains no credential. AeroAPI account/key onboarding and real-
+provider verification are separate private setup steps. Shopping and Lisa phone consent
 remain separate deferred tasks. No new Alexa deployment is needed here.
 
 EARLIER PATCH PLANNING - 0.4.6 CANDIDATE (HISTORICAL)
@@ -45,7 +46,7 @@ Second priority is mirroring ordinary Alexa timers; the host and provider gates
 in NATIVE-ALEXA-TIMERS.txt remain unresolved. No HA installation is required for
 the dinner feature, and none has been performed.
 
-CURRENT SCOPE
+EARLIER 0.4.2 SCOPE (HISTORICAL)
 
 Published signed 0.4.2 is active on the TV; the existing dinner Lambda/model
 matches its unchanged Alexa companion contents. In-session simulator saves
