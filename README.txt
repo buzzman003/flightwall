@@ -1,4 +1,19 @@
-FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND ACTIVE
+FLIGHT WALL 0.4.7 - SOURCE CANDIDATE
+
+Adds a position-driven operating map, current-flight focus, optional nearby
+origin/destination packets under the shared $5 app budget, decoded airport
+weather, national observed radar and FAA airport advisories. Ports logo/video
+assets and a rare split-flap reveal are included. The logical LED board stays
+512x256, with geographic pixels presented at display resolution.
+
+New network connections default off and DEMO stays offline. Existing settings,
+credentials, games and the original pinned recovery helper remain outside the
+release. No global Echo timer or native Alexa list access is claimed.
+Native build, publication, device activation and real-flight acceptance remain
+pending; 0.4.6 may continue running during development. See docs/RELEASE-0.4.7.txt
+and docs/VALIDATION.txt for scope and separate checks.
+
+PREVIOUS RELEASE: FLIGHT WALL 0.4.6 - PUBLISHED, VERIFIED AND ACTIVE
 
 0.4.6 adds left/right previous/next card navigation, 24 brief random retro
 reveals and clearer weather clocks. Keyboard arrows, controller D-pad/left

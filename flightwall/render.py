@@ -896,6 +896,14 @@ def _trip_range(preview):
     return _trip_date(preview.get("start_date"), "%d %b") + " - " + _trip_date(preview.get("end_date"), "%d %b")
 
 
+def _flight_designator(leg, config):
+    from .flight_alerts import operating_ident
+    try:
+        return operating_ident(leg, config.get("airline", ""))
+    except (ValueError, TypeError, AttributeError):
+        return "FLIGHT N/A"
+
+
 def _trip_summary(draw, state, config, now):
     preview, legs, zone = _trip_legs(state, config)
     page, pages = _trip_page(state, len(legs))
@@ -918,7 +926,7 @@ def _trip_summary(draw, state, config, now):
         _text(draw, (56, y + 26), kind, GREEN if visit else MUTED, max_width=70)
         origin, destination = leg.get("origin", "---"), leg.get("destination", "---")
         _text(draw, (139, y + 7), f"{origin} > {destination}", WHITE, 2, max_width=180)
-        _text(draw, (139, y + 28), f"{_city(origin)} > {_city(destination)}", MUTED, max_width=180)
+        _text(draw, (139, y + 28), _flight_designator(leg, config), MUTED, max_width=180)
         start, end = _dt(leg.get("start")), _dt(leg.get("end"))
         times = format_time(start.astimezone(zone)) + " > " + format_time(end.astimezone(zone)) if start and end else "TIME UNKNOWN"
         if start and end:
@@ -1017,7 +1025,7 @@ def _trip_map(draw, image, state, config, now):
         _text(draw, (339, y), _trip_date(leg["_trip_date"]), color, max_width=158, tracking=1)
         origin, destination = leg.get("origin", "---"), leg.get("destination", "---")
         _text(draw, (339, y + 13), f"{origin} > {destination}", WHITE, 2, max_width=158)
-        detail = ("DH / " if leg.get("deadhead") else "") + f"{_city(origin)} > {_city(destination)}"
+        detail = ("DH / " if leg.get("deadhead") else "") + _flight_designator(leg, config)
         if not _airport(origin) or not _airport(destination):
             detail = "MAP COORDS UNAVAILABLE"
         _text(draw, (339, y + 32), detail, MUTED, max_width=158)
@@ -1259,6 +1267,9 @@ def render_frame(state, config, size=BASE_SIZE):
     elif view == "flight_status":
         from .flight_status_view import render_operating
         render_operating(draw, image, state, config, now)
+    elif view in {"operating_map", "trip_weather", "national_radar", "airport_alerts"}:
+        from .flight_context_views import render_context
+        render_context(draw, image, state, config, now)
     elif view == "personal":
         personal_item = _selected_personal(state, now)
         if personal_item and personal_item.get("kind") == "dinner" and config.get("kids_filter_enabled") is True:
@@ -1295,7 +1306,7 @@ def render_frame(state, config, size=BASE_SIZE):
             _layover(draw, state, config, now, card)
     else:
         _details(draw, state, config, now, flight, flights, tz)
-    if view not in {"weather", "nearby", "flight_status"}:
+    if view not in {"weather", "nearby", "flight_status", "operating_map", "trip_weather", "national_radar", "airport_alerts"}:
         _footer(draw, state, view, now, tz, personal_item)
     _deck_progress(draw, state)
     if not state.get("defer_display_overlays") and not state.get("defer_timer_overlay"):

@@ -49,3 +49,7 @@ flight-watches.json
 flight-watches.lock
 flightaware-usage.json
 flightaware-usage.lock
+flight-environment.json
+national-radar.png
+trip-weather.json
+trip-weather/

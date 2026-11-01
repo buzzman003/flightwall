@@ -22,6 +22,8 @@ DEFAULTS = {
     "nearby_enabled": False, "home_latitude": None, "home_longitude": None,
     "nearby_radius_nm": 50, "nearby_radius_miles": None, "nearby_detailed_map": True, "flightaware_enabled": False,
     "weather_enabled": False, "weather_latitude": None, "weather_longitude": None,
+    "trip_weather_enabled": False, "national_radar_enabled": False, "airport_alerts_enabled": False,
+    "nearby_enrichment_enabled": False, "nearby_enrichment_monthly_limit_usd": 1.0,
     "flightaware_poll_seconds": 120, "flightaware_daily_limit": 240,
     "flightaware_monthly_limit_usd": 5,
     "updates_enabled": False, "update_manifest_url": "", "update_public_key": "",
@@ -34,6 +36,7 @@ DEFAULTS = {
     "presence_enabled": False, "presence_ttl_minutes": 90, "home_radius_m": 200,
     "chris_phone_type": "unset", "lisa_phone_type": "unset",
     "flight_focus_seconds": 60, "flight_window_before_minutes": 60, "flight_window_after_minutes": 60,
+    "flight_focus_only": False,
     "lisa_private_enabled": False, "guest_mode": False,
     "messages_enabled": False, "chris_gmail_enabled": False, "lisa_gmail_enabled": False,
     "chris_lawyer_senders": "[]", "chris_lawyer_domains": "[]",
@@ -59,6 +62,7 @@ REMOTE_SETTINGS = frozenset({
     "weather_enabled", "nearby_detailed_map",
     "personal_enabled", "appointment_duration_minutes", "dinner_start", "dinner_end",
     "guest_mode", "flight_focus_seconds", "flight_window_before_minutes", "flight_window_after_minutes",
+    "flight_focus_only",
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
     "local_visits_enabled", "shopping_ticker_enabled", "shopping_ticker_visible",
 })
@@ -67,6 +71,7 @@ PUBLIC_FIELDS = (REMOTE_SETTINGS - {"home_latitude", "home_longitude"}) | {
     "kids_filter_enabled", "lisa_private_enabled", "health_enabled", "inspiration_enabled",
     "messages_enabled", "presence_ttl_minutes", "kids_stale_minutes", "health_max_age_hours", "hotel_details_enabled",
     "brief_leave_times_enabled",
+    "trip_weather_enabled", "national_radar_enabled", "airport_alerts_enabled", "nearby_enrichment_enabled",
 }
 JSON_LIST_FIELDS = frozenset({"chris_lawyer_senders", "chris_lawyer_domains", "lisa_mail_senders", "lisa_mail_domains",
                               "chris_notification_apps", "lisa_notification_apps", "inspiration_sources"})
@@ -120,6 +125,7 @@ def validate(key, value):
             "takeover_hours": (1, 96), "nearby_radius_nm": (1, 250),
             "flightaware_poll_seconds": (60, 3600), "flightaware_daily_limit": (1, 2000),
             "flightaware_monthly_limit_usd": (0, 5),
+            "nearby_enrichment_monthly_limit_usd": (0, 1),
             "update_interval_minutes": (5, 1440), "control_port": (1024, 65535),
             "appointment_duration_minutes": (1, 1440),
             "kids_stale_minutes": (5, 1440), "presence_ttl_minutes": (5, 1440), "home_radius_m": (30, 5000),

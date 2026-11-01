@@ -1,5 +1,30 @@
 FLIGHT WALL: VALIDATION RECORD
 
+0.4.7 SOURCE CANDIDATE - OCTOBER 31, 2026 LOCAL / NOVEMBER 1 UTC
+
+The owner accepted the fifteen-second silent preview's pacing after playing it
+in a Windows player. Assistant normal-speed playback was not performed; browser
+security blocked local-file playback. Generated motion is synthetic offline
+DEMO content, not household data or a recording of live paid tracking.
+
+Focused tests cover operating identity/freshness, landing reset, provider budget
+locking/migration/subcaps, public-airport selection and weather decoding, radar
+hash-bound image reads, source-time expiry, brightness/insets/software fallback,
+DEMO and guest/outage privacy gates, transition cancellation and narrow gamelist
+updates. Public ATL/VPS METAR/TAF, NOAA GIF and FAA XML samples were parsed;
+these are public source checks, not real operating-flight or paid-provider tests.
+
+Complete Windows validation passed 1023 tests and 514 subtests, with 49
+expected Windows/platform dependency skips. The signed workflow's zero-skip
+Linux suite, original 0.3.0 and published 0.4.6 native installation/upgrade/
+rollback gates, independent signature/inventory checks, private backup, device
+activation and Ports frontend media reload remain required. The existing TV
+application has not been stopped during development. New weather contexts may
+not be eligible until the day before the next scheduled flight. Actual taxi
+coverage, progressively zooming live flight observations, enriched nearby routes
+and new card appearance need separate field checks. No global Alexa timers,
+native Alexa shopping-list access or reliable Echo routing repair is claimed.
+
 PUBLISHED AND ACTIVATED 0.4.6 - NOVEMBER 1, 2026 UTC
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.6

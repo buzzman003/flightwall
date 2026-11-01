@@ -1,4 +1,4 @@
-FLIGHT WALL 0.3.0 — BATOCERA INSTALLATION AND SETUP
+FLIGHT WALL 0.4.7 — BATOCERA INSTALLATION AND SETUP
 
 READ THIS FIRST
 
@@ -31,7 +31,7 @@ PART 1 — WHAT YOU NEED
   * A keyboard for the first setup; a USB keyboard is easiest.
   * Internet access on Batocera for Google authorization and syncing.
   * A Windows, macOS, or Linux computer on the same home network.
-  * The downloadable flightwall-batocera-0.3.0.tar.gz from this chat.
+  * The downloadable flightwall-batocera-0.4.7.tar.gz release installer.
   * Your Google account if you want your operating schedule.
 
 No paid flight-data API is needed for scheduled flights and route maps.
@@ -61,18 +61,18 @@ https://wiki.batocera.org/access_the_batocera_via_ssh
 
 PART 3 — DOWNLOAD AND COPY THE PACKAGE
 
-1. Download flightwall-batocera-0.3.0.tar.gz from this conversation to the
+1. Download flightwall-batocera-0.4.7.tar.gz from the v0.4.7 release to the
    Downloads folder on your normal computer. This file is the installer
    package. Do not download a Raspberry Pi image or flash Batocera again.
-   There is no public project download URL until you choose a host.
+   https://github.com/buzzman003/flightwall/releases/tag/v0.4.7
 
 2. WINDOWS: Open PowerShell and paste this command:
 
-   scp -O "$env:USERPROFILE\Downloads\flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+   scp -O "$env:USERPROFILE\Downloads\flightwall-batocera-0.4.7.tar.gz" root@192.168.1.50:/userdata/system/
 
    MACOS OR LINUX: Open Terminal and paste this command:
 
-   scp -O "$HOME/Downloads/flightwall-batocera-0.3.0.tar.gz" root@192.168.1.50:/userdata/system/
+   scp -O "$HOME/Downloads/flightwall-batocera-0.4.7.tar.gz" root@192.168.1.50:/userdata/system/
 
    The -O option selects the traditional SCP transfer protocol, which
    works with Batocera even when an SFTP subsystem is unavailable.
@@ -95,7 +95,7 @@ PART 3 — DOWNLOAD AND COPY THE PACKAGE
 PART 4 — INSTALL AND OPEN THE DEMO
 
 Upgrading an existing 0.1.0 or 0.2.0 installation: close Flight Wall on the TV first,
-then use the same copy/extract/install commands below for the 0.3.0 package.
+then use the same copy/extract/install commands below for the 0.4.7 package.
 The installer preserves private settings, Google authorization, personal data,
 the old release, and the pinned recovery helper. It temporarily stops a running
 background service and restores it afterward. It does not enable a service you
@@ -103,7 +103,7 @@ previously left disabled.
 
 An upgrade is staged, then activated when you next start Flight Wall from
 Ports. Open it once and let the screen appear, then close it before setting
-up Alexa. The CLI's --version should then show 0.3.0. Do not delete the old
+up Alexa. The CLI's --version should then show 0.4.7. Do not delete the old
 release or manually point current at the new folder; the normal launcher
 provides the startup health check and rollback if the new version fails.
 Existing installations keep their selected real calendar rather than being
@@ -112,8 +112,8 @@ reset to demo mode. There is no new Google permission needed for local cards.
 1. Paste these lines into that SSH session:
 
    cd /userdata/system
-   tar -xzf flightwall-batocera-0.3.0.tar.gz
-   sh /userdata/system/flightwall-batocera-0.3.0/install.sh
+   tar -xzf flightwall-batocera-0.4.7.tar.gz
+   sh /userdata/system/flightwall-batocera-0.4.7/install.sh
 
    The installer checks that the executable can start before installing
    it. If you see a GLIBC, library, or architecture error, stop here and

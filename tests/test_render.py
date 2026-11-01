@@ -128,7 +128,7 @@ class RenderTests(unittest.TestCase):
             render.render_frame(self.state, self.config)
         self.assertTrue(any("DAL123" in label for label in labels))
         self.assertIn("NEARBY AIRCRAFT / ADSB.LOL", labels)
-        self.assertIn("ORIGIN / DESTINATION UNAVAILABLE", labels)
+        self.assertTrue(any(label.startswith("ROUTE N/A / ") for label in labels))
 
 
 class PersonalRenderTests(unittest.TestCase):

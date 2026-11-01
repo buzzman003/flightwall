@@ -104,7 +104,7 @@ class WeatherViewTests(unittest.TestCase):
                 _weather_icon(ImageDraw.Draw(image), (0, 0), expected)
                 self.assertIsNotNone(image.getbbox())
 
-    def test_tonight_low_replaces_missing_day_high_with_an_explanation(self):
+    def test_tonight_low_omits_unneeded_daytime_high_explanation(self):
         now = datetime(2026, 11, 1, 0, 15, tzinfo=timezone.utc)
         state = weather_state()
         for key in ("hourly", "daily"):
@@ -118,8 +118,8 @@ class WeatherViewTests(unittest.TestCase):
         self.assertIn("TONIGHT", labels)
         self.assertIn("LOW", labels)
         self.assertIn("58", labels)
-        self.assertIn("DAY HIGH", labels)
-        self.assertIn("NOT PROVIDED", labels)
+        self.assertNotIn("DAY HIGH", labels)
+        self.assertNotIn("NOT PROVIDED", labels)
         self.assertNotIn("TODAY", labels)
         self.assertNotIn("--", labels)
         self.assertIn("NWS ISSUED 10/31 3:01 PM CDT", labels)
@@ -286,15 +286,17 @@ class NearbyViewTests(unittest.TestCase):
                 aircraft("111111", east=1, north=0),
                 aircraft("444444", east=4, north=0, registration="TEST04")]
         labels, _ = capture(render_nearby, {"nearby": rows}, self.config)
-        self.assertIn("1 TEST01", labels)
-        self.assertIn("2 TEST02", labels)
-        self.assertIn("3 TEST03", labels)
-        self.assertNotIn("4 TEST04", labels)
+        self.assertIn("1 DEMO101", labels)
+        self.assertIn("2 DEMO101", labels)
+        self.assertIn("3 DEMO101", labels)
+        self.assertLess(labels.index("TRK N/A / TEST01"), labels.index("TRK N/A / TEST02"))
+        self.assertLess(labels.index("TRK N/A / TEST02"), labels.index("TRK N/A / TEST03"))
+        self.assertNotIn("TRK N/A / TEST04", labels)
         self.assertIn("4 FRESH", labels)
-        self.assertIn("ORIGIN / DESTINATION UNAVAILABLE", labels)
+        self.assertIn("NEAREST 3 / ROUTES ONLY WHEN VERIFIED", labels)
         unknown = aircraft(registration=None, callsign=None, aircraft_type=None, altitude=None, groundspeed=None)
         labels, _ = capture(render_nearby, {"nearby": [unknown]}, self.config)
-        for value in ("1 TAIL UNAVAIL", "TYPE N/A / 1.4 MI", "ALT N/A / SPD N/A", "TAIL UNAVAILABLE"):
+        for value in ("1 ID UNAVAIL", "ROUTE N/A / 1.4 MI", "ALT N/A / GS N/A", "TRK N/A / TAIL N/A"):
             self.assertIn(value, labels)
 
     def test_future_missing_old_and_outside_positions_are_hidden_every_frame(self):

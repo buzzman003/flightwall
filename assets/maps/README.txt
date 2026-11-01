@@ -57,3 +57,23 @@ The runtime clips geography to its inset and keeps a true circular traffic
 radius; any viewport outside this regional asset uses the existing radar map.
 Its private display center is used only in memory and stays outside releases.
 Map features are reference geography, not current runway/road operating data.
+
+AIRPORT WEATHER AND RUNWAY REFERENCES (0.4.7)
+
+airport-weather-stations.json retains published four-character airport/weather
+identifiers for 8,315 matching bundled IATA airports. Identifiers are sourced,
+not formed by guessing a country prefix. Airport weather availability is still
+confirmed by the exact station identifier in the provider's response.
+airport-runways.json retains 5,537 airports with published open-runway endpoint
+coordinates and width. It includes five ATL runways and two VPS runways. These
+are display references, not taxiways, clearances, filed routes or navigation.
+An airport with missing endpoints has no invented runway geometry.
+
+Source: https://ourairports.com/data/ (public domain), retrieved October 31, 2026.
+https://davidmegginson.github.io/ourairports-data/airports.csv
+SHA256: 6c600b7821829c2bd672c97b0c1e25b51a12e1e281fbd6fb1b698156b17d6acb
+https://davidmegginson.github.io/ourairports-data/runways.csv
+SHA256: 64103ae9a363538774f43c9b7b510962ac8f1d89ec976be2c91829622d6edd67
+Reproduce with scripts/extract-airport-references.py and these CSVs. Only rows
+matching existing airport coordinates survive; closed, malformed, zero-length
+or unrelated endpoints are discarded. Raw source CSVs are not distributed.

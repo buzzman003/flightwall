@@ -37,6 +37,7 @@ def main():
         archive.add(release, arcname=f"{prefix}/releases/{version}")
         archive.add(ROOT / "scripts" / "install.sh", arcname=f"{prefix}/install.sh")
         archive.add(ROOT / "scripts" / "diagnose.sh", arcname=f"{prefix}/scripts/diagnose.sh")
+        archive.add(ROOT / "scripts" / "register-ports-media.py", arcname=f"{prefix}/scripts/register-ports-media.py")
         def source_filter(entry):
             return None if "__pycache__" in Path(entry.name).parts or entry.name.endswith(".pyc") else entry
         for name in ("batocera", "docs", "README.txt", "LICENSE.txt", "THIRD-PARTY.txt", "VERSION", "integrations"):

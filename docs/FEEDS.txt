@@ -1,5 +1,5 @@
 OPTIONAL LIVE FLIGHTS, NEARBY TRAFFIC AND WEATHER
-Flight Wall 0.4.6 source - October 31, 2026
+Flight Wall 0.4.7 source - October 31, 2026
 
 The weather card and nearby-map changes below are included in published 0.4.2.
 The owner's board now runs verified 0.4.5. After explicit approval of both location
@@ -97,7 +97,9 @@ The north-up map shows received positions around a home marker, with details
 for the three nearest aircraft and at most forty nearest points. Callsign,
 registration/tail and type appear only when the provider supplies valid values.
 Origin and destination are unavailable from this position feed and are not
-guessed. There is no moving estimate between observations or road-map imagery.
+guessed. Optional 0.4.7 AeroAPI enrichment is described below. The bundled
+regional inset includes water/roads/runways; there is no moving estimate
+between observations or automatic online map-tile query.
 
 Only positions with a provider-derived age of 0-120 seconds appear. Explicit
 ground reports are excluded; an unknown altitude remains labeled unknown.
@@ -154,8 +156,8 @@ hours and no rain mention. Missing/null/overlapping hours never establish low
 risk. Unknown or stale coverage says to check an updated forecast. Missing
 daytime data does not suppress a valid hourly rain warning.
 
-Forecast requests run separately from calendar/control work, at most every
-30 minutes; point-to-grid mapping refreshes every 24 hours. A two-hour-old fetch
+Forecast requests run separately from calendar/control work, every
+15 minutes; point-to-grid mapping refreshes every 24 hours. A two-hour-old fetch
 or twelve-hour-old forecast issuance is stale. Dates, windows and freshness are
 also checked each frame; cached data is not relabeled as newly observed.
 The TV identifies NWS and its forecast time. See weather.gov for full forecasts.
@@ -163,6 +165,45 @@ The TV identifies NWS and its forecast time. See weather.gov for full forecasts.
 To disable weather:
 
    /userdata/roms/ports/.data/flightwall/flightwall config --set weather_enabled false
+
+OPTIONAL 0.4.7 FLIGHT CONTEXT
+
+These independent choices default off. Configure them locally after installing
+0.4.7. No extra key is needed for the fixed official public feeds. They query
+public airport identifiers/coordinates, not the household's saved home point.
+Commands suppress the CLI's full private configuration output:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set trip_weather_enabled true --set national_radar_enabled true --set airport_alerts_enabled true >/dev/null
+
+Trip METAR/TAF and airport NWS poll at fifteen-minute intervals. National NOAA
+observed radar polls every ten minutes; FAA airport advisories every five.
+Cards require an eligible day-before/flight-day/layover context and fresh data.
+Radar is current observation, not tomorrow's forecast. Airport forecasts are
+dated in the configured display time zone. Read official aviation briefings
+for operational decisions. See RELEASE-0.4.7.txt for freshness and field limits.
+
+To prioritize only the current flight's flight views during its focus window:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set flight_focus_only true >/dev/null
+
+The operating geographic inset appears only with an actual fresh matched fix.
+It fits origin/destination and progressively narrows toward destination. Wide
+views have limited geographic detail; close runway references are not charts.
+Actual surface/taxi display depends on provider ground-position coverage.
+Neither a roster nor a phone report is substituted for an aircraft position.
+
+Optional nearby origin/destination metadata requires the separately configured
+AeroAPI key and flightaware_enabled setting. After reviewing paid use, enable:
+
+   /userdata/roms/ports/.data/flightwall/flightwall config --set nearby_enrichment_monthly_limit_usd 1 --set nearby_enrichment_enabled true >/dev/null
+
+This shares the existing $5 application request budget; its additional subcap
+is at most $1 or 20% of the monthly allowance, plus a low daily sublimit. One
+lookup per five minutes, cached results and operating-first polling protect
+the owner's flight allowance. Unique association and freshness are mandatory.
+Unavailable, ambiguous or missing routes stay ROUTE N/A. It is not a provider-
+account-wide hard spending limit. Set any of the above boolean choices to
+false with the same local command to disable that connection/preference.
 
 REFERENCE DOCUMENTATION
 

@@ -16,11 +16,11 @@ def boards():
     return old, current
 
 
-def test_twenty_four_genuinely_distinct_midpoint_variants(boards):
+def test_twenty_five_genuinely_distinct_midpoint_variants(boards):
     old, current = boards
-    assert len(EFFECTS) == len(set(EFFECTS)) == 24
+    assert len(EFFECTS) == len(set(EFFECTS)) == 25
     results = [compose(old, current, .5, effect, seed=7) for effect in EFFECTS]
-    assert len({hashlib.sha256(image.tobytes()).digest() for image in results}) == 24
+    assert len({hashlib.sha256(image.tobytes()).digest() for image in results}) == 25
     assert all(image.mode == "RGB" and image.size == (512, 256) for image in results)
 
 

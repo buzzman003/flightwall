@@ -1,0 +1,61 @@
+{
+  "style": {
+    "name": "Flight Wall crisp LED",
+    "font": "app original 5x7 pixel alphabet",
+    "logical_size": [
+      512,
+      256
+    ],
+    "output_size": [
+      1024,
+      512
+    ],
+    "glow": 0,
+    "dot_gap": 0.1,
+    "brightness": 1,
+    "audio": "none",
+    "exclusions": [
+      "no real household data",
+      "no home pin",
+      "no paid/network feeds",
+      "no glow/strobe"
+    ]
+  },
+  "fps": 30,
+  "duration_seconds": 15,
+  "frames": 450,
+  "timeline": [
+    {
+      "start_frame": 0,
+      "end_frame": 45,
+      "view": "brand"
+    },
+    {
+      "start_frame": 45,
+      "end_frame": 135,
+      "view": "details"
+    },
+    {
+      "start_frame": 135,
+      "end_frame": 225,
+      "view": "trip_map"
+    },
+    {
+      "start_frame": 225,
+      "end_frame": 315,
+      "view": "schedule"
+    },
+    {
+      "start_frame": 315,
+      "end_frame": 450,
+      "view": "weather"
+    }
+  ],
+  "timer_reveal_frame": 360,
+  "input": "fixed app-generated fictional fixtures only",
+  "video": "flightwall-preview.mp4",
+  "sha256": "14528aba2e46f19862b3feda06e304285386695fd06dec216c9e44fc5404a3d3",
+  "codec": "H.264 baseline",
+  "pixel_format": "yuv420p",
+  "audio_streams": 0
+}

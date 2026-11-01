@@ -125,3 +125,34 @@ def test_predeparture_status_window_does_not_buy_positions_three_hours_early(tmp
         feed.poll(config, chosen(), on_duty=True)
     assert network.call_count == 1 and "/position" not in network.call_args.args[0]
     assert feed.operating_status["status"] == "fresh" and feed.live is None
+
+
+def test_actual_touchdown_clears_marker_and_only_status_is_polled_until_gate_arrival(tmp_path):
+    feed, config = setup(tmp_path)
+    with patch("flightwall.feeds.utcnow", return_value=NOW) as now, patch("flightwall.feeds.time.monotonic", return_value=1000) as tick:
+        with patch.object(feed, "_flightaware", side_effect=[response(actual_off="2026-10-31T17:15:00Z"), position()]):
+            feed.poll(config, chosen(), on_duty=True)
+        assert feed.live is not None and feed.operating_status["phase"] == "airborne"
+        now.return_value, tick.return_value = NOW + timedelta(seconds=120), 1120
+        with patch.object(feed, "_flightaware", return_value=response(actual_off="2026-10-31T17:15:00Z", actual_on="2026-10-31T18:01:00Z")) as network:
+            feed.poll(config, chosen(), on_duty=True)
+            assert network.call_count == 1 and "/position" not in network.call_args.args[0]
+        assert feed.live is None and feed.operating_status["phase"] == "landed"
+        now.return_value, tick.return_value = NOW + timedelta(seconds=240), 1240
+        with patch.object(feed, "_flightaware", return_value=response(actual_on="2026-10-31T18:01:00Z", actual_in="2026-10-31T18:03:00Z")) as network:
+            feed.poll(config, chosen(), on_duty=True)
+            assert network.call_count == 1 and "/position" not in network.call_args.args[0]
+        assert feed.operating_status["phase"] == "at_gate" and feed.live is None
+        now.return_value, tick.return_value = NOW + timedelta(seconds=360), 1360
+        with patch.object(feed, "_flightaware") as network:
+            feed.poll(config, chosen(), on_duty=True)
+            network.assert_not_called()
+
+
+def test_missing_or_away_phone_presence_never_stops_operating_tracking(tmp_path):
+    feed, config = setup(tmp_path)
+    config |= {"chris_presence": "unknown", "lisa_presence": "away", "presence_freshness_minutes": 1}
+    with patch("flightwall.feeds.utcnow", return_value=NOW), patch.object(feed, "_flightaware", side_effect=[response(), position()]) as network:
+        feed.poll(config, chosen(), on_duty=True)
+    assert network.call_count == 2 and feed.live is not None
+    assert feed.operating_status_for_config(config, chosen(), NOW)["status"] == "fresh"

@@ -13,6 +13,7 @@ import re
 UTC = timezone.utc
 SOURCE = "FlightAware AeroAPI"
 MAX_STATUS_AGE = 300
+NEARBY_ROUTE_MAX_AGE = 600
 TIME_FIELDS = tuple(kind + "_" + event for event in ("out", "off", "on", "in") for kind in ("scheduled", "estimated", "actual"))
 _RFC3339 = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})")
 
@@ -182,3 +183,98 @@ def alert_card(status, now):
     else:
         return None
     return {**result, "id": "operating-alert-" + str(result.get("flight_id", "")), "kind": kind}
+
+
+def nearby_commercial_ident(aircraft):
+    value = aircraft.get("callsign") if isinstance(aircraft, dict) else None
+    if not isinstance(value, str):
+        return None
+    value = value.strip().upper()
+    # ADS-B airline callsigns normally carry a three-letter ICAO operator.
+    # Do not interpret an N-registration or a hex address as a flight number.
+    if value in (str(aircraft.get("hex", "")).upper(), str(aircraft.get("registration", "")).upper()):
+        return None
+    return value if re.fullmatch(r"[A-Z]{3}[0-9]{1,5}[A-Z]?", value) else None
+
+
+def match_nearby_route(data, aircraft, now):
+    """One actively airborne provider flight matching the observed callsign.
+
+    This buys metadata only, never positions, telemetry, tracks or filed route.
+    Unsupported, ambiguous, landed and mismatched registrations stay unknown.
+    """
+    ident = nearby_commercial_ident(aircraft)
+    if not ident or not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
+        return None
+    if not isinstance(aircraft.get("hex"), str) or not re.fullmatch(r"~?[0-9a-fA-F]{6}", aircraft["hex"]):
+        return None
+    try:
+        observed = stamp(aircraft.get("observed_at"))
+        if not 0 <= (now - observed).total_seconds() <= 120:
+            return None
+    except (ValueError, TypeError, OverflowError):
+        return None
+    links, pages = data.get("links"), data.get("num_pages", 1)
+    links = {} if links is None else links
+    if not isinstance(links, dict) or links.get("next") or type(pages) is not int or pages != 1:
+        return None
+    matches = []
+    for item in data["flights"]:
+        if not isinstance(item, dict) or not any(ident == item.get(key) for key in ("ident", "ident_icao", "atc_ident")):
+            continue
+        if any(item.get(key) is True for key in ("blocked", "cancelled", "diverted", "position_only")):
+            continue
+        if item.get("actual_on") is not None or item.get("actual_in") is not None:
+            continue
+        try:
+            takeoff = stamp(item.get("actual_off"))
+            if not observed - timedelta(hours=24) <= takeoff <= observed:
+                continue
+        except (ValueError, TypeError, OverflowError):
+            continue
+        identifier = item.get("fa_flight_id")
+        if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", identifier):
+            continue
+        origin, destination = item.get("origin"), item.get("destination")
+        if not isinstance(origin, dict) or not isinstance(destination, dict):
+            continue
+        origin, destination = origin.get("code_iata"), destination.get("code_iata")
+        if not all(isinstance(code, str) and re.fullmatch(r"[A-Z]{3}", code) for code in (origin, destination)) or origin == destination:
+            continue
+        provider_tail, observed_tail = item.get("registration"), aircraft.get("registration")
+        if provider_tail is not None and (not isinstance(provider_tail, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{0,15}", provider_tail)):
+            continue
+        if provider_tail and observed_tail and provider_tail != observed_tail:
+            continue
+        matches.append({"origin": origin, "destination": destination, "source": SOURCE,
+                        "fetched_at": now.astimezone(UTC).isoformat(), "provider_flight_id": identifier,
+                        "callsign": ident, "registration": observed_tail or None,
+                        "aircraft_hex": aircraft.get("hex"), "actual_off": takeoff.isoformat()})
+    return matches[0] if len(matches) == 1 else None
+
+
+def fresh_nearby_route(aircraft, now):
+    """Per-frame metadata guard; source position and lookup age are separate."""
+    route = aircraft.get("route") if isinstance(aircraft, dict) else None
+    if not isinstance(route, dict) or nearby_commercial_ident(aircraft) != route.get("callsign"):
+        return None
+    if not isinstance(aircraft.get("hex"), str) or not re.fullmatch(r"~?[0-9a-fA-F]{6}", aircraft["hex"]):
+        return None
+    if route.get("aircraft_hex") != aircraft.get("hex") or route.get("registration") != (aircraft.get("registration") or None):
+        return None
+    try:
+        observed, fetched, takeoff = (stamp(value) for value in (aircraft.get("observed_at"), route.get("fetched_at"), route.get("actual_off")))
+        if (not 0 <= (now - observed).total_seconds() <= 120
+                or not 0 <= (now - fetched).total_seconds() <= NEARBY_ROUTE_MAX_AGE
+                or not observed - timedelta(hours=24) <= takeoff <= observed):
+            return None
+    except (ValueError, TypeError, OverflowError):
+        return None
+    if (route.get("source") != SOURCE
+            or not isinstance(route.get("provider_flight_id"), str)
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", route["provider_flight_id"])
+            or not all(isinstance(route.get(key), str) and re.fullmatch(r"[A-Z]{3}", route[key]) for key in ("origin", "destination"))
+            or route["origin"] == route["destination"]):
+        return None
+    fields = {"origin", "destination", "source", "fetched_at", "provider_flight_id", "callsign", "registration", "aircraft_hex", "actual_off"}
+    return {key: copy.deepcopy(route[key]) for key in fields if key in route}

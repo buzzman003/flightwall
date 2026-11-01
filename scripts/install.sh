@@ -129,6 +129,17 @@ cp "$PACKAGE_DIR/batocera/flightwall-service" "$SERVICES_DIR/flightwall"
 cp "$PACKAGE_DIR/batocera/flightwall-tailscale-service" "$SERVICES_DIR/flightwall_tailscale"
 chmod 755 "$SERVICES_DIR/flightwall" "$SERVICES_DIR/flightwall_tailscale"
 
+MEDIA_DIR="$PACKAGE_DIR/releases/$VERSION/_internal/assets/ports"
+if [ -f "$PACKAGE_DIR/scripts/register-ports-media.py" ] && [ -d "$MEDIA_DIR" ]; then
+    if command -v python3 >/dev/null 2>&1; then
+        python3 "$PACKAGE_DIR/scripts/register-ports-media.py" --ports-dir "$PORTS_DIR" \
+            --assets-dir "$MEDIA_DIR" --backup-dir "$DATA_DIR/ports-media-backups" --apply \
+            || echo 'Flight Wall is installed; Ports media needs local review. Existing metadata backups were retained.' >&2
+    else
+        echo 'Flight Wall is installed; automatic Ports artwork setup needs the system python3 command.' >&2
+    fi
+fi
+
 echo "Installed Flight Wall $VERSION. No additional background services were enabled."
 echo 'If this is an upgrade, the new release activates when you next open Flight Wall from Ports.'
 echo "In Batocera: MAIN MENU > GAME SETTINGS > UPDATE GAMELISTS, then PORTS > Flight Wall."

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import copy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
 import time
@@ -25,7 +25,9 @@ from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .weather import WeatherFeed
-from .flight_alerts import choose_tracking_flight
+from .trip_weather import TripWeatherFeed, select_airports
+from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
+from .flight_alerts import SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fresh_status, stamp as flight_stamp
 
 
 def choose_flight(snapshot, config, now=None):
@@ -68,6 +70,8 @@ class Runtime:
         self._demo_snapshot = demo_snapshot(datetime.now(timezone.utc))
         self.feeds = FlightFeeds(data_dir)
         self.weather = WeatherFeed(data_dir, self.config.get)
+        self.trip_weather = TripWeatherFeed(data_dir, self.config.get)
+        self.environment = FlightEnvironmentFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
@@ -88,6 +92,10 @@ class Runtime:
         self._mail_worker = None
         self._content_worker = None
         self._weather_worker = None
+        self._trip_weather_worker = None
+        self._environment_worker = None
+        # One transient confirmed arrival, never a location/presence history.
+        self._recent_vps_arrival = None
         self._mail_refresh = threading.Event()
         self._content_refresh = threading.Event()
 
@@ -133,7 +141,9 @@ class Runtime:
         flight = choose_flight(snapshot, config, now)
         operating = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
         operating_status = self.feeds.operating_status_for_config(config, operating, now)
-        if (operating_status.get("status") == "fresh"
+        recent_arrival = self._vps_arrival(snapshot, config, operating, operating_status, now)
+        if ((operating_status.get("status") == "fresh"
+             or config.get("flight_focus_only") is True and operating_status.get("status") == "stale")
                 and operating_status.get("phase") in {"departed_gate", "airborne", "landed"}):
             flight = operating
         personal_error = None
@@ -143,6 +153,12 @@ class Runtime:
             personal_items, personal_error = [], str(exc)
         with self.lock:
             live = self.feeds.live
+            operating_live = live
+            if (not isinstance(operating, dict) or not isinstance(operating_live, dict)
+                    or operating_live.get("flight_id") != operating.get("id")
+                    or not operating_status.get("provider_flight_id")
+                    or operating_live.get("provider_flight_id") != operating_status.get("provider_flight_id")):
+                operating_live = None
             if not flight or not live or live.get("flight_id") != flight.get("id"):
                 live = None
             status = {"version": __version__, "snapshot": snapshot, "config": self.config.public(),
@@ -153,6 +169,8 @@ class Runtime:
                     "personal_items": personal_items, "personal_error": personal_error}
         status["operating_status"] = operating_status
         status["operating_flight"] = operating
+        status["operating_live"] = copy.deepcopy(operating_live)
+        status["recent_vps_arrival"] = recent_arrival
         household = self.household.status(now=now)
         status.update(presence=self.presence.snapshot(now), kids=household.get("kids", {}))
         status["custody_outlook"] = household.get("custody_outlook", {}) if config["family_calendar_id"] else {}
@@ -163,6 +181,54 @@ class Runtime:
         except Exception:
             status["weather"] = {"status": "unavailable", "source": "National Weather Service",
                                  "error": "Weather status is unavailable."}
+        try:
+            airport_weather = copy.deepcopy(self.trip_weather.status(now))
+            if not isinstance(airport_weather, dict) or not isinstance(airport_weather.get("airports"), list):
+                raise ValueError("Invalid airport weather status")
+            status["trip_weather"] = airport_weather
+        except Exception:
+            status["trip_weather"] = {"status": "unavailable", "source": "AviationWeather.gov",
+                                      "airports": [], "error": "Airport weather status is unavailable."}
+        try:
+            environment = copy.deepcopy(self.environment.status(now))
+            if (not isinstance(environment, dict) or not isinstance(environment.get("radar"), dict)
+                    or not isinstance(environment.get("airport_alerts"), dict)
+                    or not isinstance(environment["airport_alerts"].get("events"), list)):
+                raise ValueError("Invalid flight environment status")
+            status["national_radar"] = environment["radar"]
+            status["airport_alerts"] = environment["airport_alerts"]
+        except Exception:
+            status["national_radar"] = {"status": "unavailable", "source": "NOAA",
+                                        "image_available": False, "error": "National radar status is unavailable."}
+            status["airport_alerts"] = {"status": "unavailable", "source": "FAA",
+                                        "events": [], "error": "Airport advisory status is unavailable."}
+        # Context is reselected without network I/O. A calendar switch need not
+        # wait for the independent workers to discard a previous airport batch.
+        try:
+            airports = {row["iata"] for row in select_airports(snapshot, now, timezone=config.get("timezone", "UTC"))}
+        except (KeyError, TypeError, ValueError, OSError, OverflowError):
+            airports = set()
+        trip_weather = status["trip_weather"]
+        trip_weather["airports"] = [row for row in trip_weather.get("airports", [])
+                                    if isinstance(row, dict) and row.get("iata") in airports]
+        status["airport_alerts"]["events"] = [row for row in status["airport_alerts"].get("events", [])
+                                              if isinstance(row, dict) and row.get("airport") in airports]
+        if not airports:
+            if trip_weather.get("status") not in {"demo", "off"}:
+                trip_weather["status"] = "idle"
+            if status["airport_alerts"].get("status") not in {"demo", "off"}:
+                status["airport_alerts"]["status"] = "outside_window"
+        # Global radar has a broader day/day-before context, including shown
+        # deadheads and legs without a supported METAR station. Do not couple
+        # it to the narrower operating-airport weather/advisory selection.
+        try:
+            radar_eligible = radar_context(snapshot, config, now)
+        except (KeyError, TypeError, ValueError, OSError, OverflowError):
+            radar_eligible = False
+        if not radar_eligible:
+            if status["national_radar"].get("status") not in {"demo", "off"}:
+                status["national_radar"]["status"] = "outside_window"
+            status["national_radar"].update(image_available=False, image_sha256=None)
         try:
             results = copy.deepcopy(self.feeds.watch_results)
             available = tracking_available(self.data_dir, config)
@@ -197,7 +263,7 @@ class Runtime:
                 if data:
                     item["image_data"] = data
         status["layovers"] = self.content.layovers(snapshot, now) if context["chris_away"] else []
-        if context["chris_away"]:
+        if context["chris_away"] and not context["recent_vps_arrival"]:
             status["nearby"] = []
         setup_url = (config["public_url"] or f"http://127.0.0.1:{config['control_port']}") + "/setup"
         status["setup_required"] = not (self.data_dir / "setup-complete.json").exists()
@@ -205,6 +271,53 @@ class Runtime:
                       if config["public_url"] else "Use the setup guide to open this address through a localhost SSH tunnel.")
         status["setup"] = {"url": setup_url, "title": "Make this wall yours", "body": setup_body}
         return status
+
+    def _vps_arrival(self, snapshot, config, operating, provider, now):
+        """Retain one actual VPS arrival for at most one hour, without presence.
+
+        The calendar identity is internal only. Switching accounts/calendars or
+        disabling tracking invalidates this exception immediately. A schedule,
+        estimated arrival, diversion or stale first observation cannot create it.
+        """
+        identity = self._calendar_selection(config), config.get("airline")
+        flights = snapshot.get("flights", []) if isinstance(snapshot, dict) else []
+        if not isinstance(flights, list):
+            flights = []
+        enabled = (isinstance(snapshot, dict) and snapshot.get("demo") is False
+                   and config.get("flightaware_enabled") is True)
+        with self.lock:
+            retained = self._recent_vps_arrival
+            if (not enabled or not retained or retained[0] != identity
+                    or not any(isinstance(row, dict) and row.get("id") == retained[1]["flight_id"]
+                               and row.get("destination") == "VPS" and not row.get("deadhead") for row in flights)):
+                retained = None
+            current = fresh_status(provider, now)
+            if (enabled and isinstance(operating, dict) and not operating.get("deadhead")
+                    and operating.get("destination") == "VPS" and current.get("status") == "fresh"
+                    and current.get("source") == FLIGHT_SOURCE and current.get("phase") in {"landed", "at_gate"}
+                    and current.get("flight_id") == operating.get("id")
+                    and current.get("provider_flight_id")
+                    and current.get("origin") == operating.get("origin") and current.get("destination") == "VPS"
+                    and current.get("cancelled") is not True and current.get("diverted") is not True
+                    and any(isinstance(row, dict) and row == operating for row in flights)):
+                times = current.get("times") if isinstance(current.get("times"), dict) else {}
+                basis = "actual_on" if times.get("actual_on") else "actual_in"
+                try:
+                    arrived = flight_stamp(times.get(basis))
+                    if timedelta(0) <= now - arrived < timedelta(hours=1):
+                        record = {"flight_id": operating["id"], "destination": "VPS", "arrived_at": arrived.isoformat(),
+                                  "basis": basis, "source": FLIGHT_SOURCE}
+                        retained = identity, record
+                except (TypeError, ValueError, OverflowError):
+                    pass
+            if retained:
+                try:
+                    if not timedelta(0) <= now - flight_stamp(retained[1]["arrived_at"]) < timedelta(hours=1):
+                        retained = None
+                except (TypeError, KeyError, ValueError, OverflowError):
+                    retained = None
+            self._recent_vps_arrival = retained
+            return copy.deepcopy(retained[1]) if retained else None
 
     def status(self, now=None):
         """Maintenance/MCP never receives Lisa's private cards or mailbox data."""
@@ -382,17 +495,24 @@ class Runtime:
                 self.refresh_event.clear()
                 self.sync()
                 last_sync = time.monotonic()
-            roster_selected = choose_flight(self.snapshot(), config)
-            selected = choose_tracking_flight(self.snapshot(), config, datetime.now(timezone.utc), self.feeds.operating_status)
-            context = household_context({"presence": self.presence.snapshot(), "snapshot": self.snapshot(),
-                                         "operating_status": self.feeds.operating_status}, config)
+            now = datetime.now(timezone.utc)
+            snapshot = self.snapshot()
+            roster_selected = choose_flight(snapshot, config, now)
+            selected = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
+            provider = self.feeds.operating_status_for_config(config, selected, now)
+            recent = self._vps_arrival(snapshot, config, selected, provider, now)
+            context = household_context({"presence": self.presence.snapshot(now), "snapshot": snapshot,
+                                         "recent_vps_arrival": recent, "operating_status": provider}, config, now)
             try:
                 watches = self.flight_watches.list_watches()
             except (ValueError, OSError):
                 watches = []
             try:
-                self.feeds.poll(config, selected, on_duty=is_on_duty(roster_selected, config)
-                                or context["chris_away"] or context["flight_priority"], watches=watches)
+                self.feeds.poll(config, selected, on_duty=context["flight_priority"] or
+                                (not context["recent_vps_arrival"] and
+                                 (is_on_duty(roster_selected, config, now) or context["chris_away"])), watches=watches)
+                provider = self.feeds.operating_status_for_config(config, selected, now)
+                self._vps_arrival(snapshot, config, selected, provider, now)
             except Exception:
                 self.feeds.error = "Optional traffic feed is unavailable."
             if config["updates_enabled"] and tick - last_update >= config["update_interval_minutes"] * 60:
@@ -434,6 +554,24 @@ class Runtime:
                 self.weather.poll()
             except Exception:
                 pass  # Provider/cache errors remain sanitized in weather status.
+            self.stop_event.wait(2)
+
+    def _run_trip_weather(self):
+        # Airport batches/forecasts cannot block home weather or paid tracking.
+        while not self.stop_event.is_set():
+            try:
+                self.trip_weather.poll(self.snapshot(), datetime.now(timezone.utc))
+            except Exception:
+                pass
+            self.stop_event.wait(2)
+
+    def _run_environment(self):
+        # FAA advisories and national radar have their own bounded provider I/O.
+        while not self.stop_event.is_set():
+            try:
+                self.environment.poll(self.snapshot(), datetime.now(timezone.utc))
+            except Exception:
+                pass
             self.stop_event.wait(2)
 
     def _sync_content(self):
@@ -480,6 +618,10 @@ class Runtime:
         self.worker.start()
         self._weather_worker = threading.Thread(target=self._run_weather, name="flightwall-weather", daemon=True)
         self._weather_worker.start()
+        self._trip_weather_worker = threading.Thread(target=self._run_trip_weather, name="flightwall-trip-weather", daemon=True)
+        self._trip_weather_worker.start()
+        self._environment_worker = threading.Thread(target=self._run_environment, name="flightwall-environment", daemon=True)
+        self._environment_worker.start()
         return self
 
     def stop(self):
@@ -490,3 +632,7 @@ class Runtime:
             self.worker.join(timeout=2)
         if self._weather_worker:
             self._weather_worker.join(timeout=2)
+        if self._trip_weather_worker:
+            self._trip_weather_worker.join(timeout=2)
+        if self._environment_worker:
+            self._environment_worker.join(timeout=2)

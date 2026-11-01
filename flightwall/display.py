@@ -27,7 +27,9 @@ from .household_policy import build_rotation, card_visible, filter_personal_item
 def fresh_household_status(status, config, now=None, *, backend_available=True):
     """Recheck cached presence every frame; cached booleans are insufficient."""
     now = now or datetime.now(timezone.utc)
+    backend_available = backend_available and status.get("backend_available", True) is not False
     result = dict(status)
+    result["backend_available"] = bool(backend_available)
     source_presence = status.get("presence") or {}
     presence = {}
     for profile in ("chris", "lisa"):
@@ -63,6 +65,7 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
         result["custody_outlook"] = dict(outlook, stale=outlook.get("stale") is not False or not fresh)
     if not backend_available:
         result["live"], result["nearby"] = None, []
+        result["operating_live"] = None
     from .flight_alerts import fresh_status
     result["operating_status"] = fresh_status(status.get("operating_status"), now, backend_available=backend_available)
     if not backend_available:
@@ -130,13 +133,19 @@ def entry_render_state(status, config, entry, now=None):
              "weather": status.get("weather", {}),
              "operating_status": status.get("operating_status", {}),
              "operating_flight": status.get("operating_flight"),
+             "operating_live": status.get("operating_live"),
+             "backend_available": status.get("backend_available", True),
+             "trip_weather": status.get("trip_weather", {}),
+             "national_radar": status.get("national_radar", {}),
+             "airport_alerts": status.get("airport_alerts", {}),
+             "selected_weather_airport": item if view == "trip_weather" else None,
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,
              "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
-    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook"}:
+    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "operating_map", "trip_weather", "national_radar", "airport_alerts"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):
         artwork = decode_artwork(image_data)
@@ -290,10 +299,11 @@ class CardTransition:
             if elapsed < 0:
                 self.cancel()
                 return frame
-            if elapsed >= self.duration:
+            duration = 2.0 if self._effect == "split_flap" else self.duration
+            if elapsed >= duration:
                 self._previous = None
             else:
-                frame = compose(self._previous, frame, elapsed / self.duration, self._effect, seed=self._seed)
+                frame = compose(self._previous, frame, elapsed / duration, self._effect, seed=self._seed)
         self._last = self._copy(frame)
         return frame
 
@@ -405,6 +415,28 @@ class BackendConnection:
         except (OSError, ValueError, TypeError, AttributeError):
             return {}
 
+    def local_radar_image(self, expected_sha256):
+        """Read one fixed local public-radar cache, never a server-supplied path."""
+        import re
+        if not isinstance(expected_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+            return None
+        try:
+            path = self.data_dir / "national-radar.png"
+            if path.is_symlink():
+                return None
+            with path.open("rb") as stream:
+                raw = stream.read(4_000_001)
+            if len(raw) > 4_000_000 or hashlib.sha256(raw).hexdigest() != expected_sha256:
+                return None
+            with Image.open(io.BytesIO(raw)) as source:
+                if source.format != "PNG" or not 1 <= source.width <= 2048 or not 1 <= source.height <= 1024:
+                    return None
+                image = source.convert("RGB")
+                image.info.clear()
+                return image
+        except (OSError, ValueError, TypeError, Image.DecompressionBombError):
+            return None
+
 
 def display_viewport(screen_size, frame_size=(512, 256), mode="fit"):
     """Center a complete canvas with the same aspect ratio in both renderers.
@@ -450,7 +482,7 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
     The map is drawn after the LED pass, in the same animated content inset.
     Private coordinates are read locally and never attached to frame metadata.
     """
-    if (state.get("view") != "nearby" or state.get("demo", config.get("demo", False))
+    if (state.get("view") != "nearby" or config.get("demo") is True or state.get("demo", False) is not False
             or config.get("nearby_enabled") is not True or config.get("nearby_detailed_map", True) is not True):
         return frame
     try:
@@ -467,6 +499,45 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
             frame.info["geographic_patch"] = (box, image)
     except (OSError, ValueError, TypeError, AttributeError, ImportError):
         # A missing regional asset or private point retains the position plot.
+        pass
+    return frame
+
+
+def attach_flight_context(frame, state, config, connection, screen_size, now,
+                          timer_progress=None, ticker_progress=None):
+    """Present public geography/radar after LEDs, using the same live insets."""
+    if state.get("view") not in {"operating_map", "national_radar"}:
+        return frame
+    if (state.get("backend_available", True) is not True or config.get("demo") is True
+            or state.get("demo", False) is not False):
+        return frame
+    try:
+        left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+        radar = state["view"] == "national_radar"
+        box = (left + 14 * width / 512, top + 56 * height / 256,
+               (484 if radar else 297) * width / 512, (169 if radar else 149) * height / 256)
+        _, _, dest_w, dest_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+        size = (max(256, min(2048, round(box[2] * dest_w / 512))),
+                max(128, min(1024, round(box[3] * dest_h / 256))))
+        if radar:
+            from .flight_context_views import radar_ready
+            meta = state.get("national_radar", {})
+            image = connection.local_radar_image(meta.get("image_sha256")) if radar_ready(state, config, now) else None
+            if image is not None:
+                from PIL import ImageOps
+                image = ImageOps.contain(image, size, Image.Resampling.LANCZOS)
+                panel = Image.new("RGB", size, (5, 15, 21))
+                panel.paste(image, ((size[0] - image.width) // 2, (size[1] - image.height) // 2))
+                image = panel
+        else:
+            from .operating_map import render_map
+            image = render_map(state.get("operating_flight"), state.get("operating_status"),
+                               state.get("operating_live"), size, now,
+                               enabled=config.get("flightaware_enabled") is True,
+                               demo=False, backend_available=True)
+        if isinstance(image, Image.Image):
+            frame.info["geographic_patch"] = (box, image)
+    except (OSError, ValueError, TypeError, AttributeError, ImportError):
         pass
     return frame
 
@@ -800,6 +871,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                 if display_surface is not None:
                     attach_nearby_map(frame, state, config, connection, display_surface.get_size(),
                                       wall_now, timer_progress, ticker_progress)
+                    attach_flight_context(frame, state, config, connection, display_surface.get_size(),
+                                          wall_now, timer_progress, ticker_progress)
             screen.draw(frame, config)
             if frames == 0 and on_healthy:
                 on_healthy()

@@ -18,7 +18,7 @@ class ReleasePrivacyTests(unittest.TestCase):
 
     def test_runtime_private_directories_rejected_even_nested_or_empty(self):
         for name in ("accounts", "artwork", "presence", "shopping", "phone-invites", "updates", "logs",
-                     ".local-install", ".aws", ".ssh", ".codex", ".agents", "userdata", "secrets"):
+                     ".local-install", ".aws", ".ssh", ".codex", ".agents", "userdata", "secrets", "trip-weather"):
             with self.subTest(name=name):
                 folder = self.source / "_internal" / name
                 folder.mkdir(parents=True)
@@ -34,7 +34,8 @@ class ReleasePrivacyTests(unittest.TestCase):
                  "openai-usage.json", "flightaware-usage.json", "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                  "control-token.txt", "alexa-token.txt", "notification-token.txt", "customtoken.txt", "lisa.token",
                  "openai.key", "flightaware.key", "personal.lock", "timers.lock", "flight-watches.lock",
-                 "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock")
+                 "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock",
+                 "trip-weather.json", "flight-environment.json", "national-radar.png")
         for name in names:
             with self.subTest(name=name):
                 path = self.source / name

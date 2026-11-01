@@ -22,6 +22,7 @@ EFFECTS = (
     "barn_horizontal", "barn_vertical",
     "slide_left", "slide_right", "slide_up", "slide_down",
     "tiles_diagonal", "scanlines_horizontal", "scanlines_vertical",
+    "split_flap",
 )
 MAX_SIZE = (512, 256)
 
@@ -53,6 +54,41 @@ def _slide(previous, current, progress, direction):
         else:
             result.paste(previous.crop((0, 0, width, height - distance)), (0, distance))
             result.paste(current.crop((0, height - distance, width, height)), (0, 0))
+    return result
+
+
+def _split_flap(previous, current, progress, seed):
+    """Stagger hinged cell halves without sound, flashing or invented colors."""
+    result = current.copy()
+    rng = random.Random(seed)
+    for y in range(0, current.height, 16):
+        for x in range(0, current.width, 32):
+            width, height = min(32, current.width - x), min(16, current.height - y)
+            phase = max(0, min(1, (progress - rng.random() * .22) / .78))
+            old = previous.crop((x, y, x + width, y + height))
+            new = current.crop((x, y, x + width, y + height))
+            if phase <= 0:
+                result.paste(old, (x, y))
+                continue
+            if phase >= 1:
+                continue
+            if height < 2:
+                result.paste(old if phase < .5 else new, (x, y))
+                continue
+            hinge = height // 2
+            if phase < .5:
+                result.paste(old.crop((0, hinge, width, height)), (x, y + hinge))
+                folded = round(hinge * math.cos(phase * math.pi))
+                if folded:
+                    flap = old.crop((0, 0, width, hinge)).resize((width, folded), Image.Resampling.NEAREST)
+                    result.paste(flap, (x, y + hinge - folded))
+            else:
+                result.paste(old.crop((0, hinge, width, height)), (x, y + hinge))
+                unfolded = round((height - hinge) * math.sin((phase - .5) * math.pi))
+                if unfolded:
+                    flap = new.crop((0, hinge, width, height)).resize((width, unfolded), Image.Resampling.NEAREST)
+                    result.paste(flap, (x, y + hinge))
+    result.info.clear()
     return result
 
 
@@ -171,6 +207,8 @@ def compose(previous, current, progress, effect, *, seed=0):
     if progress >= 1:
         return _copy(current)
     seed = (seed & ((1 << 64) - 1)) if type(seed) is int else 0
+    if effect == "split_flap":
+        return _split_flap(previous, current, progress, seed)
     if effect.startswith("slide_"):
         return _slide(previous, current, progress, effect.removeprefix("slide_"))
     result = Image.composite(current, previous, _mask(current.size, progress, effect, seed))

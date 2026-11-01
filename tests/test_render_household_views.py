@@ -345,6 +345,20 @@ class TripAndHomeRenderTests(unittest.TestCase):
         self.assertEqual(rows[0]["_trip_color"], rows[2]["_trip_color"])
         self.assertNotEqual(rows[2]["_trip_color"], rows[3]["_trip_color"])
 
+    def test_summary_keeps_visit_label_and_shows_flight_designator_only_once(self):
+        leg = dict(self.preview["flights"][2], number="DL789")
+        preview = self.preview | {"days": [{"date": "2026-10-31", "legs": [leg]}], "flights": [leg]}
+        calls = []
+        original = render._text
+        def capture(draw, xy, value, *args, **kwargs):
+            calls.append((xy, str(value)))
+            return original(draw, xy, value, *args, **kwargs)
+        with patch.object(render, "_text", side_effect=capture):
+            render.render_frame(self.state | {"view": "trip_summary", "trip_preview": preview}, {"timezone": "America/Chicago"})
+        self.assertIn(((56, 86), "VPS VISIT"), calls)
+        self.assertIn(((139, 88), "DL789"), calls)
+        self.assertEqual([value for _, value in calls].count("DL789"), 1)
+
     def test_trip_map_keeps_airport_codes_and_number_plates_off_the_geography(self):
         calls = []
         original = render._text

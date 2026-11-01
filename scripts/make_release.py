@@ -58,7 +58,8 @@ def _source_files(source: Path, private_key: Path):
                        "household-calendars.json", "personal.json", "content.json", "layovers.json",
                        "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json",
                        "consents.json", "setup-consents.json", "setup-complete.json",
-                       "openai-usage.json", "flightaware-usage.json",
+                       "openai-usage.json", "flightaware-usage.json", "flight-environment.json",
+                       "national-radar.png", "trip-weather.json",
                        "sms.json", "flightwall-list.json", "list.json", "lisa.json",
                        "personal.lock", "timers.lock", "flight-watches.lock",
                        "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock"}
@@ -67,7 +68,7 @@ def _source_files(source: Path, private_key: Path):
     # remain valid; a directory named shopping contains mutable household data.
     forbidden_dirs = {".git", ".ssh", ".aws", ".codex", ".agents", ".local-install",
                       "userdata", "secrets", "accounts", "artwork", "presence",
-                      "shopping", "phone-invites", "updates", "logs"}
+                      "shopping", "phone-invites", "updates", "logs", "trip-weather"}
     files = []
     total = 0
     for path in sorted(source.rglob("*")):

@@ -6,6 +6,7 @@ does no I/O and never infers a person's physical presence from a flight roster.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import math
 from urllib.parse import urlsplit
 from .outlook import trip_preview
 
@@ -48,10 +49,18 @@ def _flights(status, config):
 def _priority_flight(status, config, now):
     from .flight_alerts import fresh_status, within_tracking_window
     live_status = fresh_status(status.get("operating_status"), now)
-    if (config.get("flightaware_enabled") is True and live_status.get("status") == "fresh"
-            and live_status.get("phase") in {"departed_gate", "airborne", "landed"}):
+    confirmed = live_status.get("status") == "fresh" or (
+        config.get("flight_focus_only") is True and live_status.get("status") == "stale")
+    arrived_id = (status.get("recent_vps_arrival") or {}).get("flight_id") if recent_vps_arrival(status, now) else None
+    if (config.get("flightaware_enabled") is True and confirmed
+            and live_status.get("source") == "FlightAware AeroAPI"
+            and live_status.get("provider_flight_id")
+            and live_status.get("phase") in {"departed_gate", "airborne"}):
         matched = next((flight for flight, _, _ in _flights(status, config)
-                        if flight.get("id") == live_status.get("flight_id") and within_tracking_window(flight, now)), None)
+                        if flight.get("id") != arrived_id and flight.get("id") == live_status.get("flight_id")
+                        and (flight.get("origin"), flight.get("destination")) ==
+                        (live_status.get("origin"), live_status.get("destination"))
+                        and not flight.get("deadhead") and within_tracking_window(flight, now)), None)
         if matched:
             return matched
     def minutes(key):
@@ -60,7 +69,7 @@ def _priority_flight(status, config, now):
     before = timedelta(minutes=minutes("flight_window_before_minutes"))
     after = timedelta(minutes=minutes("flight_window_after_minutes"))
     candidates = [entry for entry in _flights(status, config)
-                  if entry[1] - before <= now < entry[2] + after]
+                  if entry[0].get("id") != arrived_id and entry[1] - before <= now < entry[2] + after]
     if not candidates:
         return None
     def order(entry):
@@ -68,6 +77,23 @@ def _priority_flight(status, config, now):
         phase = 0 if start <= now < end else 1 if now < start else 2
         return phase, abs((start - now).total_seconds())
     return min(candidates, key=order)[0]
+
+
+def recent_vps_arrival(status, now=None):
+    """A short actual-arrival exception for the local map, never presence."""
+    now = _now(now)
+    record = status.get("recent_vps_arrival") if isinstance(status, dict) else None
+    snapshot = status.get("snapshot") if isinstance(status, dict) else None
+    if (not isinstance(record, dict) or not isinstance(snapshot, dict) or snapshot.get("demo") is not False
+            or record.get("destination") != "VPS" or record.get("source") != "FlightAware AeroAPI"
+            or record.get("basis") not in {"actual_on", "actual_in"} or not record.get("flight_id")):
+        return False
+    arrived = _time(record.get("arrived_at"))
+    if arrived is None or not timedelta(0) <= now - arrived < timedelta(hours=1):
+        return False
+    return any(isinstance(row, dict) and row.get("id") == record["flight_id"]
+               and row.get("destination") == "VPS" and not row.get("deadhead")
+               for row in snapshot.get("flights") or [])
 
 
 def household_context(status, config, now=None):
@@ -86,6 +112,7 @@ def household_context(status, config, now=None):
     # A real roster can control display timing while a phone is in airplane
     # mode. This is a display choice, never evidence of physical presence.
     result["flight_priority"] = _priority_flight(status, config, now) is not None
+    result["recent_vps_arrival"] = recent_vps_arrival(status, now)
     # Being known away is enough to suppress unrelated local traffic. A roster
     # alone must not become a claim that Chris has physically left home.
     result["trip_away"] = result["chris_away"]
@@ -176,6 +203,29 @@ def card_visible(view, card, context, config, now=None):
     return False
 
 
+def _operating_map_available(status, selected, config, now):
+    """Only an independently fresh, exactly associated provider position."""
+    from .flight_alerts import fresh_status
+    current = fresh_status(status.get("operating_status"), now)
+    live = status.get("operating_live")
+    if (config.get("flightaware_enabled") is not True or config.get("demo") is True
+            or (status.get("snapshot") or {}).get("demo") is not False
+            or not isinstance(selected, dict) or selected.get("deadhead") or not isinstance(live, dict)
+            or current.get("status") != "fresh" or current.get("source") != "FlightAware AeroAPI"
+            or current.get("phase") not in {"scheduled", "departed_gate", "airborne"}
+            or current.get("cancelled") is True or current.get("diverted") is True
+            or current.get("flight_id") != selected.get("id") or live.get("flight_id") != selected.get("id")
+            or not current.get("provider_flight_id") or current["provider_flight_id"] != live.get("provider_flight_id")
+            or (current.get("origin"), current.get("destination")) != (selected.get("origin"), selected.get("destination"))
+            or live.get("source") not in {"FlightAware", "FlightAware AeroAPI"}):
+        return False
+    observed = _time(live.get("observed_at"))
+    latitude, longitude = live.get("latitude"), live.get("longitude")
+    return bool(observed and timedelta(0) <= now - observed <= timedelta(seconds=300)
+                and all(type(value) in (int, float) and math.isfinite(value) for value in (latitude, longitude))
+                and -85 <= latitude <= 85 and -180 <= longitude <= 180)
+
+
 def build_rotation(status, config, now=None):
     """Build stable, ordered slots for the GUI: key/view/duration_seconds/item.
 
@@ -200,17 +250,23 @@ def build_rotation(status, config, now=None):
     selected = _priority_flight(status, config, now) if context["flight_priority"] else status.get("selected_flight")
     snapshot = status.get("snapshot") or {}
     preview = trip_preview(snapshot, config, now)
+    # Current-flight-only applies to flight views, not the family's short cards.
+    # Outside current flight focus, the owner's normal preview remains useful.
+    strict = config.get("flight_focus_only") is True and context["flight_priority"]
+    operating_map = _operating_map_available(status, selected, config, now)
     if snapshot.get("demo") or context["flight_priority"]:
-        for view in ("details", "map", "schedule"):
-            add(view, seconds=focus if context["flight_priority"] and view in {"details", "map"} else duration,
+        views = ("details", "operating_map" if operating_map else "map") + (() if strict else ("schedule",))
+        for view in views:
+            add(view, seconds=focus if context["flight_priority"] and view in {"details", "map", "operating_map"} else duration,
                 selected_flight=selected)
     elif not preview:
         add("home")
-    if preview:
+    if preview and not strict:
         for page in range((len(preview["flights"]) + 2) // 3):
             for view in ("trip_summary", "trip_map"):
                 add(view, f"{view}:{page}", trip_page=page, trip_preview=preview)
-    if config.get("nearby_enabled") is True and not context["trip_away"] and not context["flight_priority"] and not status.get("on_duty"):
+    if (config.get("nearby_enabled") is True and not context["flight_priority"]
+            and (context["recent_vps_arrival"] or not context["trip_away"] and not status.get("on_duty"))):
         add("nearby")
     if config.get("weather_enabled") is True and snapshot.get("demo") is False:
         add("weather")
@@ -219,8 +275,29 @@ def build_rotation(status, config, now=None):
     tracked = status.get("operating_flight")
     if (config.get("flightaware_enabled") is True and snapshot.get("demo") is False
             and isinstance(tracked, dict) and within_tracking_window(tracked, now)
+            and (not strict or isinstance(selected, dict) and tracked.get("id") == selected.get("id"))
             and any(flight.get("id") == tracked.get("id") for flight, _, _ in _flights(status, config))):
         add("flight_status", "flight_status:" + str(tracked.get("id") or "current"))
+    section = status.get("trip_weather")
+    if config.get("trip_weather_enabled") is True and snapshot.get("demo") is False and isinstance(section, dict):
+        seen = set()
+        for airport in _cards(section.get("airports"))[:4]:
+            code = airport.get("iata")
+            if (isinstance(code, str) and len(code) == 3 and code.isascii() and code.isalpha() and code.isupper()
+                    and code not in seen):
+                add("trip_weather", "trip_weather:" + code, item=airport)
+                seen.add(code)
+    section = status.get("national_radar")
+    if (config.get("national_radar_enabled") is True and snapshot.get("demo") is False
+            and isinstance(section, dict) and section.get("status") not in {None, "demo", "off", "idle", "outside_window"}):
+        add("national_radar")
+    section = status.get("airport_alerts")
+    if (config.get("airport_alerts_enabled") is True and snapshot.get("demo") is False
+            and isinstance(section, dict) and section.get("status") == "ready" and _cards(section.get("events"))):
+        fetched, issued = _time(section.get("fetched_at")), _time(section.get("issued_at"))
+        if (fetched and issued and timedelta(0) <= now - fetched < timedelta(seconds=600)
+                and timedelta(0) <= now - issued < timedelta(seconds=900)):
+            add("airport_alerts")
     if config.get("custody_outlook_enabled", True) and status.get("custody_outlook", {}).get("days"):
         add("custody_outlook")
     if config.get("local_visits_enabled", True):
@@ -255,8 +332,9 @@ def build_rotation(status, config, now=None):
             if _visible(item, now, require_window=True):
                 add("layover", "layover:" + str(item.get("id") or index), item)
     if context["flight_priority"]:
-        flight_slots = [entry for entry in entries if entry["view"] in {"details", "map"}]
-        other_slots = [entry for entry in entries if entry["view"] not in {"details", "map"}]
+        core = {"details", "map", "operating_map"}
+        flight_slots = [entry for entry in entries if entry["view"] in core]
+        other_slots = [entry for entry in entries if entry["view"] not in core]
         if len(other_slots) % 2:
             repeated = dict(other_slots[0])
             repeated["key"] += ":repeat"

@@ -120,7 +120,7 @@ def _projection(latitude, longitude, radius, size):
     # contains additional geography, but aircraft remain filtered to the radius.
     footer = max(14, round(height * .065))
     usable_height = height - footer
-    pixels = max(1, min(width - 12, usable_height - 12) / (2 * radius))
+    pixels = max(1e-8, min(width - 12, usable_height - 12) / (2 * radius))
     xscale = MILES_PER_DEGREE * math.cos(math.radians(latitude)) * pixels
     yscale = MILES_PER_DEGREE * pixels
     center = width / 2, usable_height / 2
@@ -133,7 +133,7 @@ def _projection(latitude, longitude, radius, size):
 
 
 @lru_cache(maxsize=4)
-def _base_map(latitude, longitude, radius, size):
+def _base_map(latitude, longitude, radius, size, draw_radius=True):
     asset = _load_asset()
     if asset is None:
         return None
@@ -173,11 +173,12 @@ def _base_map(latitude, longitude, radius, size):
                         break
     from .render import _text
     text_scale = max(1, min(3, size[1] // 180, size[0] // 216))
-    cx, cy = center
-    r = radius * pixels
-    draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(70, 111, 124), width=max(1, text_scale))
     _text(draw, (8, 8), "N", CYAN, text_scale)
-    _text(draw, (size[0] - 8, 8), f"{radius:g} MI RADIUS", MUTED, text_scale, align="right")
+    if draw_radius:
+        cx, cy = center
+        r = radius * pixels
+        draw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(70, 111, 124), width=max(1, text_scale))
+        _text(draw, (size[0] - 8, 8), f"{radius:g} MI RADIUS", MUTED, text_scale, align="right")
     if highway_label:
         x, y = highway_label
         label_width, label_height = 29 * text_scale, 11 * text_scale
@@ -189,6 +190,23 @@ def _base_map(latitude, longitude, radius, size):
     _text(draw, (5, size[1] - footer + max(1, (footer - 7 * text_scale) // 2)),
           "(C) OPENSTREETMAP CONTRIBUTORS / ODbL", MUTED, text_scale)
     return image
+
+
+def regional_background(latitude, longitude, radius_miles, size):
+    """Public regional geography for any local-only viewport, without a home pin.
+
+    This draws no center cross, traffic circle or aircraft. Operating-flight
+    maps can reuse the licensed region without pretending its center is home.
+    A complete viewport outside the asset fails to None for an honest fallback.
+    """
+    parameters = _parameters({"demo": False, "nearby_enabled": True,
+                              "home_latitude": latitude, "home_longitude": longitude,
+                              "nearby_radius_miles": radius_miles}, size)
+    if parameters is None:
+        return None
+    latitude, longitude, radius, size = parameters
+    image = _base_map(latitude, longitude, radius, size, False)
+    return image.copy() if image is not None else None
 
 
 def render_map(config, size, rows=(), now=None):

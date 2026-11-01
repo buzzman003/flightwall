@@ -16,6 +16,7 @@ from pathlib import Path
 from .config import private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
 from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
+                            fresh_nearby_route, match_nearby_route, nearby_commercial_ident,
                             match_operating_flight, normalize_operating_status, operating_ident,
                             stamp as status_stamp, within_tracking_window)
 from .personal import PersonalError, PersonalStore
@@ -32,6 +33,7 @@ class PaidLimitError(ValueError):
         super().__init__({"pricing_expired": "FlightAware pricing needs review before paid requests can resume",
                           "monthly_limit": "FlightAware monthly app cost limit reached",
                           "daily_limit": "FlightAware daily request limit reached",
+                          "nearby_limit": "Nearby metadata allowance reserved for operating flights",
                           "usage_unknown": "Cannot verify the local FlightAware usage limit"}[reason])
 
 
@@ -237,11 +239,15 @@ class FlightFeeds:
         self._operating_completed = (None, self.operating_status)
         self._operating_next = "status"
         self._operating_terminal = None
+        self._nearby_route_cache = {}
+        self._last_nearby_route = -math.inf
         self._lock = threading.Lock()
 
-    def _allow_paid_request(self, config, path):
+    def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
         _, fee = _paid_path(path)
+        if purpose not in {"operating", "nearby"} or purpose == "nearby" and fee != 5:
+            raise ValueError("Unsupported paid request purpose")
         today = utcnow().astimezone(timezone.utc).date()
         if not PRICING_CHECKED <= today <= PRICING_CHECKED + timedelta(days=PRICING_MAX_AGE_DAYS):
             raise PaidLimitError("pricing_expired")
@@ -251,6 +257,11 @@ class FlightFeeds:
             if not limit.is_finite() or not 0 <= limit <= 5 or isinstance(config.get("flightaware_monthly_limit_usd"), bool):
                 raise ValueError("Invalid monthly app budget")
             limit_milliusd = int(limit * 1000)
+            nearby_limit = Decimal(str(config.get("nearby_enrichment_monthly_limit_usd", 1)))
+            if (not nearby_limit.is_finite() or not 0 <= nearby_limit <= 1
+                    or isinstance(config.get("nearby_enrichment_monthly_limit_usd"), bool)):
+                raise ValueError("Invalid nearby metadata budget")
+            nearby_cap = min(int(nearby_limit * 1000), limit_milliusd // 5)
             daily = config["flightaware_daily_limit"]
             if type(daily) is not int or daily < 0:
                 raise ValueError("Invalid daily app budget")
@@ -275,18 +286,30 @@ class FlightFeeds:
                         raise ValueError("Invalid old usage counter")
                     usage = {"schema_version": 2, "day": legacy_day, "count": count, "month": legacy_day[:7],
                              "reserved_milliusd": max(5000, count * 10), "pricing_checked": PRICING_CHECKED.isoformat()}
-                if (not isinstance(usage, dict) or set(usage) != {"schema_version", "day", "count", "month", "reserved_milliusd", "pricing_checked"}
+                base_fields = {"schema_version", "day", "count", "month", "reserved_milliusd", "pricing_checked"}
+                nearby_fields = {"nearby_reserved_milliusd", "nearby_day_count"}
+                if (not isinstance(usage, dict) or set(usage) not in (base_fields, base_fields | nearby_fields)
                         or type(usage["schema_version"]) is not int or usage["schema_version"] != 2
                         or type(usage["count"]) is not int or usage["count"] < 0
                         or type(usage["reserved_milliusd"]) is not int or usage["reserved_milliusd"] < usage["count"] * 5
+                        or usage["reserved_milliusd"] % 5
                         or not isinstance(usage["day"], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", usage["day"])
                         or datetime.fromisoformat(usage["day"]).date() > today or usage["month"] != usage["day"][:7]
                         or usage["pricing_checked"] != PRICING_CHECKED.isoformat()):
                     raise ValueError("Invalid usage counter")
+                # Earlier schema2 tracked only operating/public-watch requests.
+                # Its validated nominal total is preserved; nearby starts at0.
+                if not nearby_fields.intersection(usage):
+                    usage.update(nearby_reserved_milliusd=0, nearby_day_count=0)
+                if (type(usage["nearby_day_count"]) is not int or not 0 <= usage["nearby_day_count"] <= usage["count"]
+                        or type(usage["nearby_reserved_milliusd"]) is not int
+                        or usage["nearby_reserved_milliusd"] % 5
+                        or not usage["nearby_day_count"] * 5 <= usage["nearby_reserved_milliusd"] <= usage["reserved_milliusd"]):
+                    raise ValueError("Invalid nearby usage counter")
                 if usage["month"] != month:
-                    usage.update(month=month, reserved_milliusd=0)
+                    usage.update(month=month, reserved_milliusd=0, nearby_reserved_milliusd=0)
                 if usage["day"] != day:
-                    usage.update(day=day, count=0)
+                    usage.update(day=day, count=0, nearby_day_count=0)
                 # Persist migration/rollover even if a limit then blocks this
                 # request. A lower configured cap cannot erase reservations.
                 if usage["count"] >= daily:
@@ -295,15 +318,24 @@ class FlightFeeds:
                 if usage["reserved_milliusd"] + fee > limit_milliusd:
                     private_json(self._budget_path, usage)
                     raise PaidLimitError("monthly_limit")
+                if purpose == "nearby" and (
+                        usage["nearby_reserved_milliusd"] + fee > nearby_cap
+                        or usage["nearby_day_count"] >= min(20, daily // 5)
+                        or usage["reserved_milliusd"] + fee > limit_milliusd * 4 // 5):
+                    private_json(self._budget_path, usage)
+                    raise PaidLimitError("nearby_limit")
                 usage["count"] += 1
                 usage["reserved_milliusd"] += fee
+                if purpose == "nearby":
+                    usage["nearby_day_count"] += 1
+                    usage["nearby_reserved_milliusd"] += fee
                 private_json(self._budget_path, usage)
         except PaidLimitError:
             raise
         except (OSError, ValueError, TypeError, KeyError, PersonalError, InvalidOperation):
             raise PaidLimitError("usage_unknown") from None
 
-    def _flightaware(self, path, config):
+    def _flightaware(self, path, config, *, purpose="operating"):
         path, _ = _paid_path(path)
         key_path = self.data_dir / "flightaware.key"
         try:
@@ -314,7 +346,7 @@ class FlightFeeds:
             raise ValueError("FlightAware is enabled; add its API key using store-secret") from None
         if not api_key or len(raw_key) > 4096:
             raise ValueError("FlightAware key is empty")
-        self._allow_paid_request(config, path)
+        self._allow_paid_request(config, path, purpose=purpose)
         return request_json("https://aeroapi.flightaware.com/aeroapi" + path, {"x-apikey": api_key})
 
     def _set_operating_status(self, config, flight, result):
@@ -357,7 +389,54 @@ class FlightFeeds:
         if query != (lat, lon, radius_miles):
             return []
         now = now or utcnow()
-        return copy.deepcopy([row for row in rows if _nearby_fresh(row, now)])
+        result = copy.deepcopy([row for row in rows if _nearby_fresh(row, now)])
+        if config.get("nearby_enrichment_enabled") is True and tracking_available(self.data_dir, config):
+            for row in result:
+                entry = self._nearby_route_cache.get(self._nearby_route_identity(row), {})
+                candidate = dict(row, route=entry.get("route"))
+                route = fresh_nearby_route(candidate, now)
+                if route:
+                    row["route"] = route
+        return result
+
+    @staticmethod
+    def _nearby_route_identity(row):
+        return row.get("hex"), nearby_commercial_ident(row), row.get("registration") or None
+
+    def _poll_nearby_routes(self, config, now):
+        """Last priority: one closest-aircraft metadata lookup per five minutes."""
+        if config.get("nearby_enrichment_enabled") is not True or not tracking_available(self.data_dir, config):
+            return
+        tick = time.monotonic()
+        # Bound in-memory cache only; no aircraft/history/provider JSON files.
+        self._nearby_route_cache = {key: value for key, value in self._nearby_route_cache.items()
+                                   if 0 <= tick - value["checked_at"] <= 1800}
+        if tick - self._last_nearby_route < 300:
+            return
+        closest = sorted((row for row in self.nearby if _nearby_fresh(row, now)),
+                         key=lambda row: (row["distance_miles"], row["hex"]))[:3]
+        for row in closest:
+            ident = nearby_commercial_ident(row)
+            if not ident:
+                continue
+            identity = self._nearby_route_identity(row)
+            entry = self._nearby_route_cache.get(identity)
+            if entry and tick - entry["checked_at"] < (600 if entry.get("route") else 1800):
+                continue
+            self._last_nearby_route = tick
+            entry = {"checked_at": tick, "route": None}
+            self._nearby_route_cache[identity] = entry
+            if len(self._nearby_route_cache) > 128:
+                oldest = min(self._nearby_route_cache, key=lambda key: self._nearby_route_cache[key]["checked_at"])
+                self._nearby_route_cache.pop(oldest)
+            try:
+                params = urllib.parse.urlencode({"start": (now - timedelta(hours=24)).isoformat(),
+                                                 "end": now.isoformat(), "ident_type": "designator", "max_pages": 1})
+                response = self._flightaware("/flights/" + ident + "?" + params, config, purpose="nearby")
+                entry["route"] = match_nearby_route(response, row, utcnow())
+            except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError):
+                pass  # Unknown route metadata must not disturb the owner's feed.
+            break
 
     def poll(self, config, selected, *, on_duty=False, watches=None):
         """Called by one backend thread; failures never erase the calendar."""
@@ -408,6 +487,7 @@ class FlightFeeds:
             self._last_nearby = -math.inf
         self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
         if time.monotonic() - self._last_nearby < 60:
+            self._poll_nearby_routes(config, now)
             return
         self._last_nearby = time.monotonic()
         try:
@@ -419,6 +499,7 @@ class FlightFeeds:
             self.nearby = []
             self._nearby_completed = (None, [])
             self.error = "Nearby traffic feed unavailable."
+        self._poll_nearby_routes(config, utcnow())
 
     @staticmethod
     def _watch_flight(data, watch):
@@ -428,7 +509,7 @@ class FlightFeeds:
         if not isinstance(links, dict):
             raise ValueError("Invalid pagination")
         # Never buy a second page or silently choose a leg from a partial set.
-        if links.get("next"):
+        if links.get("next") or type(data.get("num_pages", 1)) is not int or data.get("num_pages", 1) != 1:
             return "ambiguous", None
         lower, upper = day_bounds(watch)
         matches = []
@@ -605,7 +686,8 @@ class FlightFeeds:
             return
         self._last_live = tick
         start = status_stamp(selected["start"])
-        position_eligible = start - timedelta(hours=1) <= now or self.operating_status.get("phase") in {"departed_gate", "airborne", "landed"}
+        position_eligible = (self.operating_status.get("phase") != "landed"
+                             and (start - timedelta(hours=1) <= now or self.operating_status.get("phase") in {"departed_gate", "airborne"}))
         first = self._live_id is None
         if first or self._operating_next == "status" or not position_eligible:
             self._lookup_at = tick
@@ -624,6 +706,10 @@ class FlightFeeds:
             if previous_id != self._live_id:
                 self.live = None
             self._set_operating_status(config, selected, status)
+            if status["phase"] == "landed":
+                self.live = None
+                self._operating_next = "status"
+                return
             if status["phase"] in {"at_gate", "blocked", "tracking_ended"}:
                 self._operating_terminal = identity
                 self.live = None

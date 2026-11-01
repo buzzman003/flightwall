@@ -1,0 +1,104 @@
+FLIGHT WALL 0.4.7 - OPERATING MAP, TRIP WEATHER AND PORTS PREVIEW
+
+SOURCE CANDIDATE - NATIVE RELEASE AND DEVICE ACCEPTANCE PENDING
+
+DISPLAY AND FLIGHT CONTEXT
+
+* Operating focus keeps the current flight ahead of distant trip previews in
+  the configured before/after window. A bounded provider-confirmed airborne
+  extension handles delays. Short household cards remain; timers and the
+  shopping ticker stay live. Phone state never proves a flight is airborne.
+* A high-resolution operating inset fits the route endpoints and an actual,
+  fresh, identity-matched AeroAPI position, then narrows toward the destination.
+  No position is interpolated from a schedule. Confirmed VPS arrival can restore
+  the ordinary five-statute-mile nearby view for an hour without changing
+  household presence. This does not claim continuous tracking or coverage.
+* Regional OSM water/roads remain; wider views use bundled Natural Earth data
+  and identify limited detail. Public OurAirports runway geometry is drawn at
+  close range where available. Taxi positions need actual provider observations;
+  runway references are not taxi guidance, a filed route or operational charts.
+* Trip summaries and legends use airport pairs and supported flight designators
+  instead of repeating city names. Existing dated VPS departures and separately
+  matched Buzz leave-home clocks remain.
+* Nearby aircraft show the closest three, received altitude, groundspeed and
+  track, plus origin/destination only when a current airborne provider flight
+  is uniquely associated. Unknown fields stay unknown. Route results age out
+  after ten minutes, and the aircraft position must still be fresh.
+
+REQUEST BUDGET AND OPTIONAL CONNECTIONS
+
+* Operating lookups run before watches and optional nearby enrichment. All use
+  the same durable $5/month nominal request-fee cap and daily request limit.
+  Nearby enrichment is additionally limited to at most $1 or 20% of the monthly
+  cap, 20 requests or 20% of the daily allowance, one lookup per five minutes,
+  and stops when the overall budget reaches 80%. Successful/missing matches are
+  cached. This leaves remaining allowance for operating flights.
+* This is an application budget, not a FlightAware account-wide billing cap.
+  Other clients, provider pricing changes, taxes and account terms remain
+  separate. Tracking stops when the configured budget or pricebook expires.
+  No provider key or real account state is included in the release.
+* Position and status calls alternate on the existing polling interval; at its
+  default 120 seconds each kind is normally refreshed about every four minutes.
+  Network/provider delays and budget exhaustion can reduce that cadence.
+
+WEATHER
+
+* Optional AviationWeather.gov decoded METAR/TAF cards cover the day before,
+  local flight day and bounded scheduled layovers. Airport selection is capped
+  at four. Public NWS airport forecasts show today/tomorrow where supported.
+  Unknown reports, uncertain TAF groups and missing temperatures stay explicit.
+* Optional NOAA national radar shows a recent observation on the day before
+  and day of travel. It is not a next-day forecast. Source/fetch clocks and
+  freshness checks prevent an old image from looking current.
+* Optional FAA airport ground-stop, ground-delay and arrival/departure-delay
+  advisories are limited to the relevant airports. An unavailable feed does
+  not mean no delays. These public-feed summaries are household context,
+  not a dispatch briefing or a substitute for official aviation weather.
+* All new provider flags default off, and DEMO makes no requests. Public airport
+  queries do not contain household coordinates. Radar and FAA requests use
+  fixed national URLs. Parsed caches and radar pixels stay in the private
+  data directory outside releases. Home weather still refreshes automatically
+  every fifteen minutes. A genuine TONIGHT-only card omits redundant missing-
+  daytime-high filler; no high is invented.
+
+PORTS AND MOTION
+
+* Bundled logo/poster and a silent fifteen-second, 1024x512 H.264 demo preview
+  can be registered in the Ports gamelist. The narrow helper backs up the XML
+  and replaced Flight Wall media and preserves unrelated entries byte for byte.
+  Existing frontend installations require a safe metadata reload; do not patch
+  a running frontend's unsaved gamelist. Theme/video support varies.
+* A rare two-second split-flap reveal joins the existing twenty-four effects.
+  No sound or flashes. Privacy, backend outages and eligibility changes discard
+  old pixels immediately. New weather/radar/live map cards do not enter the
+  transition cache. Brightness, timer/ticker insets and software fallback apply
+  to the geographic layers as well as the logical 512x256 board.
+
+VALIDATION AND LIMITATIONS
+
+Windows full source validation passed 1023 tests and 514 subtests, with 49
+expected platform/dependency skips. Source tests, synthetic rendering and
+official public-feed sample parsing are
+separate from native Linux, physical TV, live paid-provider and real flight
+checks. The owner watched the fifteen-second preview in a Windows player and
+accepted its pacing. The assistant did not claim normal-speed playback.
+The signed workflow must pass the complete zero-skip Linux suite, frozen
+OpenGL/software, fresh installation, original 0.3.0 and published 0.4.6 native
+upgrade/rollback checks before publishing. Versioned code activates at the next
+safe Ports launch. Existing settings, private credentials and the original
+pinned 0.3.0 recovery helper must remain intact.
+
+No Alexa Lambda/model change is required by this release. It does not repair
+Amazon's intermittent invocation routing, expose global Echo timers or import
+Alexa's native shopping list. Existing dinner/Flight Wall timer routes remain.
+Lisa phone pairing and consent, automatic Away/Home outing validation, real
+operating-flight coverage and physical new-map/weather checks remain separate.
+
+Primary sources, checked October 31, 2026:
+https://www.flightaware.com/commercial/aeroapi/
+https://aviationweather.gov/data/api/
+https://api.weather.gov/
+https://radar.weather.gov/ridge/standard/CONUS_0.gif
+https://nasstatus.faa.gov/api/airport-status-information
+https://www.fly.faa.gov/fly/dtd/AirportStatus.dtd
+https://ourairports.com/data/

@@ -1,5 +1,17 @@
 # Flight Wall implementation contract
 
+0.4.7 candidate: operating focus must not infer phone presence or airborne
+state from a calendar. Geographic zoom uses only a fresh, exactly associated
+provider position; no synthetic aircraft motion. All paid requests share the
+existing monthly/daily ledger; optional nearby route enrichment has a stricter
+subcap and yields to operating-flight polls. Unknown or stale data fails closed.
+Trip METAR/TAF, public-airport NWS, fixed national NOAA radar and FAA delay feeds
+have separate local opt-ins, source clocks and freshness bounds. DEMO remains
+offline. Never ship private weather/radar/provider caches. Only geographic/radar
+insets render above logical resolution; both display paths preserve brightness
+and timer/ticker bounds. Safe Ports metadata registration preserves unrelated
+gamelist bytes and original media backups. No Alexa companion change is needed.
+
 0.4.6 published, verified and active after the owner reopened Ports. Strict-host-key
 SSH verified healthy 0.4.6, no pending/startup-health flags, all original private
 files/config values, protected credentials, stable wrappers and pinned 0.3.0
