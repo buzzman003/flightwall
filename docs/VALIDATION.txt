@@ -3,12 +3,18 @@
 The owner confirmed on the physical Echo that "open Flight Wall skill" opens
 Flight Wall Personal and "dinner help" gives examples. The help was too long;
 the companion patch shortens it and adds the simple "set dinner card" prompt.
-Final Windows source tests passed: 1229 tests + 534 subtests, with 51 expected
+Final Windows source tests passed: 1267 tests + 534 subtests, with 51 expected
 Windows/native-platform skips. The initial run used an unavailable Windows SDL
 offscreen driver and caught the workflow/native-gate baseline mismatch; using
 the correct dummy driver and consistently pinning the published 0.4.8 baseline
-resolved those checks. Alexa's menu-option aliases bind to today's exact saved
-generation; missing/unavailable options make no write. Signed Linux/native
+resolved those checks. Alexa's numeric/menu aliases cover all options 1-4.
+Matching displayed titles bind to today's exact saved generation, retaining
+stored meal/sides; ambiguous, partial, stale or unavailable choices make no
+write. Selector retries preserve their original identity. Scoped HTTP checks
+verified voice isolation without adding meal titles to the context response.
+The first narrower build was cancelled before publication to include the
+owner's clarified number/title commands; no release version or tag was reused.
+Signed Linux/native
 build, independent artifact verification and matching companion deployment
 remain required. Batocera keeps its
 healthy active 0.4.8; no display/service/OS restart is needed for Alexa wording.

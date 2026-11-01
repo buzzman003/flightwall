@@ -4,9 +4,10 @@
 meal-entry prompt. Do not change invocation, scoped credentials, save timing,
 the optional sides/ready-time dialogue or dinner visibility. This companion
 accepts menu-option phrasing through the existing date/generation-bound selector;
-do not guess an unavailable or stale meal selection. This companion
-must remain compatible with the installed 0.4.8 backend. TV executable code
-behavior is unchanged; a companion deployment does not activate native 0.4.9.
+accept either a validated number or a uniquely normalized current title. Do not
+guess an ambiguous, unavailable or stale meal selection. Numeric commands remain
+compatible with 0.4.8; title selection needs the matching 0.4.9 backend. Display
+rendering is unchanged; cloud deployment does not activate the native executable.
 
 0.4.8 published/verified/active: display-only card flags never enable feeds, private consent or
 custody overrides. Apply them before priority interleaving and on every frame,

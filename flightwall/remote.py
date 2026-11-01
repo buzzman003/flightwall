@@ -241,10 +241,14 @@ class RemoteServer:
                 "remove_shopping_item": {"item", "id", "request_id", "source"},
                 "clear_shopping_list": {"confirmed", "request_id"},
                 "show_shopping_list": {"visible", "request_id"},
-                "select_dinner_option": {"option", "date", "generation", "request_id"},
+                "select_dinner_option": {"option", "title", "date", "generation", "request_id"},
             }[name]
             if not isinstance(payload, dict) or not payload or payload.keys() - allowed:
                 raise ValueError("Invalid household operation")
+            if name == "select_dinner_option" and set(payload) not in (
+                    {"option", "date", "generation", "request_id"},
+                    {"title", "date", "generation", "request_id"}):
+                raise ValueError("Choose one dinner number or displayed title with its current date and generation")
             return self._redact(callback(payload))
         if name == "get_voice_context":
             value = callback()

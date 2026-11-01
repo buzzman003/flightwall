@@ -1,10 +1,12 @@
 FLIGHT WALL 0.4.9 - CONCISE ALEXA DINNER HELP CANDIDATE
 
 Shortens dinner help to one spoken example and adds "set dinner card" as a
-simple way to begin. The existing short greeting, optional sides/ready-time
-follow-ups, invocation and scoped voice permissions remain. This companion is
-compatible with the installed 0.4.8 app; no TV restart is needed for its wording.
-The signed build and cloud deployment remain pending. See docs/RELEASE-0.4.9.txt
+simple way to begin. Menu selection accepts numbers 1-4 and matching displayed
+meal titles, tied to today's exact generated set. The short greeting, optional
+sides/ready-time follow-ups, invocation and scoped voice permissions remain.
+Shorter help and numeric aliases work with 0.4.8; selecting by title requires
+the matching 0.4.9 backend and its normal next-safe-Ports-launch activation.
+The signed build and deployment remain pending. See docs/RELEASE-0.4.9.txt
 and VALIDATION.txt. Current verified installed baseline follows.
 
 FLIGHT WALL 0.4.8 - PUBLISHED, VERIFIED AND ACTIVE

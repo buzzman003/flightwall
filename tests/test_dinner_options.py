@@ -365,6 +365,72 @@ def test_select_binds_actual_saved_fields_deduplicates_and_replaces_same_day(set
     assert len(personal.list_items(NOW)) == 1 and calls.call_count == 2
 
 
+@pytest.mark.parametrize("number", range(1, 5))
+def test_select_each_displayed_title_preserves_recipe_and_numeric_retry_identity(setup, number):
+    feed, _, calls, personal = setup
+    result = feed.poll(kids(), NOW)
+    option = result["options"][number - 1]
+    payload = {"title": f"  SYNTHETIC\u2014MEAL {number}!  ", "date": result["date"],
+               "generation": result["generation"], "request_id": f"title-choice-{number}"}
+    first = feed.select(payload, NOW)
+    assert first["item"]["title"] == option["title"]
+    assert first["item"].get("sides", "") == option["sides"]
+    numeric = {key: value for key, value in payload.items() if key != "title"} | {"option": number}
+    replay = feed.select(numeric, NOW)
+    assert replay["created"] is False and replay["item"]["id"] == first["item"]["id"]
+    assert len(personal.list_items(NOW)) == 1 and calls.call_count == 2
+
+
+def test_title_selection_normalizes_unicode_typography_without_changing_saved_title(setup):
+    feed, _, calls, _ = setup
+    rows = recipes()
+    rows[1]["title"] = "Cr\u00e8me-fra\u00eeche chicken"
+    rows[1]["sides"] = "Roasted carrots"
+    calls.side_effect = lambda path, *_: response(rows) if path == "/v1/responses" else photo()
+    result = feed.poll(kids(), NOW)
+    chosen = feed.select({"title": "  CR\u00c8ME  FRA\u00ceCHE, CHICKEN! ", "date": result["date"],
+                          "generation": result["generation"], "request_id": "unicode-title"}, NOW)
+    assert chosen["item"]["title"] == rows[1]["title"]
+    assert chosen["item"]["sides"] == rows[1]["sides"]
+
+
+def test_ambiguous_normalized_titles_require_a_number_without_writing(setup):
+    feed, _, calls, personal = setup
+    rows = recipes()
+    rows[0]["title"], rows[1]["title"] = "Chicken-rice", "Chicken rice"
+    calls.side_effect = lambda path, *_: response(rows) if path == "/v1/responses" else photo()
+    result = feed.poll(kids(), NOW)
+    assert result["status"] == "ready"
+    with pytest.raises(PersonalError, match="select menu one, two, three, or four"):
+        feed.select({"title": "CHICKEN, RICE", "date": result["date"],
+                     "generation": result["generation"], "request_id": "ambiguous-title"}, NOW)
+    assert personal.list_items(NOW) == []
+    assert calls.call_count == 2
+
+
+@pytest.mark.parametrize("title", ["Chicken meal that is not displayed", "Synthetic meal", "", " !? ",
+                                    "X" * 161, "Synthetic\nmeal 1", "<Synthetic meal 1>", 3, None])
+def test_title_selection_refuses_unmatched_partial_or_malformed_titles(setup, title):
+    feed, _, calls, personal = setup
+    result = feed.poll(kids(), NOW)
+    with pytest.raises(PersonalError):
+        feed.select({"title": title, "date": result["date"], "generation": result["generation"],
+                     "request_id": "unmatched-title"}, NOW)
+    assert personal.list_items(NOW) == [] and calls.call_count == 2
+
+
+@pytest.mark.parametrize("changed", [{"date": "2026-10-31"}, {"generation": "f" * 24},
+                                     {"option": 2}, {"request_id": ""}])
+def test_title_selection_refuses_stale_set_or_multiple_selectors_without_writing(setup, changed):
+    feed, _, calls, personal = setup
+    result = feed.poll(kids(), NOW)
+    payload = {"title": result["options"][0]["title"], "date": result["date"],
+               "generation": result["generation"], "request_id": "stale-title"}
+    with pytest.raises(PersonalError):
+        feed.select(payload | changed, NOW)
+    assert personal.list_items(NOW) == [] and calls.call_count == 2
+
+
 @pytest.mark.parametrize("changed", [{"title": "forged"}, {"generation": "f" * 24}, {"date": "2026-10-31"},
     {"option": True}, {"option": 5}, {"request_id": ""}])
 def test_selection_rejects_forged_stale_or_malformed_request(setup, changed):

@@ -2,22 +2,24 @@ FLIGHT WALL 0.4.9 - SHORTER ALEXA DINNER PROMPTS
 
 SOURCE CANDIDATE - NOVEMBER 1, 2026 CENTRAL
 
-Windows source validation passed 1229 tests and 534 subtests, with 51 expected
+Windows source validation passed 1267 tests and 534 subtests, with 51 expected
 platform skips. Signed Linux/native checks and cloud deployment remain pending.
 
 The owner confirmed physical Echo launch and dinner help, but found the help
 too long. Dinner help now gives one example. "Set dinner card" begins the meal
 dialogue and asks what is for dinner. Existing date/meal commands, displayed
 option selection, optional sides, ready-time/window and cancellation remain.
-"Select menu option three", "choose menu option three" and "menu option three"
-map to the same current-day, generation-bound option selector. Unavailable or
-stale ideas are refused; a language guess must not silently pick another meal.
+"Select menu option three", "select menu three", "choose menu one" and matching
+phrases accept every option 1-4. "Select the bulgogi bowls" can choose a matching
+displayed title. Both routes use today's exact generation-bound option set.
+Missing, stale, unmatched or ambiguous choices are refused with a short request
+to use a numbered option; they never become a guessed free-form dinner.
 No account, permission, invocation, credential or visibility change is needed.
 
-The Alexa companion remains compatible with the installed 0.4.8 backend.
-Its cloud update does not require a TV restart or native update. The complete
-signed 0.4.9 native package is built using the normal release workflow; it is
-not active on Batocera until separately staged and normally launched.
+Shorter help and numeric aliases remain compatible with 0.4.8. Title selection
+requires the 0.4.9 backend. The complete signed native package uses the normal
+release workflow; it is not active until staged and normally launched in Ports.
+Development does not stop the current TV app, services, games or operating system.
 
 0.4.8 physical checks now confirmed: explicit "open Flight Wall skill", dinner
 help and radar animation while the card rotation is paused. Real meal saving

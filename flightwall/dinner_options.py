@@ -17,6 +17,7 @@ import re
 import secrets
 import threading
 import time
+import unicodedata
 import urllib.request
 import warnings
 from zoneinfo import ZoneInfo
@@ -61,6 +62,14 @@ def _plain(value, limit, *, empty=False):
                    or c in "<>\u2028\u2029" for c in value)):
         raise ValueError("Invalid meal text")
     return value.strip()
+
+
+def _selection_title(value):
+    """Compare displayed titles exactly after bounded typography normalization."""
+    value = unicodedata.normalize("NFKC", _plain(value, 160)).casefold()
+    normalized = " ".join("".join(character if character.isalnum() else " "
+                                   for character in value).split())
+    return normalized
 
 
 def request_json(path, key, payload):
@@ -480,12 +489,20 @@ class DinnerOptions:
 
     def select(self, payload, now=None):
         now = _now(now)
-        if (not isinstance(payload, dict) or set(payload) != {"option", "date", "generation", "request_id"}
-                or type(payload["option"]) is not int or not 1 <= payload["option"] <= 4
+        selectors = ({"option", "date", "generation", "request_id"},
+                     {"title", "date", "generation", "request_id"})
+        if (not isinstance(payload, dict) or set(payload) not in selectors
+                or "option" in payload and (type(payload["option"]) is not int or not 1 <= payload["option"] <= 4)
                 or not isinstance(payload["generation"], str) or not _GENERATION.fullmatch(payload["generation"])
                 or not isinstance(payload["request_id"], str) or not 1 <= len(payload["request_id"]) <= 512
                 or not payload["request_id"].strip() or any(ord(c) < 32 or ord(c) == 127 for c in payload["request_id"])):
             raise PersonalError("Choose one of today's four saved dinner options with its current date and generation.")
+        try:
+            title = _selection_title(payload["title"]) if "title" in payload else None
+            if title == "":
+                raise ValueError("A displayed dinner title is required")
+        except ValueError:
+            raise PersonalError("Choose a displayed dinner title, or say select menu one, two, three, or four.") from None
         with self.storage._locked():
             try:
                 zone = ZoneInfo(self.config_getter().get("timezone", "UTC"))
@@ -497,7 +514,14 @@ class DinnerOptions:
             if (current["status"] != "ready" or payload["date"] != current["date"]
                     or payload["generation"] != current["generation"]):
                 raise PersonalError("Those dinner options are no longer current. Refresh today's options before choosing.")
-            option = current["options"][payload["option"] - 1]
+            if title is None:
+                option = current["options"][payload["option"] - 1]
+            else:
+                matches = [row for row in current["options"] if _selection_title(row["title"]) == title]
+                if len(matches) != 1:
+                    raise PersonalError("That title does not identify one of today's dinner choices. "
+                                        "Say select menu one, two, three, or four.")
+                option = matches[0]
             chosen = {"kind": "dinner", "title": option["title"], "date": current["date"],
                       "source": "manual", "request_id": payload["request_id"]}
             if option["sides"]:

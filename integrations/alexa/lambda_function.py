@@ -257,6 +257,13 @@ def _dinner_option(value):
     raise ValueError("dinner option")
 
 
+def _dinner_option_title(value):
+    title = _text(value)
+    if any(0xD800 <= ord(char) <= 0xDFFF or char in "\u2028\u2029" for char in title):
+        raise ValueError("dinner option title")
+    return title
+
+
 def _dinner_meal(value, *, day_selected):
     """Keep meal text exact; ask again when SearchQuery swallowed date phrasing."""
     meal = _text(value)
@@ -442,7 +449,7 @@ def _slots(intent):
         return result
     for name in ("Title", "Meal", "Date", "Time", "Duration", "TimerLabel", "TimerDuration",
                  "TimerNumber", "Airline", "FlightNumber", "Item", "Sides", "ReadyTime", "ReadyStart", "ReadyEnd",
-                 "OptionNumber"):
+                 "OptionNumber", "OptionTitle"):
         slot = slots.get(name)
         if isinstance(slot, dict) and slot.get("value") is not None:
             result[name] = slot["value"]
@@ -736,7 +743,11 @@ def _action_error(error, pending):
 
 
 def _select_dinner_option(client, pending, context):
-    payload = {"option": _dinner_option(pending.get("option")), "date": _exact_date(pending.get("date")),
+    if ("option" in pending) == ("title" in pending):
+        raise ValueError("one dinner selector is required")
+    selector = ({"title": _dinner_option_title(pending["title"])} if "title" in pending
+                else {"option": _dinner_option(pending["option"])})
+    payload = {**selector, "date": _exact_date(pending.get("date")),
                "generation": _dinner_generation(pending.get("generation")),
                "request_id": _request_id(pending.get("request_id"))}
     try:
@@ -746,7 +757,7 @@ def _select_dinner_option(client, pending, context):
     return _saved_personal_response(result, "dinner", context)
 
 
-def _dinner_option_dialog(client, values, pending, request, context):
+def _dinner_option_dialog(client, values, pending, request, context, *, by_title=False):
     if pending and pending["kind"] == "dinner_option" and pending.get("phase") == "retry":
         return _speech("Say yes to retry the unchanged dinner option, or no to stop and check the board.", pending)
     if not pending or pending["kind"] != "dinner_option":
@@ -761,10 +772,18 @@ def _dinner_option_dialog(client, values, pending, request, context):
             return _speech("Today's dinner ideas are not ready on the board. You can still tell me a dinner menu.")
         pending = {"kind": "dinner_option", "phase": "collect", "date": day, "generation": generation,
                    "request_id": _request_id(request.get("requestId"))}
-    try:
-        pending["option"] = _dinner_option(values.get("OptionNumber"))
-    except ValueError:
-        return _speech("Which dinner option? Say, select dinner option one, two, three, or four.", pending)
+    pending.pop("option", None)
+    pending.pop("title", None)
+    if by_title:
+        try:
+            pending["title"] = _dinner_option_title(values.get("OptionTitle"))
+        except ValueError:
+            return _speech("Which displayed meal? Say select dinner, followed by its title.", pending)
+    else:
+        try:
+            pending["option"] = _dinner_option(values.get("OptionNumber"))
+        except ValueError:
+            return _speech("Which dinner option? Say, select dinner option one, two, three, or four.", pending)
     return _select_dinner_option(client, pending, context)
 
 
@@ -1036,8 +1055,9 @@ def lambda_handler(event, lambda_context):
                 return _flight_dialog({}, pending, request)
             return _save_flight(client, pending)
         context = client.context()
-        if name == "SelectDinnerOptionIntent":
-            return _dinner_option_dialog(client, values, pending, request, context)
+        if name in {"SelectDinnerOptionIntent", "SelectDinnerTitleIntent"}:
+            return _dinner_option_dialog(client, values, pending, request, context,
+                                         by_title=name == "SelectDinnerTitleIntent")
         if name == "AMAZON.YesIntent" and pending["kind"] == "dinner_option":
             if pending.get("phase") != "retry":
                 return _speech("Say, select dinner option one, two, three, or four.", pending)

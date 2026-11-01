@@ -106,7 +106,27 @@
             "select menu option {OptionNumber}",
             "choose menu option {OptionNumber}",
             "menu option {OptionNumber}",
+            "select menu {OptionNumber}",
+            "choose menu {OptionNumber}",
+            "set dinner to menu {OptionNumber}",
             "select a dinner option"
+          ]
+        },
+        {
+          "name": "SelectDinnerTitleIntent",
+          "slots": [
+            {
+              "name": "OptionTitle",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "select dinner {OptionTitle}",
+            "choose dinner {OptionTitle}",
+            "select the {OptionTitle}",
+            "choose the {OptionTitle}",
+            "select {OptionTitle}",
+            "choose {OptionTitle}"
           ]
         },
         {

@@ -1,4 +1,4 @@
-"""Selection binds a spoken number to one dated board generation, not a title."""
+"""Selection binds a number or displayed title to one dated board generation."""
 import copy
 from datetime import datetime, timedelta, timezone
 import io
@@ -27,6 +27,13 @@ def event(name="SelectDinnerOptionIntent", number="3", previous=None, request_id
                         "intent": {"name": name, "slots": slots}}}
 
 
+def title_event(title="Fictional board-selected curry", previous=None, request_id="synthetic-title-select"):
+    result = event("SelectDinnerTitleIntent", number=None, previous=previous, request_id=request_id)
+    if title is not None:
+        result["request"]["intent"]["slots"] = {"OptionTitle": {"value": title}}
+    return result
+
+
 def speech(response):
     return response["response"]["outputSpeech"]["text"]
 
@@ -44,7 +51,7 @@ class Board:
     def select_dinner_option(self, payload):
         self.calls.append(copy.deepcopy(payload))
         # This fixture represents the server-owned mapping. The adapter must
-        # read back this returned meal and send no caller-supplied title.
+        # read back this returned meal rather than claiming a guessed title.
         result = self.store.create({"kind": "dinner", "title": "Fictional board-selected curry",
                                     "date": payload["date"], "request_id": payload["request_id"]})
         if self.fail_after_save:
@@ -180,7 +187,8 @@ def test_selection_model_uses_bounded_number_slot_and_clear_phrase():
     assert "select dinner option {OptionNumber}" in intent["samples"]
 
 
-def test_menu_option_phrase_selects_today_number_three_and_never_guesses_when_unready(board):
+@pytest.mark.parametrize("number", ["1", "2", "3", "4"])
+def test_menu_option_phrase_selects_today_number_and_never_guesses_when_unready(board, number):
     model_path = Path(__file__).resolve().parents[1] / "integrations/alexa/interaction-model-en-US.json"
     intents = json.loads(model_path.read_text())["interactionModel"]["languageModel"]["intents"]
     phrase = "select menu option {OptionNumber}"
@@ -188,11 +196,89 @@ def test_menu_option_phrase_selects_today_number_three_and_never_guesses_when_un
     assert [row["name"] for row in matches] == ["SelectDinnerOptionIntent"]
     assert "choose menu option {OptionNumber}" in matches[0]["samples"]
     assert "menu option {OptionNumber}" in matches[0]["samples"]
-    response = alexa.lambda_handler(event(matches[0]["name"], number="3"), None)
-    assert board.calls == [{"option": 3, "date": "2026-11-01", "generation": GENERATION,
+    assert "select menu {OptionNumber}" in matches[0]["samples"]
+    assert "choose menu {OptionNumber}" in matches[0]["samples"]
+    assert "set dinner to menu {OptionNumber}" in matches[0]["samples"]
+    response = alexa.lambda_handler(event(matches[0]["name"], number=number), None)
+    assert board.calls == [{"option": int(number), "date": "2026-11-01", "generation": GENERATION,
                             "request_id": "synthetic-select"}]
     assert "Fictional board-selected curry" in speech(response)
     board.context_value.update(dinner_options_date=None, dinner_options_generation=None)
-    unavailable = alexa.lambda_handler(event(matches[0]["name"], number="3", request_id="unready-menu"), None)
+    unavailable = alexa.lambda_handler(event(matches[0]["name"], number=number, request_id="unready-menu"), None)
     assert "not ready" in speech(unavailable)
     assert len(board.calls) == 1
+
+
+def test_title_select_sends_only_bounded_title_and_pinned_identity_reads_server_result(board):
+    response = alexa.lambda_handler(title_event("  CurRY with rice  "), None)
+    assert board.calls == [{"title": "CurRY with rice", "date": "2026-11-01", "generation": GENERATION,
+                            "request_id": "synthetic-title-select"}]
+    assert "Fictional board-selected curry" in speech(response)
+    assert "CurRY with rice" not in speech(response)
+    assert response["sessionAttributes"] == {}
+
+
+@pytest.mark.parametrize("title", [None, "", " " * 3, "x" * 161, "private\nmeal", "bad\ud800title", True])
+def test_missing_or_invalid_displayed_title_reasks_without_saving(board, title):
+    response = alexa.lambda_handler(title_event(title), None)
+    assert "Which displayed meal?" in speech(response)
+    assert not board.calls
+    assert not board.store.list_items(NOW)
+
+
+@pytest.mark.parametrize("change", [
+    {"dinner_options_date": None, "dinner_options_generation": None},
+    {"dinner_options_date": "2026-10-31"},
+    {"dinner_options_generation": "invalid"},
+])
+def test_title_select_without_current_generation_never_saves(board, change):
+    board.context_value.update(change)
+    response = alexa.lambda_handler(title_event(), None)
+    assert "not ready" in speech(response)
+    assert not board.calls
+
+
+@pytest.mark.parametrize("message", [
+    "No displayed meal matches that title. Say a menu option number instead.",
+    "More than one displayed meal matches that title. Say a menu option number instead.",
+])
+def test_unmatched_or_ambiguous_title_is_not_saved_as_a_free_form_dinner(board, message):
+    with patch.object(board, "select_dinner_option", side_effect=alexa.BoardError(
+            retryable=False, public_message=message)):
+        response = alexa.lambda_handler(title_event(), None)
+    assert message in speech(response)
+    assert "Saved" not in speech(response)
+    assert not board.calls
+    assert not board.store.list_items(NOW)
+
+
+def test_uncertain_title_selection_retry_preserves_selector_date_generation_and_request(board):
+    board.fail_after_save = True
+    first = alexa.lambda_handler(title_event("Original displayed curry"), None)
+    assert "could not confirm" in speech(first)
+    board.context_value.update(dinner_options_date="2026-11-02", dinner_options_generation="b2" * 12)
+    with patch.object(alexa, "_now", return_value=NOW + timedelta(days=1)):
+        changed = alexa.lambda_handler(title_event("Different meal", previous=first, request_id="changed-title"), None)
+        assert "unchanged dinner option" in speech(changed)
+        assert len(board.calls) == 1
+        changed_number = alexa.lambda_handler(event(number="1", previous=first, request_id="changed-number"), None)
+        assert "unchanged dinner option" in speech(changed_number)
+        assert len(board.calls) == 1
+        retried = alexa.lambda_handler(event("AMAZON.YesIntent", previous=first, request_id="retry"), None)
+    assert board.calls[0] == board.calls[1] == {
+        "title": "Original displayed curry", "date": "2026-11-01", "generation": GENERATION,
+        "request_id": "synthetic-title-select"}
+    assert len(board.store.list_items(NOW)) == 1
+    assert "Already saved" in speech(retried)
+
+
+def test_displayed_title_model_has_clear_carriers_without_replacing_free_form_dinner():
+    path = Path(__file__).resolve().parents[1] / "integrations/alexa/interaction-model-en-US.json"
+    intents = {row["name"]: row for row in json.loads(path.read_text())["interactionModel"]["languageModel"]["intents"]}
+    choice = intents["SelectDinnerTitleIntent"]
+    assert choice["slots"] == [{"name": "OptionTitle", "type": "AMAZON.SearchQuery"}]
+    assert "select dinner {OptionTitle}" in choice["samples"]
+    assert "choose the {OptionTitle}" in choice["samples"]
+    assert "select {OptionTitle}" in choice["samples"]
+    assert all(not phrase.startswith("set dinner") for phrase in choice["samples"])
+    assert "set dinner to {Meal}" in intents["AddDinnerIntent"]["samples"]
