@@ -1,0 +1,29 @@
+FLIGHT WALL 0.4.9 - SHORTER ALEXA DINNER PROMPTS
+
+SOURCE CANDIDATE - NOVEMBER 1, 2026 CENTRAL
+
+Windows source validation passed 1229 tests and 534 subtests, with 51 expected
+platform skips. Signed Linux/native checks and cloud deployment remain pending.
+
+The owner confirmed physical Echo launch and dinner help, but found the help
+too long. Dinner help now gives one example. "Set dinner card" begins the meal
+dialogue and asks what is for dinner. Existing date/meal commands, displayed
+option selection, optional sides, ready-time/window and cancellation remain.
+"Select menu option three", "choose menu option three" and "menu option three"
+map to the same current-day, generation-bound option selector. Unavailable or
+stale ideas are refused; a language guess must not silently pick another meal.
+No account, permission, invocation, credential or visibility change is needed.
+
+The Alexa companion remains compatible with the installed 0.4.8 backend.
+Its cloud update does not require a TV restart or native update. The complete
+signed 0.4.9 native package is built using the normal release workflow; it is
+not active on Batocera until separately staged and normally launched.
+
+0.4.8 physical checks now confirmed: explicit "open Flight Wall skill", dinner
+help and radar animation while the card rotation is paused. Real meal saving
+with sides/ready time and the first eligible paid daily idea batch remain
+field checks. See VALIDATION.txt for actual test/build/deployment status.
+
+Games, private credentials, preferences and pinned recovery remain outside
+releases. No paid provider request, phone pairing or household-state override
+is introduced by this wording update.

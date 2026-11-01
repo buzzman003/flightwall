@@ -1,5 +1,13 @@
 # Flight Wall implementation contract
 
+0.4.9 candidate: shorten Alexa dinner help and accept "set dinner card" as a
+meal-entry prompt. Do not change invocation, scoped credentials, save timing,
+the optional sides/ready-time dialogue or dinner visibility. This companion
+accepts menu-option phrasing through the existing date/generation-bound selector;
+do not guess an unavailable or stale meal selection. This companion
+must remain compatible with the installed 0.4.8 backend. TV executable code
+behavior is unchanged; a companion deployment does not activate native 0.4.9.
+
 0.4.8 published/verified/active: display-only card flags never enable feeds, private consent or
 custody overrides. Apply them before priority interleaving and on every frame,
 including high-resolution image attachments and Home card summaries. Empty
@@ -17,9 +25,10 @@ it cannot promise idle listening for minutes or access native Alexa lists.
 Signed native gates and independent artifact verification passed. Normal Ports
 activation preserved existing settings/private files, stable wrappers and the
 original pinned recovery. The matching Lambda/model are deployed; simulator
-follow-ups and cancellation passed without changing core meals. Physical speech,
-radar animation acceptance and the first eligible paid meal generation remain
-separate field checks. Meal generation has its own opt-in and local feature cap;
+follow-ups and cancellation passed without changing core meals. The owner
+confirmed physical Echo launch/help and paused radar animation. A real richer
+dinner save and the first eligible paid meal generation remain separate field
+checks. Meal generation has its own opt-in and local feature cap;
 it does not link ChatGPT projects or enable Lisa inspiration/private cards.
 
 

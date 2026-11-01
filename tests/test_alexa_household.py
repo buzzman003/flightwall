@@ -124,7 +124,10 @@ class HouseholdVoiceTests(unittest.TestCase):
         help_response = self.call("AMAZON.HelpIntent")
         self.assertIn("timer", speech(help_response))
         self.assertNotIn("chicken", speech(help_response))
-        self.assertIn("chicken", speech(self.call("DinnerHelpIntent")))
+        dinner_help = speech(self.call("DinnerHelpIntent"))
+        self.assertIn("set dinner card to chicken", dinner_help)
+        self.assertLessEqual(len(dinner_help.split()), 25)
+        self.assertNotIn("or", dinner_help.split())
         alexa.BoardClient.assert_not_called()
 
     def test_start_timer_gathers_missing_values_and_preserves_first_request_id(self):

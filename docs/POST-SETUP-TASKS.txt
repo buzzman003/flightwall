@@ -8,10 +8,11 @@ verification, Linux 1278 tests + 538 subtests (zero skips), native upgrades and
 rollback, and verified 54-file private backup / ten protected files. Normal
 Ports activation preserved all existing settings/private files, five stable
 wrappers and pinned 0.3.0 recovery; health passed without pending flags.
-The matching Lambda/model are deployed. The owner confirmed S / Maps controls;
-simulator dinner follow-ups/cancellation passed without changing saved meals.
-See RELEASE-0.4.8.txt and VALIDATION.txt. Real provider/phone observations and
-new physical richer-dinner/radar checks remain distinct field acceptance.
+The matching Lambda/model are deployed. The owner confirmed S / Maps controls,
+physical Echo launch/dinner help and radar animation while paused. Simulator
+dinner follow-ups/cancellation passed without changing saved meals. Real richer
+meal saves, paid food generation and provider/phone observations remain distinct
+field acceptance. See RELEASE-0.4.8.txt and VALIDATION.txt.
 
 Already delivered: full display fit/crisp no-glow preference, ten-day custody,
 dated VPS departure/Brief leave clocks, clean route maps, AM/PM, actual-deck
@@ -61,11 +62,13 @@ around rapid empty-ring discovery: NEARBY-AIRCRAFT-NEXT.txt. Do not change code,
 polling, installed version or live settings for this note.
 
 1. Physical richer Alexa dinner dialogue. The owner confirmed the explicit
-   "Alexa, open Flight Wall skill" launch works; Amazon support attributed the
-   earlier failures to recognition before the handler. The deployed 0.4.8 model
+   "Alexa, open Flight Wall skill" launch and dinner help work. The 0.4.8 model
    passed simulator sides/ready prompts and cancellation without saving a meal.
-   Check dinner help and then a real today/tomorrow meal on the Echo/TV when
-   Kids are Home. Bare invocation reliability is still a separate recognition
+   The owner found help too long; 0.4.9 shortens it to one example and adds
+   "set dinner card" as a prompt, compatible with the installed 0.4.8 backend.
+   Build/deploy status is in RELEASE-0.4.9.txt and VALIDATION.txt. A real richer
+   today/tomorrow meal save on Echo/TV remains a field check when Kids are Home.
+   Bare invocation reliability is still a separate recognition
    limitation. Do not rename/re-enable again without evidence, or send/close
    a support-case reply without explicit authorization.
 2. Lisa's iPhone setup and validation. The scoped one-use invitation/import

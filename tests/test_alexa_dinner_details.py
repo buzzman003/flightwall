@@ -73,6 +73,24 @@ class DinnerDetailTests(unittest.TestCase):
     def meal(self, **kwargs):
         return self.call("AddDinnerTodayIntent", {"Meal": "Chicken teriyaki"}, **kwargs)
 
+    def test_dinner_card_alias_starts_meal_question_without_saving(self):
+        path = Path(__file__).resolve().parents[1] / "integrations/alexa/interaction-model-en-US.json"
+        intents = json.loads(path.read_text())["interactionModel"]["languageModel"]["intents"]
+        matches = [row for row in intents if "set dinner card" in row.get("samples", [])]
+        self.assertEqual([row["name"] for row in matches], ["AddDinnerIntent"])
+        self.assertIn("set dinner card to {Meal}", matches[0]["samples"])
+        first = self.call(matches[0]["name"], request_id="dinner-card-command")
+        self.assertEqual(speech(first), "What is for dinner?")
+        self.assertEqual(first["response"]["directives"][0]["slotToElicit"], "Meal")
+        self.assertFalse(self.board.calls)
+        second = self.call("AddDinnerIntent", {"Meal": "Chicken teriyaki"}, first, "meal-reply")
+        self.assertIn("What sides?", speech(second))
+        self.assertFalse(self.board.calls)
+        cancelled = self.call("AMAZON.CancelIntent", previous=second)
+        self.assertIn("did not save", speech(cancelled))
+        self.assertFalse(self.board.calls)
+        self.assertFalse(self.store.list_items(NOW))
+
     def test_sides_then_window_save_once_preserving_original_id_and_display_end(self):
         first = self.meal()
         self.assertFalse(self.board.calls)

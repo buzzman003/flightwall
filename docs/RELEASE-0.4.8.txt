@@ -12,8 +12,9 @@ activation. Healthy 0.4.8, settings/private-file preservation, five stable
 wrappers and the original pinned recovery were verified; no pending update or
 awaiting-health flag remains. The matching Lambda ZIP is deployed and the voice
 model built. The simulator's meal/sides/ready dialogue and cancel path passed
-without saving a test dinner. Physical new-dialogue and radar-animation checks
-remain separate. The owner confirmed all three Maps controls on the TV.
+without saving a test dinner. The owner confirmed physical Echo launch/dinner
+help, all three Maps controls and radar animation while paused. A real richer
+dinner save and the first eligible daily idea batch remain separate checks.
 
 DINNER
 Optional sides and expected ready time or same-date time window accompany

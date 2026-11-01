@@ -30,7 +30,12 @@
             "dinner is on {Date}",
             "set dinner menu to {Meal}",
             "set the dinner menu to {Meal}",
-            "the dinner menu is {Meal}"
+            "the dinner menu is {Meal}",
+            "set dinner card",
+            "set the dinner card",
+            "dinner card",
+            "set dinner card to {Meal}",
+            "set the dinner card to {Meal}"
           ]
         },
         {
@@ -98,6 +103,9 @@
             "select option {OptionNumber} for dinner",
             "make dinner option {OptionNumber}",
             "dinner option {OptionNumber}",
+            "select menu option {OptionNumber}",
+            "choose menu option {OptionNumber}",
+            "menu option {OptionNumber}",
             "select a dinner option"
           ]
         },

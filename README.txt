@@ -1,3 +1,12 @@
+FLIGHT WALL 0.4.9 - CONCISE ALEXA DINNER HELP CANDIDATE
+
+Shortens dinner help to one spoken example and adds "set dinner card" as a
+simple way to begin. The existing short greeting, optional sides/ready-time
+follow-ups, invocation and scoped voice permissions remain. This companion is
+compatible with the installed 0.4.8 app; no TV restart is needed for its wording.
+The signed build and cloud deployment remain pending. See docs/RELEASE-0.4.9.txt
+and VALIDATION.txt. Current verified installed baseline follows.
+
 FLIGHT WALL 0.4.8 - PUBLISHED, VERIFIED AND ACTIVE
 
 Adds four daily pictured meal ideas, dinner sides/ready clocks and tomorrow menus,
@@ -11,9 +20,10 @@ and normal Ports activation passed. Strict-host-key SSH confirmed healthy
 0.4.8, preserved settings/private files and unchanged pinned recovery. The
 matching Alexa Lambda and voice model are deployed; the simulator completed
 the sides/ready-time prompts and cancellation without changing saved meals.
-The owner confirmed the three Maps controls on the TV. Physical richer dinner
-speech, radar animation acceptance and the first eligible paid meal generation
-remain separate field checks. The private meal key and approved $3 monthly
+The owner confirmed the Maps controls, paused radar animation and physical Echo
+launch/dinner help. A real dinner save with the new follow-ups and the first
+eligible paid meal generation remain separate field checks. The private meal
+key and approved $3 monthly
 feature allowance are configured; no paid food request has run yet.
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.8
 

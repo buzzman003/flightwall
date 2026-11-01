@@ -178,3 +178,21 @@ def test_selection_model_uses_bounded_number_slot_and_clear_phrase():
     intent = next(row for row in intents if row["name"] == "SelectDinnerOptionIntent")
     assert intent["slots"] == [{"name": "OptionNumber", "type": "AMAZON.NUMBER"}]
     assert "select dinner option {OptionNumber}" in intent["samples"]
+
+
+def test_menu_option_phrase_selects_today_number_three_and_never_guesses_when_unready(board):
+    model_path = Path(__file__).resolve().parents[1] / "integrations/alexa/interaction-model-en-US.json"
+    intents = json.loads(model_path.read_text())["interactionModel"]["languageModel"]["intents"]
+    phrase = "select menu option {OptionNumber}"
+    matches = [row for row in intents if phrase in row.get("samples", [])]
+    assert [row["name"] for row in matches] == ["SelectDinnerOptionIntent"]
+    assert "choose menu option {OptionNumber}" in matches[0]["samples"]
+    assert "menu option {OptionNumber}" in matches[0]["samples"]
+    response = alexa.lambda_handler(event(matches[0]["name"], number="3"), None)
+    assert board.calls == [{"option": 3, "date": "2026-11-01", "generation": GENERATION,
+                            "request_id": "synthetic-select"}]
+    assert "Fictional board-selected curry" in speech(response)
+    board.context_value.update(dinner_options_date=None, dinner_options_generation=None)
+    unavailable = alexa.lambda_handler(event(matches[0]["name"], number="3", request_id="unready-menu"), None)
+    assert "not ready" in speech(unavailable)
+    assert len(board.calls) == 1

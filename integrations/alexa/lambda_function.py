@@ -33,10 +33,8 @@ HELP = ("You can say, start a pasta timer for five minutes, list timers, or canc
         "To watch a public flight, say, track Delta flight one twenty three on Friday. "
         "Say shopping list to show it, add olives, or remove olives. Clear shopping list asks for confirmation. "
         "I confirm appointments and flight requests before saving. For dinner instructions, say dinner help.")
-DINNER_HELP = ("Say, set dinner menu today to chicken teriyaki, or dinner tomorrow is tacos. "
-               "I'll ask for optional sides and a ready time. Say skip, or save dinner to skip both. "
-               "For a time window, say between six forty five P.M. and seven fifteen P.M. "
-               "To choose a displayed dinner idea, say select dinner option three.")
+DINNER_HELP = ("Say, set dinner card to chicken teriyaki. "
+               "I'll ask about sides and time.")
 DINNER_DAY_INTENTS = {"AddDinnerTodayIntent": 0, "AddDinnerTomorrowIntent": 1}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
             "american": "AA", "american airlines": "AA", "aa": "AA",
