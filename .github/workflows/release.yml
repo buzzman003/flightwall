@@ -37,11 +37,14 @@ jobs:
         id: version
         run: |
           .ci-venv/bin/python - <<'PY'
-          import os
+          import os, re
           from pathlib import Path
           from flightwall import __version__
           from flightwall.updater import version_tuple
-          version = Path('VERSION').read_text(encoding='ascii').strip()
+          raw = Path('VERSION').read_bytes()
+          if re.fullmatch(rb'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\n', raw) is None:
+              raise SystemExit('VERSION must contain canonical numeric major.minor.patch and one LF newline; CRLF is not supported by the Linux installer.')
+          version = raw[:-1].decode('ascii')
           version_tuple(version)
           if version != __version__:
               raise SystemExit('VERSION and flightwall/__init__.py __version__ must match. Bump both for each new release.')

@@ -12,9 +12,17 @@ fields were preserved. No new code/config changes were needed for activation.
 
 0.4.6 SOURCE CANDIDATE
 
+Two live NWS retrievals occurred15minutes1second apart while0.4.5 stayed open;
+provider issuance remained older, confirming automatic polling without restart.
+
 Windows source validation passed 772 tests and 438 subtests, with 49 expected
 platform/dependency skips. Focused GUI/effect tests and an independent privacy
 review passed. Linux zero-skip graphics/native upgrade gates remain required.
+Canonical ASCII/LF VERSION validation now runs before building; its new
+repository regression and baseline/report tests passed (3tests+18subtests).
+The first Linux unit run passed821tests+443subtests with no skips, but native
+installation rejected the Windows newline in VERSION before publication.
+The unpublished candidate was corrected; native acceptance must rerun.
 
 Requested: previous/next navigation, short random retro card transitions and
 clear weather issuance/check clocks. The current installed 0.4.5 already polls

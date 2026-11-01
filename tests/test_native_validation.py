@@ -4,6 +4,7 @@ import io
 import json
 import marshal
 from pathlib import Path
+import re
 import tarfile
 import tempfile
 from types import SimpleNamespace
@@ -22,6 +23,14 @@ class NativeGateTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+
+    def test_repository_version_is_canonical_ascii_lf_and_matches_runtime(self):
+        # Windows text writes can introduce CRLF, which the shell installer's
+        # strict IFS/read semver check rejects even when Python .strip() passes.
+        from flightwall import __version__
+        raw = (MODULE.parents[1] / "VERSION").read_bytes()
+        self.assertIsNotNone(re.fullmatch(rb"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\n", raw))
+        self.assertEqual(raw, (__version__ + "\n").encode("ascii"))
 
     def archive(self, entries):
         path = self.root / "fixture.tar.gz"

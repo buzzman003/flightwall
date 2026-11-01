@@ -27,6 +27,11 @@ SOURCE CANDIDATE - NOT YET A PUBLISHED EXECUTABLE
 Windows source validation passed 772 tests and 438 subtests, with 49 expected
 platform/dependency skips. Focused GUI/effect tests and an independent privacy
 review passed. Linux zero-skip graphics/native upgrade gates remain required.
+Canonical ASCII/LF VERSION validation now runs before building; its new
+repository regression and baseline/report tests passed (3tests+18subtests).
+The first Linux unit run passed821tests+443subtests with no skips, but native
+installation rejected the Windows newline in VERSION before publication.
+The unpublished candidate was corrected; native acceptance must rerun.
 
 No physical 0.4.6 navigation, positive paid-provider or transition check is yet
 claimed. Alexa's existing invocation issue is separate from this display patch.
