@@ -1,14 +1,38 @@
 FLIGHT WALL 0.4.9 - SHORTER ALEXA DINNER PROMPTS
 
-SOURCE CANDIDATE - NOVEMBER 1, 2026 CENTRAL
+PUBLISHED, VERIFIED AND ACTIVE
+November 2, 2026 UTC / November 1, 2026 Central
 
-Windows source validation passed 1267 tests and 534 subtests, with 51 expected
-platform skips. Signed Linux/native checks and cloud deployment remain pending.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.9
+Build: https://github.com/buzzman003/flightwall/actions/runs/41364220698
+Source: c541f6b50ae75b49d74d13cb56fb5cfab9ab37a4
+Windows passed 1267 tests and 534 subtests, with 51 expected platform skips.
+Linux passed 1318 tests and 539 subtests, zero skips/failures, plus frozen
+OpenGL/software, fresh installation, original 0.3.0 and published 0.4.8 native
+upgrade/rollback gates. Maximum required glibc remains 2.36. Independent checks
+verified all 14 release assets, pinned signature, checksums, source and native
+inventories. Update ZIP SHA256:
+e72a71be41c390257f442c09500c2991ef4b4fd35250ec5b655aec021d459353
+Installer SHA256:
+feaf3d1b4c53a044d56be7fbdd2e8e365692f55d6835f2f41733e5a8001e41a7
+
+A 57-file private backup with 10 protected files verified before GUI-live
+staging. Config, automatic-update preference, stable wrappers and pinned
+original recovery were preserved. After the owner's normal Ports relaunch,
+strict-host-key SSH verified healthy active 0.4.9, no pending/startup-health
+flag, all 57 existing private files, 10 protected files, original config values,
+five stable wrappers and unchanged pinned recovery. One Google cache changed
+only through permitted ephemeral refresh; authentication identity was retained.
+The exact 0.4.9 Lambda ZIP is deployed and the matching Amazon voice model
+built successfully. Existing environment settings, SkillID and invocation
+were retained. The simulator confirmed the short greeting, 15-word dinner help
+and "set dinner card" meal prompt. Physical option-selection checks remain
+separate from build success.
 
 The owner confirmed physical Echo launch and dinner help, but found the help
 too long. Dinner help now gives one example. "Set dinner card" begins the meal
 dialogue and asks what is for dinner. Existing date/meal commands, displayed
-option selection, optional sides, ready-time/window and cancellation remain.
+option selection, optional sides and ready-time/window remain available.
 "Select menu option three", "select menu three", "choose menu one" and matching
 phrases accept every option 1-4. "Select the bulgogi bowls" can choose a matching
 displayed title. Both routes use today's exact generation-bound option set.
@@ -18,13 +42,23 @@ No account, permission, invocation, credential or visibility change is needed.
 
 Shorter help and numeric aliases remain compatible with 0.4.8. Title selection
 requires the 0.4.9 backend. The complete signed native package uses the normal
-release workflow; it is not active until staged and normally launched in Ports.
+release workflow and is now active after normal Ports launch.
 Development does not stop the current TV app, services, games or operating system.
+
+KNOWN SIMULATOR LIMITATION
+At the new meal question, "cancel" was interpreted as meal text and advanced
+to the sides question. Testing exited without giving further fields; no meal
+was saved and the personal-store hash remained unchanged. A cancellation-parser
+fix belongs in a future signed release above 0.4.9. Do not treat this path as
+verified cancellation or the published package as amended. The NLU Profiler
+was unavailable despite Amazon's successful voice-model build record.
 
 0.4.8 physical checks now confirmed: explicit "open Flight Wall skill", dinner
 help and radar animation while the card rotation is paused. Real meal saving
-with sides/ready time and the first eligible paid daily idea batch remain
-field checks. See VALIDATION.txt for actual test/build/deployment status.
+with sides/ready time, physical selection of all four numbered options,
+positive title selection and the first eligible paid daily idea batch remain
+field checks. No paid batch was forced. See VALIDATION.txt for actual
+test/build/deployment status.
 
 Games, private credentials, preferences and pinned recovery remain outside
 releases. No paid provider request, phone pairing or household-state override

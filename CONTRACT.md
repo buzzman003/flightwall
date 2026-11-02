@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.9 candidate: shorten Alexa dinner help and accept "set dinner card" as a
+0.4.9 published/verified/active: shorten Alexa dinner help and accept "set dinner card" as a
 meal-entry prompt. Do not change invocation, scoped credentials, save timing,
 the optional sides/ready-time dialogue or dinner visibility. This companion
 accepts menu-option phrasing through the existing date/generation-bound selector;
@@ -8,6 +8,10 @@ accept either a validated number or a uniquely normalized current title. Do not
 guess an ambiguous, unavailable or stale meal selection. Numeric commands remain
 compatible with 0.4.8; title selection needs the matching 0.4.9 backend. Display
 rendering is unchanged; cloud deployment does not activate the native executable.
+The matching Lambda/model are deployed; the owner's normal Ports relaunch
+activated native 0.4.9 and health passed. The update preserved existing private
+settings/credentials, wrappers and the original pinned recovery. First real
+daily meal generation and physical selection remain separate checks.
 
 0.4.8 published/verified/active: display-only card flags never enable feeds, private consent or
 custody overrides. Apply them before priority interleaving and on every frame,

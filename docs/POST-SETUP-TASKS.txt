@@ -1,9 +1,25 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Updated November 1, 2026 UTC and Central Time
+Updated November 2, 2026 UTC / November 1, 2026 Central
 
-CURRENT BASELINE: SIGNED 0.4.8 ACTIVATION VERIFIED
+0.4.9 PUBLISHED, VERIFIED AND ACTIVE
 
-The latest activation record is 0.4.8, with independent signature/inventory
+Linux passed 1318 tests + 539 subtests, zero skips/failures, plus frozen graphics,
+fresh install and original 0.3.0 / published 0.4.8 upgrade/rollback gates. Public
+downloads passed pinned signature/source/inventory checks. A verified 57-file
+private backup with ten protected files preceded GUI-live staging. Settings,
+automatic-update choice, wrappers and original pinned recovery were preserved.
+Matching Alexa Lambda/model are deployed. The owner reopened Ports normally;
+strict-host-key SSH verified healthy active 0.4.9, all 57 original private
+files, ten protected files, five wrappers, existing config and pinned recovery.
+One Google token cache had only permitted ephemeral refresh changes; no pending
+update or startup-health flag remains. The simulator verified short help and
+the new meal prompt without changing saved meals. A real generated meal and
+physical number/title selection remain field checks. See RELEASE-0.4.9.txt
+and VALIDATION.txt.
+
+PREVIOUS BASELINE: SIGNED 0.4.8 ACTIVATION VERIFIED
+
+The previous activation record is 0.4.8, with independent signature/inventory
 verification, Linux 1278 tests + 538 subtests (zero skips), native upgrades and
 rollback, and verified 54-file private backup / ten protected files. Normal
 Ports activation preserved all existing settings/private files, five stable
@@ -65,8 +81,9 @@ polling, installed version or live settings for this note.
    "Alexa, open Flight Wall skill" launch and dinner help work. The 0.4.8 model
    passed simulator sides/ready prompts and cancellation without saving a meal.
    The owner found help too long; 0.4.9 shortens it to one example and adds
-   "set dinner card" as a prompt, compatible with the installed 0.4.8 backend.
-   Build/deploy status is in RELEASE-0.4.9.txt and VALIDATION.txt. A real richer
+   "set dinner card" as a prompt. Numbers 1-4 and matching displayed titles
+   are supported; the matching 0.4.9 backend is now active.
+   Deployment details are in RELEASE-0.4.9.txt / VALIDATION.txt. A real richer
    today/tomorrow meal save on Echo/TV remains a field check when Kids are Home.
    Bare invocation reliability is still a separate recognition
    limitation. Do not rename/re-enable again without evidence, or send/close
@@ -94,7 +111,7 @@ polling, installed version or live settings for this note.
    the list source, Lisa's separate consent, stores/accuracy, sender/recipient
    and once-per-local-day delivery. Do not send messages or enable shopping now.
 
-SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.8
+SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.9
 
 * Return clear timer-limit/disabled errors rather than the generic personal-item
   rejection. Preserve five-active-timer safety and request deduplication.
@@ -103,8 +120,25 @@ SMALL CODE FOLLOW-UP FOR A FUTURE SIGNED RELEASE ABOVE 0.4.8
   regressions for unknown-route, disabled-OAuth, unavailable device callbacks
   and device-body validation errors. The unauthorized-MCP case is already fixed.
   This is a request-framing reliability issue; no authentication bypass is claimed.
+* Harden whole-command cancel/stop handling during free-text meal elicitation.
+  The live simulator treated cancel at the meal question as meal text and asked
+  for sides; no save occurred and private core meals stayed unchanged after
+  exiting. Preserve normal dishes containing those words; avoid substring rules.
+  Use actual Alexa slot-return event shapes in regression tests. For now, use
+  the host's explicit Alexa exit command to leave a question. This is a simulator
+  observation, not proof of the same behavior on the physical Echo.
 
-Neither small code item is required to begin Lisa's already shipped onboarding.
+FUTURE CONVERSATIONAL ALEXA+ - FEASIBILITY ONLY
+
+Amazon now documents an Alexa+ MCP Toolkit where Alexa+ interprets intent and
+calls app tools. Account eligibility and development access are unverified.
+If pursued, expose only explicit household dinner tools through separate scoped
+authorization; do not reuse the administrator control token or broad maintenance
+MCP surface. No Alexa+ add-on, host, account linking or new exposure is provisioned.
+https://developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-overview
+https://developer.amazon.com/docs/alexaplus/add-ons/set-up-your-development-environment
+
+Lisa's shipped onboarding is ready for her consent and phone.
 Further release work still requires matching higher versions, relevant tests,
 the configured signed workflow and next-safe-Ports-launch activation.
 

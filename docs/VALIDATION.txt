@@ -1,4 +1,54 @@
-0.4.9 CONCISE ALEXA DINNER HELP CANDIDATE - NOVEMBER 1, 2026 CENTRAL
+0.4.9 PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 2 UTC / NOVEMBER 1 CENTRAL
+
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.9
+Build: https://github.com/buzzman003/flightwall/actions/runs/41364220698
+Source: c541f6b50ae75b49d74d13cb56fb5cfab9ab37a4
+Linux passed 1318 tests + 539 subtests with zero skips/failures. Windows passed
+1267 tests + 534 subtests with 51 expected platform/optional-native skips.
+Frozen/source OpenGL, software fallback, fresh installation, original 0.3.0
+and published 0.4.8 executable upgrades/rollback passed. Maximum glibc is 2.36.
+Independent checks verified all 14 published assets, the pinned Ed25519
+signature, checksums, source, native inventories and companion byte matches.
+Update ZIP SHA256: e72a71be41c390257f442c09500c2991ef4b4fd35250ec5b655aec021d459353
+Installer SHA256: feaf3d1b4c53a044d56be7fbdd2e8e365692f55d6835f2f41733e5a8001e41a7
+
+Strict-host-key SSH verified a 57-file private backup with 10 protected files
+and no ephemeral refresh exceptions before staging 0.4.9 while the 0.4.8 GUI
+remained active. Existing config, automatic-update preference, stable wrappers
+and pinned original 0.3.0 recovery were unchanged during staging. After the
+owner confirmed a normal Ports relaunch, strict-host-key SSH verified healthy
+active 0.4.9, no pending or awaiting-health flags, all 57 existing private files,
+10 protected files, every original config value, zero added-default fields,
+five stable wrappers and the unchanged pinned recovery. One Google cache had
+only allowed ephemeral refresh changes, with authentication identity intact.
+No forced GUI, service, game or operating-system restart was used. Home weather
+and radar report ready, with a 10-frame radar loop. The personal store remains
+byte-identical to the pre-0.4.8 backup.
+
+The exact 0.4.9 AWS Lambda ZIP is deployed; its displayed CodeSHA256 matched
+keKf0OYD2yU1w+gAmAqC789IqJRjEIJ1uwhqtrt7Vb0=. Existing environment settings,
+SkillID, trigger and invocation remain unchanged. Amazon reports the matching
+voice-model build successful on November 1 at 6:04 p.m. Central. The NLU Profiler
+still reported No Model Built after a refresh despite the successful-build
+record, so that profiler was unavailable as a diagnostic. The deployed simulator
+confirmed the short launch greeting, the intended 15-word dinner help and
+"set dinner card" prompting for the meal. At that meal question, however,
+"cancel" was interpreted as meal text and advanced to the sides question.
+Testing stopped with "Alexa exit"; no subsequent meal fields were supplied and
+the personal-store hash verified unchanged. This is an observed simulator
+cancellation-parsing edge case, not a passing cancellation check or a saved
+dinner. A fix requires a future signed release above 0.4.9; published 0.4.9
+artifacts remain unchanged. Physical number/title selection checks remain
+pending. Numeric commands retain 0.4.8 compatibility; title selection now has
+its required active 0.4.9 backend, but positive live selection is unverified.
+
+The owner confirmed 0.4.8 physical skill launch, dinner help and radar animation
+while card rotation is paused. No new paid daily AI batch was forced. First
+eligible generation, positive title selection and physical selection of all
+four options remain separate field checks. No private household state, account
+identifier or credential is included in this record.
+
+HISTORICAL 0.4.9 CONCISE ALEXA DINNER HELP CANDIDATE - NOVEMBER 1, 2026 CENTRAL
 
 The owner confirmed on the physical Echo that "open Flight Wall skill" opens
 Flight Wall Personal and "dinner help" gives examples. The help was too long;

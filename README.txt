@@ -1,4 +1,4 @@
-FLIGHT WALL 0.4.9 - CONCISE ALEXA DINNER HELP CANDIDATE
+FLIGHT WALL 0.4.9 - PUBLISHED, VERIFIED AND ACTIVE
 
 Shortens dinner help to one spoken example and adds "set dinner card" as a
 simple way to begin. Menu selection accepts numbers 1-4 and matching displayed
@@ -6,8 +6,21 @@ meal titles, tied to today's exact generated set. The short greeting, optional
 sides/ready-time follow-ups, invocation and scoped voice permissions remain.
 Shorter help and numeric aliases work with 0.4.8; selecting by title requires
 the matching 0.4.9 backend and its normal next-safe-Ports-launch activation.
-The signed build and deployment remain pending. See docs/RELEASE-0.4.9.txt
-and VALIDATION.txt. Current verified installed baseline follows.
+Linux passed 1318 tests and 539 subtests with zero skips/failures, plus frozen
+graphics and both executable upgrade/rollback gates. Published files passed
+independent signature, inventory and source checks. A verified 57-file private
+backup and ten protected files preceded GUI-live staging; settings, credentials,
+stable wrappers and pinned recovery were preserved. The matching Lambda/model
+are deployed. The owner reopened Ports normally; strict-host-key SSH confirmed
+healthy active 0.4.9, all existing settings/private files, stable wrappers and
+pinned recovery, with no pending update or startup-health flag. One Google
+cache changed only through permitted ephemeral refresh. The simulator confirmed
+short dinner help and the new meal prompt without changing saved meals. Real
+displayed-option selection and first paid daily generation remain field checks.
+See docs/RELEASE-0.4.9.txt and docs/VALIDATION.txt for field-check limits.
+Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.9
+
+Current verified active baseline follows.
 
 FLIGHT WALL 0.4.8 - PUBLISHED, VERIFIED AND ACTIVE
 
