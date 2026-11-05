@@ -84,7 +84,7 @@ def gui(monkeypatch, events, *, times=None, status=None, slots=SLOTS, fail_fetch
                  "inspiration": PRIVATE, "nearby": GREEN, "weather": GREEN}.get(state["view"], BLUE)
         return Image.new("RGB", (512, 256), color)
 
-    with patch.object(display, "datetime") as date, patch.object(display, "ShaderScreen", Screen), \
+    with patch.object(display, "datetime") as date, patch.object(display, "DisplayScreen", Screen), \
             patch.object(display, "CardTransition", Transition), patch.object(display, "render_frame", side_effect=render), \
             patch.object(display.time, "monotonic", side_effect=lambda: ticks[0]), \
             patch.object(pygame.time, "Clock", return_value=SimpleNamespace(tick=lambda rate: rates.append(rate))), \

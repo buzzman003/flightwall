@@ -59,12 +59,19 @@ def _agenda_preferences(path):
     except (OSError, ValueError, TypeError):
         value = {}
     if not isinstance(value, dict) or not isinstance(value.get("children"), list):
-        return {}, {}
+        return {}, {}, {}
     children = {}
     for item in value["children"][:12]:
         name = _agenda_label(item, 24)
         if name:
             children.setdefault(_agenda_words(name), name)
+    names = dict(children)
+    child_aliases = value.get("child_aliases")
+    if isinstance(child_aliases, dict):
+        for item, target in list(child_aliases.items())[:24]:
+            alias, name = _agenda_label(item, 24), _agenda_label(target, 24)
+            if alias and name and (name := names.get(_agenda_words(name))):
+                children.setdefault(_agenda_words(alias), name)
     activities = dict(_ACTIVITY_ALIASES)
     custom = value.get("activities")
     if isinstance(custom, dict):
@@ -73,7 +80,29 @@ def _agenda_preferences(path):
             if label and isinstance(synonyms, list):
                 aliases = {_agenda_words(name) for name in (_agenda_label(entry, 32) for entry in synonyms[:12]) if name}
                 activities[label] = tuple(sorted(aliases | {_agenda_words(label)} | set(activities.get(label, ()))))
-    return children, activities
+    defaults = {}
+    activity_defaults = value.get("activity_defaults")
+    if isinstance(activity_defaults, dict):
+        for label, target in list(activity_defaults.items())[:12]:
+            name = _agenda_label(target, 24)
+            if label in activities and name and (name := names.get(_agenda_words(name))):
+                defaults[label] = name
+    precedence = value.get("activity_precedence")
+    if isinstance(precedence, list):
+        precedence = list(dict.fromkeys(label for label in precedence[:12]
+                                        if isinstance(label, str) and label in activities))
+    else:
+        precedence = []
+    ranks = {label: index for index, label in enumerate(precedence)}
+    overrides = {}
+    same_day = value.get("same_day_activity_overrides")
+    if isinstance(same_day, dict):
+        for label, preferred in list(same_day.items())[:12]:
+            if (label in defaults and label in ranks and isinstance(preferred, str)
+                    and preferred in ranks and ranks[preferred] < ranks[label]):
+                overrides[label] = preferred
+    return children, activities, {"activity_defaults": defaults, "activity_precedence": precedence,
+                                  "same_day_activity_overrides": overrides}
 
 
 def _now():
@@ -159,7 +188,9 @@ def parse_kids_events(events, default_timezone="UTC"):
     return sorted(intervals.values(), key=lambda item: (_stamp(item["start"]), item["parent"], _stamp(item["end"])))
 
 
-def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *, event_timezone=None):
+def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *,
+                          event_timezone=None, activity_defaults=None, activity_precedence=(),
+                          same_day_activity_overrides=None):
     """Project today's approved activity labels, optional child names and times."""
     if not children:
         return []
@@ -168,13 +199,17 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
     day_start = datetime.combine(day, time(), zone).astimezone(UTC)
     day_end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
     entries = set()
+    explicitly_named = set()
     for event in _event_versions(events):
         summary = event.get("summary")
         if event.get("status") == "cancelled" or not isinstance(summary, str) or len(summary) > 256:
             continue
         normalized = _agenda_words(summary)
         words = f" {normalized} "
-        matches = [name for word, name in children.items() if f" {word} " in words]
+        first_word, last_word = normalized.partition(" ")[0], normalized.rpartition(" ")[2]
+        matches = {name for word, name in children.items() if len(word) > 1 and f" {word} " in words}
+        if not matches:
+            matches = {children[word] for word in (first_word, last_word) if len(word) == 1 and word in children}
         # Without a named child, trust only an exact activity title from the
         # selected family calendar. A longer title may describe an adult event.
         labels = [label for label, aliases in activities.items()
@@ -202,10 +237,38 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
             continue
         if not all_day and end - start > timedelta(days=1):
             continue
-        titles = [name + " " + labels[0] for name in matches] or labels
-        entries.update((_iso(start), _iso(end), title, all_day) for title in titles)
-    return [{"title": label, "start": start, "end": end, **({"all_day": True} if all_day else {})}
-            for start, end, label, all_day in sorted(entries)[:48]]
+        label = labels[0]
+        names = matches or {(activity_defaults or {}).get(label, "")}
+        projected = {(start, end, name, label, all_day) for name in names}
+        entries.update(projected)
+        if matches:
+            explicitly_named.update(projected)
+    if same_day_activity_overrides:
+        # The selected date already limits entries to today's local day.
+        # A defaulted row may be skipped, but an explicitly named row stays.
+        scheduled = {(name, label) for _, _, name, label, _ in explicitly_named}
+        entries = {entry for entry in entries if entry in explicitly_named
+                   or (entry[2], same_day_activity_overrides.get(entry[3])) not in scheduled}
+    if activity_precedence:
+        entries = _preferred_activity_entries(entries, activity_precedence)
+    return [{"title": f"{name} {label}" if name else label, "start": _iso(start), "end": _iso(end),
+             **({"all_day": True} if all_day else {})}
+            for start, end, name, label, all_day in sorted(entries)[:48]]
+
+
+def _preferred_activity_entries(entries, precedence):
+    """Resolve only configured timed overlaps for a single named child."""
+    kept = set(entries)
+    for index, label in enumerate(precedence):
+        for entry in entries:
+            start, end, name, kind, all_day = entry
+            if kind != label or not name or all_day:
+                continue
+            if any(other_name == name and other_kind in precedence[:index] and not other_all_day
+                   and other_start < end and start < other_end
+                   for other_start, other_end, other_name, other_kind, other_all_day in kept):
+                kept.discard(entry)
+    return kept
 
 
 def kids_snapshot(intervals, last_sync, now=None, stale_after=1800, source=""):
@@ -577,10 +640,10 @@ class HouseholdCalendars:
         outlook = custody_outlook(family.get("intervals", []), family.get("last_sync"), config, now,
                                   failed=bool(family.get("error") or not config.get("family_calendar_id")))
         if outlook.get("stale") is False and config.get("kids_filter_enabled") is True and not config.get("guest_mode"):
-            children, activities = _agenda_preferences(self.agenda_path)
+            children, activities, agenda_policy = _agenda_preferences(self.agenda_path)
             activity_sync = family.get("activity_last_sync")
             display_zone = config.get("timezone", "UTC")
-            if (children and family.get("activity_scope") == _binding(children, activities, display_zone)
+            if (children and family.get("activity_scope") == _binding(children, activities, display_zone, agenda_policy)
                     and calendar_fresh(activity_sync, now, config.get("kids_stale_minutes", 30))):
                 zone = ZoneInfo(display_zone)
                 day = now.astimezone(zone).date()
@@ -670,12 +733,13 @@ class HouseholdCalendars:
                 if profile in errors:
                     raise CalendarError(errors[profile])
                 result = self.client_for(profile).get_events(config["family_calendar_id"], now - timedelta(days=2), now + timedelta(days=45))
-                children, activities = _agenda_preferences(self.agenda_path)
+                children, activities, agenda_policy = _agenda_preferences(self.agenda_path)
                 display_zone = config.get("timezone", "UTC")
                 family.update(intervals=parse_kids_events(result["items"], result["timezone"]),
                               activities=parse_kids_activities(result["items"], children, activities, now, display_zone,
-                                                               event_timezone=result["timezone"]),
-                              activity_scope=_binding(children, activities, display_zone), activity_last_sync=_iso(now),
+                                                               event_timezone=result["timezone"], **agenda_policy),
+                              activity_scope=_binding(children, activities, display_zone, agenda_policy),
+                              activity_last_sync=_iso(now),
                               last_sync=_iso(now), error=None)
             except CalendarError as error:
                 family["error"] = str(error)

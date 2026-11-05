@@ -16,15 +16,20 @@ MAX_STATUS_AGE = 300
 NEARBY_ROUTE_MAX_AGE = 600
 TIME_FIELDS = tuple(kind + "_" + event for event in ("out", "off", "on", "in") for kind in ("scheduled", "estimated", "actual"))
 _RFC3339 = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})")
-_NEARBY_AIRPORT = re.compile(r"[A-Z]{3,4}")
+_NEARBY_AIRPORT = re.compile(r"(?=[A-Z0-9]*[A-Z])[A-Z0-9]{3,4}")
+_US_REGISTRATION = re.compile(r"N[1-9](?:[0-9]{0,4}|[0-9]{0,3}[A-HJ-NP-Z]|[0-9]{0,2}[A-HJ-NP-Z]{2})")
 
 
 def _nearby_airport(airport):
-    for key, length in (("code_iata", 3), ("code_icao", 4)):
+    for key, pattern in (("code_iata", r"[A-Z]{3}"), ("code_icao", r"[A-Z]{4}"), ("code_lid", _NEARBY_AIRPORT)):
         code = airport.get(key)
-        if isinstance(code, str) and len(code) == length and _NEARBY_AIRPORT.fullmatch(code):
+        if isinstance(code, str) and re.fullmatch(pattern, code):
             return code
     return None
+
+
+def valid_us_registration(value):
+    return isinstance(value, str) and _US_REGISTRATION.fullmatch(value) is not None
 
 
 def stamp(value):
@@ -206,15 +211,26 @@ def nearby_commercial_ident(aircraft):
     return value if re.fullmatch(r"[A-Z]{3}[0-9]{1,5}[A-Z]?", value) else None
 
 
+def nearby_lookup_identity(aircraft):
+    designator = nearby_commercial_ident(aircraft)
+    if designator:
+        return "designator", designator
+    registration = aircraft.get("registration") if isinstance(aircraft, dict) else None
+    if valid_us_registration(registration):
+        return "registration", registration
+    return None
+
+
 def match_nearby_route(data, aircraft, now):
-    """One actively airborne provider flight matching the observed callsign.
+    """One actively airborne provider flight matching the observed identity.
 
     This buys metadata only, never positions, telemetry, tracks or filed route.
     Unsupported, ambiguous, landed and mismatched registrations stay unknown.
     """
-    ident = nearby_commercial_ident(aircraft)
-    if not ident or not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
+    identity = nearby_lookup_identity(aircraft)
+    if not identity or not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
         return None
+    ident_type, ident = identity
     if not isinstance(aircraft.get("hex"), str) or not re.fullmatch(r"~?[0-9a-fA-F]{6}", aircraft["hex"]):
         return None
     try:
@@ -229,7 +245,14 @@ def match_nearby_route(data, aircraft, now):
         return None
     matches = []
     for item in data["flights"]:
-        if not isinstance(item, dict) or not any(ident == item.get(key) for key in ("ident", "ident_icao", "atc_ident")):
+        if not isinstance(item, dict):
+            continue
+        if ident_type == "registration":
+            # Require the provider's explicit tail field, even if its flight
+            # ident happens to look like this registration.
+            if item.get("registration") != ident:
+                continue
+        elif not any(ident == item.get(key) for key in ("ident", "ident_icao", "atc_ident")):
             continue
         if any(item.get(key) is True for key in ("blocked", "cancelled", "diverted", "position_only")):
             continue
@@ -257,7 +280,7 @@ def match_nearby_route(data, aircraft, now):
             continue
         matches.append({"origin": origin, "destination": destination, "source": SOURCE,
                         "fetched_at": now.astimezone(UTC).isoformat(), "provider_flight_id": identifier,
-                        "callsign": ident, "registration": observed_tail or None,
+                        "callsign": ident if ident_type == "designator" else None, "registration": observed_tail or None,
                         "aircraft_hex": aircraft.get("hex"), "actual_off": takeoff.isoformat()})
     return matches[0] if len(matches) == 1 else None
 
@@ -265,7 +288,11 @@ def match_nearby_route(data, aircraft, now):
 def fresh_nearby_route(aircraft, now):
     """Per-frame metadata guard; source position and lookup age are separate."""
     route = aircraft.get("route") if isinstance(aircraft, dict) else None
-    if not isinstance(route, dict) or nearby_commercial_ident(aircraft) != route.get("callsign"):
+    identity = nearby_lookup_identity(aircraft)
+    if not isinstance(route, dict) or not identity:
+        return None
+    ident_type, ident = identity
+    if route.get("callsign") != (ident if ident_type == "designator" else None):
         return None
     if not isinstance(aircraft.get("hex"), str) or not re.fullmatch(r"~?[0-9a-fA-F]{6}", aircraft["hex"]):
         return None

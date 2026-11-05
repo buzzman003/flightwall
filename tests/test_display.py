@@ -56,6 +56,23 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(image.getpixel((4, 4)), (100, 60, 20))
         self.assertEqual(source.getpixel((1, 1)), (200, 120, 40))
 
+    def test_visible_shopping_ticker_keeps_every_thin_stroke_in_the_card_crisp(self):
+        from flightwall.display import _present_frame
+        from flightwall.render import compose_display_overlays, display_content_bounds
+
+        board = Image.new("RGB", (512, 256))
+        red, black = (255, 0, 0), (0, 0, 0)
+        for x in range(0, board.width, 2):
+            board.paste(red, (x, 0, x + 1, board.height))
+        now = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
+        state = {"shopping_list": {"items": [{"name": "Milk"}]}}
+        composed = compose_display_overlays(board, state, now, presentation=True)
+        result = _present_frame(composed, {"brightness": 1, "dot_gap": .2, "glow": 1}, (1920, 960))
+        left, _, width, _ = display_content_bounds(state, now)
+        row = [result.getpixel((x, 61)) for x in range(round(left * 3.75), round((left + width) * 3.75))]
+        self.assertEqual(set(row), {black, red})
+        self.assertEqual(sum(a == black and b == red for a, b in zip(row, row[1:])), 256)
+
     def test_sleep_schedule_handles_midnight_and_local_timezone(self):
         config = {"sleep_enabled": True, "sleep_start": "23:00", "sleep_end": "06:00", "timezone": "America/New_York"}
         self.assertTrue(is_sleeping(config, datetime(2026, 10, 21, 4, 0, tzinfo=timezone.utc)))
@@ -89,7 +106,7 @@ class GuiInputTests(unittest.TestCase):
                 self.frames.append(frame.copy())
 
         frame_index = [0]
-        with patch("flightwall.display.datetime") as wall_clock, patch("flightwall.display.ShaderScreen", Screen), \
+        with patch("flightwall.display.datetime") as wall_clock, patch("flightwall.display.DisplayScreen", Screen), \
                 patch("flightwall.display.time.monotonic", return_value=0):
             wall_clock.now.return_value = now
             def events():
@@ -107,8 +124,8 @@ class GuiInputTests(unittest.TestCase):
 
     def test_software_fallback_uses_fit_without_cropping_or_stretching(self):
         import pygame
-        from flightwall.display import ShaderScreen
-        screen = ShaderScreen.__new__(ShaderScreen)
+        from flightwall.display import DisplayScreen
+        screen = DisplayScreen.__new__(DisplayScreen)
         screen.pygame, screen.gl = pygame, None
         screen.screen = pygame.Surface((1920, 1080))
         frame = Image.new("RGB", (512, 256), (255, 255, 255))
@@ -123,8 +140,8 @@ class GuiInputTests(unittest.TestCase):
 
     def test_software_leds_at_1080p_fit_have_dark_gaps_and_unblended_centers(self):
         import pygame
-        from flightwall.display import ShaderScreen
-        screen = ShaderScreen.__new__(ShaderScreen)
+        from flightwall.display import DisplayScreen
+        screen = DisplayScreen.__new__(DisplayScreen)
         screen.pygame, screen.gl = pygame, None
         screen.screen = pygame.Surface((1920, 1080))
         frame = Image.new("RGB", (512, 256), (255, 255, 255))
@@ -163,24 +180,24 @@ class GuiInputTests(unittest.TestCase):
 
         events = [pygame.event.Event(pygame.KEYDOWN, key=pygame.K_l),
                   pygame.event.Event(pygame.KEYDOWN, key=pygame.K_r)]
-        with patch("flightwall.display.ShaderScreen", Screen), patch.object(pygame.event, "get", return_value=events):
+        with patch("flightwall.display.DisplayScreen", Screen), patch.object(pygame.event, "get", return_value=events):
             result = run_gui(Connection(), windowed=True, max_frames=1)
         self.assertEqual(result["frames"], 1)
         self.assertEqual(len(Screen.frames), 1)
 
 
 @unittest.skipUnless(importlib.util.find_spec("pygame") and importlib.util.find_spec("OpenGL"), "OpenGL dependencies not installed")
-class ShaderTests(unittest.TestCase):
-    def test_real_shader_orientation_letterbox_and_led_gap_at_3x(self):
+class OpenGLPresentationTests(unittest.TestCase):
+    def test_real_opengl_orientation_letterbox_and_led_gap_at_3x(self):
         import pygame
-        from flightwall.display import ShaderScreen
+        from flightwall.display import DisplayScreen
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
             os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
         os.environ.setdefault("XDG_RUNTIME_DIR", "/tmp")
         os.environ.setdefault("MESA_SHADER_CACHE_DIR", "/tmp/flightwall-test-mesa")
         pygame.display.init()
         try:
-            screen = ShaderScreen(pygame, (320, 240), False)
+            screen = DisplayScreen(pygame, (320, 240), False)
             if not screen.gl:
                 if os.environ.get("FLIGHTWALL_REQUIRE_OPENGL") == "1":
                     self.fail("Release validation requires an actual offscreen OpenGL context")

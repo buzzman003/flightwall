@@ -117,7 +117,7 @@ def test_keyboard_and_gamepad_navigate_options_and_save_only_chosen_fields(monke
               pygame.event.Event(pygame.JOYHATMOTION, value=(1, 0)),
               pygame.event.Event(pygame.JOYHATMOTION, value=(0, -1)),
               pygame.event.Event(pygame.JOYHATMOTION, value=(1, 0))]
-    with patch('flightwall.display.ShaderScreen', Screen), patch.object(pygame.event, 'get', return_value=events):
+    with patch('flightwall.display.DisplayScreen', Screen), patch.object(pygame.event, 'get', return_value=events):
         run_gui(Connection(), windowed=True, max_frames=1)
     assert saved == [{'flight_cards_visible': False}, {'nearby_radius_miles': 100},
                      {'national_radar_scope': 'southeast'}]

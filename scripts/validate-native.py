@@ -30,8 +30,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 BASELINE_VERSION = "0.3.0"
 BASELINE_SHA256 = "086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08"
-CURRENT_BASELINE_VERSION = "0.4.10"
-CURRENT_BASELINE_SHA256 = "dd4743c04a7fcd5bd57a08ff7f2c9e300be9531d4dbc78fc481c1fdccd3c83a6"
+CURRENT_BASELINE_VERSION = "0.4.11"
+CURRENT_BASELINE_SHA256 = "f7209c07c667960b4be114f03e49d93a9681e44adf622265ff3c6f39349dd2d9"
 MAX_GLIBC = (2, 36)
 
 
@@ -66,7 +66,7 @@ def verify_baseline(path):
 
 def verify_current_baseline(path):
     require(digest(path) == CURRENT_BASELINE_SHA256,
-            "Published 0.4.10 installer SHA-256 does not match the current baseline")
+            "Published 0.4.11 installer SHA-256 does not match the current baseline")
 
 
 def extract_installer(path, destination, version):
@@ -252,7 +252,7 @@ class Installation:
             time.sleep(.1)
         raise ValueError("Native background service failed to report the expected version")
 
-    def launch(self, *, shader=True, success=True):
+    def launch(self, *, opengl=True, success=True):
         log = self.data / "logs" / "launcher.log"
         offset = log.stat().st_size if log.exists() else 0
         result = execute("Stable Ports launcher", ["sh", self.install / "launch.sh", "--windowed", "--frames", "4"],
@@ -261,7 +261,10 @@ class Installation:
             with log.open("rb") as stream:
                 stream.seek(offset)
                 records = json_objects(stream.read().decode("utf-8", errors="replace"))
-            require(any(row.get("frames") == 4 and row.get("shader") is shader for row in records),
+            require(any(row.get("frames") == 4 and (
+                row.get("opengl") is opengl and row.get("shader") is False if "opengl" in row
+                else row.get("shader") is opengl  # Pre-0.4.12 executables reported only the shader flag.
+            ) for row in records),
                     "Frozen GUI did not render four frames with the required graphics path")
         return result
 
@@ -366,17 +369,18 @@ def fresh_install(package, root, source, version):
                 "Frozen software renderer did not produce the logical DEMO canvas")
         require(image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n" and struct.unpack(">II", image.read_bytes()[16:24]) == (512, 256),
                 "Frozen preview PNG dimensions are wrong")
-        case.launch(shader=True)
+        case.launch(opengl=True)
         software = dict(case.env, SDL_VIDEODRIVER="dummy")
         result = json_output(execute("Frozen software fallback", [case.install / "current" / "FlightWall",
                     "--install-dir", case.install, "--data-dir", case.data, "gui", "--windowed", "--frames", "4"], env=software))
-        require(result.get("frames") == 4 and result.get("shader") is False, "Frozen software fallback failed")
+        require(result.get("frames") == 4 and result.get("opengl") is False and result.get("shader") is False,
+                "Frozen software fallback failed")
         case.service("start")
         case.wait_health(version)
         verify_setup(case, source)
-        case.launch(shader=True)
+        case.launch(opengl=True)
         case.wait_health(version)
-        return {"frozen_demo": True, "logical_png": [512, 256], "opengl_shader": True,
+        return {"frozen_demo": True, "logical_png": [512, 256], "opengl_presentation": True,
                 "software_fallback": True, "setup_assets_login_save_finish": True, "service_gui_service": True}
     finally:
         case.stop()
@@ -394,15 +398,15 @@ def upgrade_install(old_package, package, root, version, *, rollback=False, curr
         case.wait_health(BASELINE_VERSION)
         previous = BASELINE_VERSION
         if current_package is not None:
-            # Reproduce the actual installed history instead of making 0.4.10
-            # the recovery helper: original 0.3.0 -> healthy 0.4.10 -> candidate.
+            # Reproduce the actual installed history instead of making 0.4.11
+            # the recovery helper: original 0.3.0 -> healthy 0.4.11 -> candidate.
             case.install_package(current_package)
             require(case.selected() == BASELINE_VERSION, "Current baseline activated before a safe launch")
             case.wait_health(BASELINE_VERSION)
-            case.launch(shader=True)
+            case.launch(opengl=True)
             previous = CURRENT_BASELINE_VERSION
             require(case.selected() == previous and case.app("--version").stdout.strip() == previous,
-                    "Current baseline is not the real published 0.4.10 executable")
+                    "Current baseline is not the real published 0.4.11 executable")
             case.wait_health(previous)
             require(case.state().get("awaiting_health") is False, "Current baseline did not pass startup health")
             assert_preserved(case, fixtures, recovery_hash)
@@ -425,7 +429,7 @@ def upgrade_install(old_package, package, root, version, *, rollback=False, curr
             state = case.state()
             require(state.get("awaiting_health") is False and version in state.get("failed_versions", []), "Rollback state was not retained")
         else:
-            case.launch(shader=True)
+            case.launch(opengl=True)
             require(case.selected() == version and case.app("--version").stdout.strip() == version,
                     "Genuine executable upgrade did not activate")
             case.wait_health(version)
@@ -471,7 +475,7 @@ def main():
     parser.add_argument("--installer", type=Path)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--current-baseline", type=Path,
-                        help="Separately test published 0.4.10 -> candidate with the original 0.3.0 recovery helper")
+                        help="Separately test published 0.4.11 -> candidate with the original 0.3.0 recovery helper")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
     parser.add_argument("--verify-current-report", type=Path)
@@ -493,7 +497,7 @@ def main():
     verify_baseline(args.baseline)
     if args.current_baseline:
         require(tuple(map(int, version.split("."))) > tuple(map(int, CURRENT_BASELINE_VERSION.split("."))),
-                "Candidate must be newer than the current 0.4.10 baseline")
+                "Candidate must be newer than the current 0.4.11 baseline")
         verify_current_baseline(args.current_baseline)
     report = {"version": version, "baseline_sha256": BASELINE_SHA256, "bundle_files": inventory(args.release)}
     print("Auditing frozen source, assets, architecture and glibc requirements.", flush=True)
@@ -508,7 +512,7 @@ def main():
         if args.current_baseline:
             current = extract_installer(args.current_baseline, root / "current-baseline", CURRENT_BASELINE_VERSION)
             report["current_baseline_sha256"] = CURRENT_BASELINE_SHA256
-            print("Checking genuine 0.4.10 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
+            print("Checking genuine 0.4.11 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
         else:
             print("Checking fresh frozen installation, graphics and local setup.", flush=True)
             report["fresh_install"] = fresh_install(package, root / "fresh", args.source, version)

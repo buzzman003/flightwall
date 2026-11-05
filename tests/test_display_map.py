@@ -108,8 +108,8 @@ def test_invalid_patch_cannot_draw_over_other_views_or_outside_board():
 @pytest.mark.skipif(not importlib.util.find_spec("pygame"), reason="pygame not installed")
 def test_software_map_bypasses_dots_but_keeps_title_led_and_brightness():
     import pygame
-    from flightwall.display import ShaderScreen
-    screen = ShaderScreen.__new__(ShaderScreen)
+    from flightwall.display import DisplayScreen
+    screen = DisplayScreen.__new__(DisplayScreen)
     screen.pygame, screen.gl = pygame, None
     screen.screen = pygame.Surface((1024, 512))
     frame = Image.new("RGB", (512, 256), (255, 255, 255))
@@ -125,12 +125,12 @@ def test_software_map_bypasses_dots_but_keeps_title_led_and_brightness():
                     reason="OpenGL dependencies not installed")
 def test_actual_gl_map_is_oriented_unshaded_and_handles_odd_rgb_row_width():
     import pygame
-    from flightwall.display import ShaderScreen
+    from flightwall.display import DisplayScreen
     if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
         os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
     pygame.display.init()
     try:
-        screen = ShaderScreen(pygame, (1536, 768), False)
+        screen = DisplayScreen(pygame, (1536, 768), False)
         if not screen.gl:
             if os.environ.get("FLIGHTWALL_REQUIRE_OPENGL") == "1":
                 pytest.fail("Release validation requires actual OpenGL map composition")

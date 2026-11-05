@@ -93,7 +93,7 @@ class HouseholdIntegrationTests(unittest.TestCase):
         import os
         os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
         select = pygame.event.Event(pygame.KEYDOWN, key=pygame.K_4)
-        with patch("flightwall.display.datetime") as clock, patch("flightwall.display.ShaderScreen", Screen), \
+        with patch("flightwall.display.datetime") as clock, patch("flightwall.display.DisplayScreen", Screen), \
                 patch("flightwall.display.render_frame", side_effect=render), patch.object(pygame.event, "get", return_value=[select]):
             clock.now.return_value = NOW
             run_gui(Connection(), windowed=True, max_frames=1)

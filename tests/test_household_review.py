@@ -66,7 +66,7 @@ class HouseholdReviewTests(unittest.TestCase):
         ticks = [0, 0] + [3 * index for index in range(1, 17)]
         with patch("flightwall.display.datetime") as wall, \
                 patch("flightwall.display.time.monotonic", side_effect=ticks), \
-                patch("flightwall.display.ShaderScreen", Screen), \
+                patch("flightwall.display.DisplayScreen", Screen), \
                 patch("flightwall.display.render_frame", side_effect=render), \
                 patch.object(pygame.event, "get") as events, \
                 patch.object(pygame.display, "init"), \

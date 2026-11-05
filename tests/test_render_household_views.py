@@ -84,7 +84,7 @@ class TimerRenderTests(unittest.TestCase):
             height, width = 256 - inset, (256 - inset) * 2
             x = (512 - width) // 2
             image = render.compose_timer_strip(source, state, NOW, progress)
-            self.assertEqual(image.crop((x, inset, x + width, 256)).tobytes(), source.resize((width, height), Image.Resampling.LANCZOS).tobytes())
+            self.assertEqual(set(image.crop((x, inset, x + width, 256)).getdata()), {(40, 80, 160), *colors})
             for point, color in zip(((x, inset), (x + width - 1, inset), (x, 255), (x + width - 1, 255)), colors):
                 self.assertEqual(image.getpixel(point), color)
         self.assertEqual(render.compose_timer_strip(source, state, NOW, 0).tobytes(), source.tobytes())

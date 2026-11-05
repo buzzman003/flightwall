@@ -391,6 +391,44 @@ class HouseholdManagerTests(unittest.TestCase):
         private_json(self.manager.agenda_path, {"children": ["Nora"]})
         self.assertNotIn("activities", self.manager.status()["custody_outlook"])
 
+    def test_family_agenda_resolves_private_initials_and_configured_activity_conflicts(self):
+        preferences = {
+            "children": ["Rory", "Nora", "Jules"],
+            "child_aliases": {"R": "Rory", "N": "Nora", "J": "Jules", "A": "Unlisted"},
+            "activity_defaults": {"Jiu-jitsu": "Rory"},
+            "activity_precedence": ["Soccer", "Jiu-jitsu"],
+            "same_day_activity_overrides": {"Jiu-jitsu": "Soccer"},
+        }
+        private_json(self.manager.agenda_path, preferences)
+
+        def agenda_api(client, path, parameters):
+            result = self.api(client, path, parameters)
+            if "family" in path:
+                result["items"].extend([
+                    event("Jiu-jitsu", "2026-10-22T17:00:00Z", "2026-10-22T18:00:00Z"),
+                    event("R: Soccer Practice", "2026-10-22T18:00:00Z", "2026-10-22T19:00:00Z"),
+                    event("Nora Jiu-jitsu", "2026-10-22T18:15:00Z", "2026-10-22T19:30:00Z"),
+                    event("Rory Jiu-jitsu", "2026-10-22T18:30:00Z", "2026-10-22T19:30:00Z"),
+                    event("Rory Jiu-jitsu", "2026-10-22T19:00:00Z", "2026-10-22T20:00:00Z"),
+                    event("Violin Class - N", "2026-10-22T20:00:00Z", "2026-10-22T21:00:00Z"),
+                    event("J Dance Class", "2026-10-22T21:00:00Z", "2026-10-22T22:00:00Z"),
+                    event("A Gymnastics", "2026-10-22T22:00:00Z", "2026-10-22T23:00:00Z"),
+                    event("Gymnastics near R park", "2026-10-22T22:00:00Z", "2026-10-22T23:00:00Z"),
+                ])
+            return result
+
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
+            activities = self.manager.sync()["custody_outlook"]["activities"]
+            self.assertEqual([row["title"] for row in activities],
+                             ["Rory Soccer", "Nora Jiu-jitsu", "Rory Jiu-jitsu", "Nora Violin", "Jules Dance"])
+            self.assertEqual(activities[2]["start"], "2026-10-22T19:00:00Z")
+            private_json(self.manager.agenda_path, {**preferences, "same_day_activity_overrides": {}})
+            self.assertNotIn("activities", self.manager.status()["custody_outlook"])
+            activities = self.manager.sync()["custody_outlook"]["activities"]
+            self.assertEqual(activities[0], {
+                "title": "Rory Jiu-jitsu", "start": "2026-10-22T17:00:00Z", "end": "2026-10-22T18:00:00Z",
+            })
+
     def test_credentials_are_not_reported_connected_before_actual_api_success(self):
         profile = self.manager.status()["connected_profiles"]["chris"]
         self.assertTrue(profile["credentials_present"])

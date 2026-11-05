@@ -1076,3 +1076,13 @@ opt into integrations one at a time using HOUSEHOLD-SETUP.txt.
 * OpenGL framebuffer and software tests check bright centers and fully
   dark gaps at fractional fit sizes, including the 1920 x 1080 fit.
   The final appearance on the owner's physical TV is a separate check.
+
+0.4.12 FIELD CHECKS
+
+* Verify the card and shopping ticker on the owner's TV after activation.
+  Automated framebuffer checks and native launch checks do not establish
+  the appearance of the physical panel.
+* Compare the private agenda's initials and preferred activity with the
+  selected family calendar after its next successful refresh.
+* AeroAPI route rendering is checked with synthetic provider responses.
+  Live proof requires a fresh aircraft and a verified provider match.

@@ -170,7 +170,7 @@ def test_operating_telemetry_keeps_received_units_and_does_not_guess_altitude_un
 def test_software_context_layer_retains_brightness_without_led_gaps_and_stays_inset(monkeypatch, view):
     pygame = pytest.importorskip("pygame")
     monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
-    screen = display.ShaderScreen.__new__(display.ShaderScreen)
+    screen = display.DisplayScreen.__new__(display.DisplayScreen)
     screen.pygame, screen.gl, screen.screen = pygame, None, pygame.Surface((1024, 512))
     frame = Image.new("RGB", (512, 256), (255, 255, 255))
     state = operating_state() if view == "operating_map" else radar_state()
@@ -215,7 +215,7 @@ def gui(monkeypatch, times, events, *, slots, status=None, fail_fetch=False):
     ticks, wall, index = [0.0], [NOW], [-1]
     data = deepcopy(status or {"config": config(), "snapshot": {"demo": False, "flights": []}, "personal_items": []})
     states, frames, active = [], [], []
-    original_screen = display.ShaderScreen
+    original_screen = display.DisplayScreen
     transitions = []
     class Screen:
         def __init__(self, *args):
@@ -245,7 +245,7 @@ def gui(monkeypatch, times, events, *, slots, status=None, fail_fetch=False):
         ticks[0] = times[index[0]]
         wall[0] = NOW + timedelta(seconds=ticks[0])
         return events[index[0]]
-    with patch.object(display, "datetime") as clock, patch.object(display, "ShaderScreen", Screen), \
+    with patch.object(display, "datetime") as clock, patch.object(display, "DisplayScreen", Screen), \
             patch.object(display, "CardTransition", Transition), patch.object(display, "render_frame", side_effect=render), \
             patch.object(display.time, "monotonic", side_effect=lambda: ticks[0]), \
             patch.object(pygame.event, "get", side_effect=event_poll), \

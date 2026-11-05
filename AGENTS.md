@@ -4,10 +4,11 @@ This is a native x86_64 Batocera 42 Port, built for an HP Ryzen mini PC and
 HDMI TV. Read README.txt and CONTRACT.md for app behavior and storage paths.
 
 Keep the normal first launch fully offline and visibly marked DEMO. Render
-at 512 x 256 logical pixels. The app owns its OpenGL LED effect; it does not
-use an emulator or RetroArch shader. Preserve the software display fallback.
+at 512 x 256 logical pixels. Keep the board, shopping ticker, and timers on
+the same crisp, pixel-exact presentation path. Do not restore shader glow,
+blur, or smoothing of the board before scaling. Preserve the software fallback.
 The nearby geographic inset may render at presentation resolution after the
-LED pass; the board/title/timer layout remains 512x256. Both display paths
+LED composition; the board/title/timer layout remains 512x256. Both display paths
 must apply brightness and the same timer/ticker inset to that map layer.
 
 Google Calendar access is read-only and independent of ChatGPT's calendar

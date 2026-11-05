@@ -1,5 +1,16 @@
 # Flight Wall implementation contract
 
+0.4.12: Compose the original 512 x 256 card directly into its final TV
+viewport, with the same whole-pixel LED treatment as the shopping and timer
+strips. OpenGL and software present the same composed pixels. Remove the
+programmable LED shader, glow, and smoothing before presentation. Continue
+to accept saved Glow values for compatibility with older installations.
+Private agenda preferences can expand initials and assign unnamed activities
+to a configured child. Explicit precedence can suppress a defaulted activity
+when a preferred, named activity appears on the same local day. This affects
+display only. Nearby AeroAPI lookup can also use a verified U.S. registration
+under the existing budget and live identity checks.
+
 0.4.11: The family outlook shows ten calendar days of custody. Today's
 Activities is a separate slot from the same selected family calendar.
 Activity labels are derived locally from approved aliases, with only

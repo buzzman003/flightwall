@@ -1,0 +1,15 @@
+FLIGHT WALL 0.4.12
+
+The main cards now use the shopping ticker's crisp presentation. Both
+display paths preserve the original logical artwork until the final scale.
+The programmable LED shader and glow are removed. Card changes use simple
+wipes without smearing or fading the artwork.
+
+Today's Activities recognizes locally configured child initials and can
+assign an unnamed activity to the configured child. A private preference
+can give one activity precedence on the same day. Calendar entries stay
+read-only, and personal mappings stay on the device.
+
+Nearby aircraft route enrichment can now look up a U.S. registration when
+no supported airline callsign is available. The same verified airborne
+match, spending caps, and position freshness rules apply.

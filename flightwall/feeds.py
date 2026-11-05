@@ -16,9 +16,9 @@ from pathlib import Path
 from .config import private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
 from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
-                            fresh_nearby_route, match_nearby_route, nearby_commercial_ident,
+                            fresh_nearby_route, match_nearby_route, nearby_lookup_identity,
                             match_operating_flight, normalize_operating_status, operating_ident,
-                            stamp as status_stamp, within_tracking_window)
+                            stamp as status_stamp, valid_us_registration, within_tracking_window)
 from .personal import PersonalError, PersonalStore
 
 
@@ -37,7 +37,7 @@ class PaidLimitError(ValueError):
                           "usage_unknown": "Cannot verify the local FlightAware usage limit"}[reason])
 
 
-def _paid_path(path):
+def _paid_path(path, *, allow_registration=False):
     """Only the two priced single-result-set routes may reach the network."""
     if not isinstance(path, str) or len(path) > 4096:
         raise ValueError("Unsupported paid endpoint")
@@ -57,11 +57,15 @@ def _paid_path(path):
         raise ValueError("Unsupported paid flight query")
     if parameters.get("max_pages", ["1"]) != ["1"]:
         raise ValueError("Paid queries must request exactly one result set")
-    if parameters.get("ident_type", ["designator"])[0] != "designator":
+    ident_type = parameters.get("ident_type", ["designator"])[0]
+    if ident_type not in ({"designator", "registration"} if allow_registration else {"designator"}):
         raise ValueError("Unsupported paid identity type")
     # Static routes such as /flights/search have a different, higher fee.
-    # This app only buys designator lookups, never arbitrary path segments.
-    if not re.fullmatch(r"(?:[A-Z][A-Z0-9]|[0-9][A-Z]|[A-Z]{3})[0-9]{1,5}[A-Z]?", ident):
+    # Permit only exact designators and nearby U.S. registrations.
+    if ident_type == "registration":
+        if not valid_us_registration(ident):
+            raise ValueError("Unsupported paid aircraft registration")
+    elif not re.fullmatch(r"(?:[A-Z][A-Z0-9]|[0-9][A-Z]|[A-Z]{3})[0-9]{1,5}[A-Z]?", ident):
         raise ValueError("Unsupported paid flight designator")
     for key in ("start", "end"):
         if key in parameters:
@@ -245,7 +249,7 @@ class FlightFeeds:
 
     def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
-        _, fee = _paid_path(path)
+        _, fee = _paid_path(path, allow_registration=purpose == "nearby")
         if purpose not in {"operating", "nearby"} or purpose == "nearby" and fee != 5:
             raise ValueError("Unsupported paid request purpose")
         today = utcnow().astimezone(timezone.utc).date()
@@ -336,7 +340,7 @@ class FlightFeeds:
             raise PaidLimitError("usage_unknown") from None
 
     def _flightaware(self, path, config, *, purpose="operating"):
-        path, _ = _paid_path(path)
+        path, _ = _paid_path(path, allow_registration=purpose == "nearby")
         key_path = self.data_dir / "flightaware.key"
         try:
             with key_path.open(encoding="utf-8") as stream:
@@ -401,7 +405,7 @@ class FlightFeeds:
 
     @staticmethod
     def _nearby_route_identity(row):
-        return row.get("hex"), nearby_commercial_ident(row), row.get("registration") or None
+        return row.get("hex"), nearby_lookup_identity(row), row.get("registration") or None
 
     def _poll_nearby_routes(self, config, now):
         """Last priority: one closest-aircraft metadata lookup per five minutes."""
@@ -416,9 +420,10 @@ class FlightFeeds:
         closest = sorted((row for row in self.nearby if _nearby_fresh(row, now)),
                          key=lambda row: (row["distance_miles"], row["hex"]))[:3]
         for row in closest:
-            ident = nearby_commercial_ident(row)
-            if not ident:
+            lookup = nearby_lookup_identity(row)
+            if not lookup:
                 continue
+            ident_type, ident = lookup
             identity = self._nearby_route_identity(row)
             entry = self._nearby_route_cache.get(identity)
             if entry and tick - entry["checked_at"] < (600 if entry.get("route") else 1800):
@@ -431,7 +436,7 @@ class FlightFeeds:
                 self._nearby_route_cache.pop(oldest)
             try:
                 params = urllib.parse.urlencode({"start": (now - timedelta(hours=24)).isoformat(),
-                                                 "end": now.isoformat(), "ident_type": "designator", "max_pages": 1})
+                                                 "end": now.isoformat(), "ident_type": ident_type, "max_pages": 1})
                 response = self._flightaware("/flights/" + ident + "?" + params, config, purpose="nearby")
                 entry["route"] = match_nearby_route(response, row, utcnow())
             except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError):

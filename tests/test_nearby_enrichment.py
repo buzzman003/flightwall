@@ -61,9 +61,34 @@ def test_nearby_route_falls_back_to_icao_when_iata_is_missing():
 
 
 @pytest.mark.parametrize("callsign", [None, "N123AB", "abc123", "DL123", "DAL 123", "DAL123/../", "search"])
-def test_tail_hex_arbitrary_path_and_noncanonical_callsign_never_become_paid_lookups(callsign):
-    assert nearby_commercial_ident(aircraft(callsign=callsign)) is None
-    assert match_nearby_route(data(), aircraft(callsign=callsign), NOW) is None
+def test_noncanonical_callsigns_alone_never_become_paid_lookups(callsign):
+    row = aircraft(callsign=callsign, registration=None)
+    assert nearby_commercial_ident(row) is None
+    assert match_nearby_route(data(), row, NOW) is None
+
+
+def test_registration_lookup_requires_unique_verified_airborne_tail_and_supports_small_airports(tmp_path):
+    feed, config = setup(tmp_path)
+    row = aircraft(callsign="N123AB")
+    result = provider(ident="PRIVATE42", origin={"code_lid": "19A"}, destination={"code_icao": "KGMU"})
+    feed.nearby = [row]
+    feed._nearby_completed = ((35.0, -90.0, 5), [row])
+    with patch("flightwall.feeds.utcnow", return_value=NOW), \
+            patch.object(feed, "_flightaware", return_value=data(result)) as network:
+        feed._poll_nearby_routes(config, NOW)
+    assert network.call_count == 1
+    query = urlsplit(network.call_args.args[0])
+    assert query.path == "/flights/N123AB"
+    assert parse_qs(query.query)["ident_type"] == ["registration"]
+    assert parse_qs(query.query)["max_pages"] == ["1"]
+    assert network.call_args.kwargs == {"purpose": "nearby"}
+    route = feed.nearby_for_config(config, NOW)[0]["route"]
+    assert (route["origin"], route["destination"]) == ("19A", "KGMU")
+    assert route["registration"] == "N123AB" and route["callsign"] is None
+    assert fresh_nearby_route(dict(row, route=route, registration="N123CD"), NOW) is None
+    for tail in (None, "N999ZZ"):
+        assert match_nearby_route(data(result | {"ident": "N123AB", "registration": tail}), row, NOW) is None
+    assert match_nearby_route(data(result, result | {"fa_flight_id": "other"}), row, NOW) is None
 
 
 @pytest.mark.parametrize("changes", [

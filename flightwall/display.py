@@ -1,4 +1,4 @@
-"""TV presentation: true LED grid shader, with a software fallback."""
+"""Pixel-exact LED composition with OpenGL and software presentation."""
 from __future__ import annotations
 
 import os
@@ -17,7 +17,7 @@ import time
 import urllib.request
 from zoneinfo import ZoneInfo
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw
 
 from .render import compose_display_overlays, display_content_bounds, render_frame, shopping_ticker_names, visible_timers
 from .feeds import parse_time
@@ -221,6 +221,7 @@ ANIMATED_VIEWS = frozenset({
     "details", "map", "schedule", "trip_summary", "trip_map", "home",
     "flight_status", "personal", "local_visit",
 })
+CARD_EFFECTS = ("wipe_left", "wipe_right", "wipe_up", "wipe_down")
 
 
 def transition_signature(status, config, entries, backend_available, now=None):
@@ -290,7 +291,7 @@ class CardTransition:
         return image
 
     def render(self, frame, key, guard, now, *, view, enabled=True):
-        from .transitions import EFFECTS, compose
+        from .transitions import compose
         if (not enabled or view not in ANIMATED_VIEWS or guard is None
                 or isinstance(now, bool) or not isinstance(now, (int, float)) or not math.isfinite(now)):
             self.cancel()
@@ -302,7 +303,7 @@ class CardTransition:
         if key != self._key:
             self._previous = self._last
             self._key, self._started = key, now
-            choices = tuple(effect for effect in EFFECTS if effect != self._effect)
+            choices = tuple(effect for effect in CARD_EFFECTS if effect != self._effect)
             self._effect, self._seed = self._choose(choices), self._seed + 1
         if self._previous is not None:
             elapsed = now - self._started
@@ -382,21 +383,19 @@ def _led_mask(frame_size, size, gap):
 def led_image(frame, config, scale=4):
     """Export the same logical pixel layout with a portable LED treatment."""
     scale = max(1, min(int(scale), 8))
-    return _render_led(frame, config, (frame.width * scale, frame.height * scale))
+    return _present_frame(frame, config, (frame.width * scale, frame.height * scale))
 
 
 def _render_led(frame, config, size):
-    out = frame.convert("RGB").resize(size, Image.Resampling.NEAREST)
+    rgb = frame if frame.mode == "RGB" else frame.convert("RGB")
+    out = rgb.resize(size, Image.Resampling.NEAREST)
     pitch = min(size[0] / frame.width, size[1] / frame.height)
     if config.get("led_effect", True) and pitch >= 2:
         gap = max(0, min(float(config.get("dot_gap", .22)), .65))
         if gap:
             mask = _led_mask(frame.size, size, round(gap, 4))
             out = Image.composite(out, Image.new("RGB", size), mask)
-        if config.get("glow", 0):
-            halo = out.filter(ImageFilter.GaussianBlur(pitch * .32))
-            out = ImageChops.add(out, ImageEnhance.Brightness(halo).enhance(config["glow"] * .6))
-    return ImageEnhance.Brightness(out).enhance(config.get("brightness", .7))
+    return out
 
 
 class BackendConnection:
@@ -565,8 +564,11 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
             pass
     if not isinstance(image, Image.Image):
         # Preserve the clear schematic while geography or its local point is unavailable.
-        x, y, w, h = box
-        image = frame.crop((round(x), round(y), round(x + w), round(y + h)))
+        if "board_layer" in frame.info:
+            image = frame.info["board_layer"][1].crop((14, 56, 311, 205))
+        else:
+            x, y, w, h = box
+            image = frame.crop((round(x), round(y), round(x + w), round(y + h)))
     frame.info["geographic_patch"] = (box, image)
     return frame
 
@@ -637,8 +639,12 @@ def attach_flight_context(frame, state, config, connection, screen_size, now,
 
 def geographic_patch(frame, viewport):
     """Translate a trusted local image patch into display pixels, with bounds."""
+    return _presentation_layer(frame, viewport, "geographic_patch")
+
+
+def _presentation_layer(frame, viewport, name):
     try:
-        box, image = frame.info["geographic_patch"]
+        box, image = frame.info[name]
         left, top, width, height = box
         if (not isinstance(image, Image.Image) or image.mode != "RGB"
                 or not 1 <= image.width <= 2048 or not 1 <= image.height <= 1024
@@ -654,57 +660,44 @@ def geographic_patch(frame, viewport):
         return None
 
 
-class ShaderScreen:
+def _present_frame(frame, config, size):
+    """Use the same direct pixel path for the card, ticker and timer."""
+    viewport = (0, 0, *size)
+    board = _presentation_layer(frame, viewport, "board_layer")
+    if board:
+        image, (x, y, width, height) = board
+        _, top, _, board_height = frame.info["board_layer"][0]
+        bottom = top + board_height
+        output = Image.new("RGB", size, frame.getpixel((0, top)))
+        # Only present the strip pixels. The card covers most of the output
+        # and needs no second render of the empty area behind it.
+        if top and y:
+            timer = frame.crop((0, 0, frame.width, top))
+            output.paste(_render_led(timer, config, (size[0], y)), (0, 0))
+        if bottom < frame.height and y + height < size[1]:
+            ticker = frame.crop((0, bottom, frame.width, frame.height))
+            output.paste(_render_led(ticker, config, (size[0], size[1] - y - height)), (0, y + height))
+        output.paste(_render_led(image, config, (width, height)), (x, y))
+    else:
+        output = _render_led(frame, config, size)
+    patch = geographic_patch(frame, viewport)
+    if patch:
+        image, (x, y, width, height) = patch
+        output.paste(image.resize((width, height), Image.Resampling.NEAREST), (x, y))
+    brightness = config.get("brightness", .7)
+    return output if brightness == 1 else output.point([int(value * brightness) for value in range(256)] * 3)
+
+
+class DisplayScreen:
     def __init__(self, pygame, size, fullscreen):
         self.pygame = pygame
         self.gl = None
-        self.program = None
         flags = pygame.FULLSCREEN if fullscreen else pygame.RESIZABLE
         try:
             from OpenGL import GL
-            from OpenGL.GL.shaders import compileProgram, compileShader
             pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 2)
             pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MINOR_VERSION, 1)
             self.screen = pygame.display.set_mode(size, flags | pygame.OPENGL | pygame.DOUBLEBUF)
-            vertex = """#version 120
-            varying vec2 uv;
-            void main(){gl_Position=gl_Vertex; uv=gl_MultiTexCoord0.xy;}
-            """
-            fragment = """#version 120
-            uniform sampler2D board; uniform vec2 grid; uniform vec2 outputSize;
-            uniform float level; uniform float gap; uniform float bloom; uniform float enabled;
-            varying vec2 uv;
-            void main(){
-                vec2 pitch=outputSize/grid;
-                if(enabled<0.5 || min(pitch.x,pitch.y)<2.0){
-                    gl_FragColor=vec4(texture2D(board,uv).rgb*level,1.0);
-                    return;
-                }
-                vec2 pixel=floor(uv*outputSize);
-                vec2 index=floor((pixel+vec2(0.5))*grid/outputSize);
-                vec2 cell=(index+vec2(0.5))/grid;
-                vec3 color=texture2D(board,cell).rgb;
-                vec3 led=color;
-                // Place the same whole-pixel gap around each cell boundary.
-                // Fit can alternate cell widths, but never fades their edges.
-                if(gap>0.0){
-                    vec2 space=min(floor(pitch)-vec2(1.0),max(vec2(1.0),floor(pitch*gap+vec2(0.5))));
-                    vec2 start=ceil(index*outputSize/grid-vec2(0.5))+ceil(space*0.5);
-                    vec2 end=ceil((index+vec2(1.0))*outputSize/grid-vec2(0.5))-floor(space*0.5);
-                    vec2 mask=step(start,pixel)*(vec2(1.0)-step(end,pixel));
-                    led*=mask.x*mask.y;
-                }
-                if(bloom>0.0){
-                    vec3 halo=texture2D(board,cell+vec2(1.0/grid.x,0.0)).rgb;
-                    halo+=texture2D(board,cell-vec2(1.0/grid.x,0.0)).rgb;
-                    halo+=texture2D(board,cell+vec2(0.0,1.0/grid.y)).rgb;
-                    halo+=texture2D(board,cell-vec2(0.0,1.0/grid.y)).rgb;
-                    led+=bloom*(halo*0.045+color*0.12);
-                }
-                gl_FragColor=vec4(led*level,1.0);
-            }
-            """
-            self.program = compileProgram(compileShader(vertex, GL.GL_VERTEX_SHADER), compileShader(fragment, GL.GL_FRAGMENT_SHADER))
             self.texture = GL.glGenTextures(1)
             GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
             for axis in (GL.GL_TEXTURE_WRAP_S, GL.GL_TEXTURE_WRAP_T):
@@ -721,61 +714,30 @@ class ShaderScreen:
         pygame = self.pygame
         width, height = self.screen.get_size()
         x, y, dest_w, dest_h = display_viewport((width, height), frame.size, config.get("display_scale_mode", "fit"))
-        patch = geographic_patch(frame, (x, y, dest_w, dest_h))
-        if not dest_w or not dest_h:
-            if self.gl:
-                self.gl.glClearColor(0, 0, 0, 1)
-                self.gl.glClear(self.gl.GL_COLOR_BUFFER_BIT)
-            else:
-                self.screen.fill((0, 0, 0))
-            pygame.display.flip()
-            return
+        output = _present_frame(frame, config, (dest_w, dest_h)) if dest_w and dest_h else None
         if self.gl:
             GL = self.gl
-            GL.glViewport(0, 0, width, height)
             GL.glClearColor(0, 0, 0, 1)
             GL.glClear(GL.GL_COLOR_BUFFER_BIT)
-            GL.glViewport(x, y, dest_w, dest_h)
-            GL.glUseProgram(self.program)
-            GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
-            # RGB map rows may have any width; do not assume four-byte padding.
-            GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
-            GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, frame.width, frame.height, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame.tobytes())
-            GL.glUniform1i(GL.glGetUniformLocation(self.program, "board"), 0)
-            GL.glUniform2f(GL.glGetUniformLocation(self.program, "grid"), frame.width, frame.height)
-            GL.glUniform2f(GL.glGetUniformLocation(self.program, "outputSize"), dest_w, dest_h)
-            for name, val in {"level": config.get("brightness", .7), "gap": config.get("dot_gap", .22), "bloom": config.get("glow", 0), "enabled": float(config.get("led_effect", True))}.items():
-                GL.glUniform1f(GL.glGetUniformLocation(self.program, name), val)
-            GL.glBegin(GL.GL_QUADS)
-            for uv, point in (((0, 1), (-1, -1)), ((1, 1), (1, -1)), ((1, 0), (1, 1)), ((0, 0), (-1, 1))):
-                GL.glTexCoord2f(*uv)
-                GL.glVertex2f(*point)
-            GL.glEnd()
-            if patch:
-                image, (px, py, pw, ph) = patch
-                GL.glViewport(px, height - py - ph, pw, ph)
-                GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, image.width, image.height, 0,
-                                GL.GL_RGB, GL.GL_UNSIGNED_BYTE, image.tobytes())
-                GL.glUniform2f(GL.glGetUniformLocation(self.program, "grid"), image.width, image.height)
-                GL.glUniform1f(GL.glGetUniformLocation(self.program, "enabled"), 0)
+            if output is not None:
+                GL.glViewport(x, height - y - dest_h, dest_w, dest_h)
+                GL.glEnable(GL.GL_TEXTURE_2D)
+                GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture)
+                GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT, 1)
+                # Pixels already match the viewport. OpenGL only copies them.
+                GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, dest_w, dest_h, 0,
+                                GL.GL_RGB, GL.GL_UNSIGNED_BYTE, output.tobytes())
                 GL.glBegin(GL.GL_QUADS)
                 for uv, point in (((0, 1), (-1, -1)), ((1, 1), (1, -1)), ((1, 0), (1, 1)), ((0, 0), (-1, 1))):
                     GL.glTexCoord2f(*uv)
                     GL.glVertex2f(*point)
                 GL.glEnd()
-            GL.glUseProgram(0)
+                GL.glDisable(GL.GL_TEXTURE_2D)
         else:
             self.screen.fill((0, 0, 0))
-            out = _render_led(frame, config, (dest_w, dest_h))
-            surface = pygame.image.frombytes(out.tobytes(), out.size, "RGB")
-            self.screen.blit(surface, (x, y))
-            if patch:
-                image, (px, py, pw, ph) = patch
-                image = ImageEnhance.Brightness(image).enhance(config.get("brightness", .7))
-                surface = pygame.image.frombytes(image.tobytes(), image.size, "RGB")
-                if surface.get_size() != (pw, ph):
-                    surface = pygame.transform.smoothscale(surface, (pw, ph))
-                self.screen.blit(surface, (px, py))
+            if output is not None:
+                surface = pygame.image.frombytes(output.tobytes(), output.size, "RGB")
+                self.screen.blit(surface, (x, y))
         pygame.display.flip()
 
 
@@ -791,7 +753,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
         joystick = pygame.joystick.Joystick(i)
         joystick.init()
         joysticks[joystick.get_instance_id()] = joystick
-    screen = ShaderScreen(pygame, (1280, 720) if windowed else (0, 0), not windowed)
+    screen = DisplayScreen(pygame, (1280, 720) if windowed else (0, 0), not windowed)
     status = connection.status()
     config = dict(status["config"])
     initial_status = fresh_household_status(status, config, datetime.now(timezone.utc))
@@ -967,7 +929,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             ticker_active = bool(current_names)
             ticker_progress = ticker_transition.value(now, ticker_active)
             state["shopping_ticker_offset"] = max(0, now - ticker_started_at) * 12
-            frame = compose_display_overlays(frame, state, wall_now, timer_progress, ticker_progress)
+            frame = compose_display_overlays(frame, state, wall_now, timer_progress, ticker_progress, presentation=True)
             if not settings_open and not help_open and not sleeping and not card_transition.active:
                 display_surface = getattr(screen, "screen", None)
                 if display_surface is not None:
@@ -991,4 +953,4 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                        (12 if screen.gl or animated_radar else 4))
     finally:
         pygame.quit()
-    return {"frames": frames, "shader": bool(screen.gl)}
+    return {"frames": frames, "opengl": bool(screen.gl), "shader": False}

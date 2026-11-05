@@ -131,6 +131,21 @@ def test_nearby_budget_never_buys_duplicate_paid_positions(tmp_path):
     assert not (tmp_path / "flightaware-usage.json").exists()
 
 
+def test_registration_request_is_priced_and_allowed_only_for_exact_nearby_tail(tmp_path):
+    lookup = "/flights/N123AB?ident_type=registration&max_pages=1"
+    feed = FlightFeeds(tmp_path)
+    with patch("flightwall.feeds.utcnow", return_value=NOW):
+        with pytest.raises(ValueError):
+            feed._allow_paid_request(config(), lookup)
+        for unsafe in ("search", "DAL123", "N000", "N123IO", "N12345AB", "N123AB%2Ftrack"):
+            with pytest.raises(ValueError):
+                feed._allow_paid_request(config(), lookup.replace("N123AB", unsafe), purpose="nearby")
+        assert not (tmp_path / "flightaware-usage.json").exists()
+        feed._allow_paid_request(config(), lookup, purpose="nearby")
+    assert read(tmp_path)["reserved_milliusd"] == read(tmp_path)["nearby_reserved_milliusd"] == 5
+    assert read(tmp_path)["count"] == read(tmp_path)["nearby_day_count"] == 1
+
+
 def test_concurrent_nearby_requests_share_one_durable_subcap_and_leave_own_budget(tmp_path):
     code = """
 import sys

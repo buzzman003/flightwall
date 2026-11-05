@@ -167,7 +167,7 @@ class HouseholdGuiTests(unittest.TestCase):
             configs.append(deepcopy(config))
             return Image.new("RGB", (512, 256))
 
-        with patch("flightwall.display.datetime") as clock, patch("flightwall.display.ShaderScreen", Screen), \
+        with patch("flightwall.display.datetime") as clock, patch("flightwall.display.DisplayScreen", Screen), \
                 patch("flightwall.display.render_frame", side_effect=render), patch("flightwall.display.time.monotonic", side_effect=lambda: monotonic[0]), \
                 patch.object(pygame.time, "Clock", return_value=SimpleNamespace(tick=lambda *args: None)):
             clock.now.return_value = NOW

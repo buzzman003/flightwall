@@ -1307,7 +1307,7 @@ def display_content_bounds(state, now, timer_progress=None, ticker_progress=None
     return ((BASE_SIZE[0] - width) // 2, top, width, height)
 
 
-def compose_display_overlays(image, state, now, timer_progress=None, ticker_progress=None):
+def compose_display_overlays(image, state, now, timer_progress=None, ticker_progress=None, *, presentation=False):
     """Fit the entire 2:1 content between the timer strip and shopping ticker.
 
     Progress is supplied by the GUI's monotonic transitions; snapshots use
@@ -1320,10 +1320,12 @@ def compose_display_overlays(image, state, now, timer_progress=None, ticker_prog
     if not top and not bottom:
         return image
     output = Image.new("RGB", BASE_SIZE, BG)
-    # Preserve thin font strokes while reducing the board. Nearest-neighbour
-    # drops entire one-pixel strokes at this fractional scale.
-    content = image.resize((width, height), Image.Resampling.LANCZOS)
-    output.paste(content, (left, top))
+    if presentation:
+        # The TV draws the original card directly into its presentation box.
+        # Reducing it here would blur or drop thin strokes before enlargement.
+        output.info["board_layer"] = ((left, top, width, height), image)
+    else:
+        output.paste(image.resize((width, height), Image.Resampling.NEAREST), (left, top))
     if timers and top:
         strip = Image.new("RGB", (BASE_SIZE[0], TIMER_STRIP_HEIGHT), BG)
         draw = ImageDraw.Draw(strip)

@@ -4,13 +4,13 @@ from .card_preferences import CARD_LABELS
 RADIUS_PRESETS = (2.5, 5, 10, 25, 50, 100)
 RADAR_SCOPES = ('national', 'southeast', 'local', 'hyperlocal')
 GROUPS = (
-    ('DISPLAY', ('brightness', 'glow', 'dot_gap', 'display_scale_mode', 'rotation_seconds',
+    ('DISPLAY', ('brightness', 'dot_gap', 'display_scale_mode', 'rotation_seconds',
                  'led_effect', 'sleep_enabled', 'shopping_ticker_visible')),
     ('CARDS', tuple(CARD_LABELS)),
     ('MAPS', ('nearby_radius_miles', 'national_radar_scope', 'national_radar_flight_only')),
 )
 LABELS = {
-    'brightness': 'Brightness', 'glow': 'Glow', 'dot_gap': 'Dot spacing',
+    'brightness': 'Brightness', 'dot_gap': 'Dot spacing',
     'display_scale_mode': 'Display fit', 'rotation_seconds': 'Card seconds',
     'led_effect': 'LED effect', 'sleep_enabled': 'Sleep schedule',
     'shopping_ticker_visible': 'Shopping ticker', 'nearby_radius_miles': 'Aircraft radius',
@@ -45,8 +45,8 @@ def next_value(config, name, direction):
         return _choice(config.get(name, 'national'), RADAR_SCOPES, direction)
     if name == 'display_scale_mode':
         return 'integer' if config.get(name, 'fit') == 'fit' else 'fit'
-    step, low, high = {'brightness': (.05, .05, 1), 'glow': (.05, 0, 1),
-                       'dot_gap': (.05, 0, .65), 'rotation_seconds': (1, 3, 300)}[name]
+    step, low, high = {'brightness': (.05, .05, 1), 'dot_gap': (.05, 0, .65),
+                       'rotation_seconds': (1, 3, 300)}[name]
     return max(low, min(high, round(config.get(name, low) + direction * step, 2)))
 
 
