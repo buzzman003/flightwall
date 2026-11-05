@@ -27,9 +27,12 @@ except ImportError:
 UTC = timezone.utc
 PROFILES = ("chris", "lisa")
 _ACTIVITY_ALIASES = {
-    "Jiu-jitsu": ("jiu jitsu", "ju jitsu", "jiujitsu", "jujitsu", "bjj"),
+    "Jiu-jitsu": ("jiu jitsu", "ju jitsu", "jiujitsu", "jujitsu", "bjj", "jiu jitsu class"),
     "Gymnastics": ("gymnastics",),
-    "Dance": ("dance", "ballet", "tap dance"),
+    "Dance": ("dance", "dance class", "dance classes", "ballet", "tap dance"),
+    "Soccer": ("soccer", "soccer game", "soccer games", "soccer match", "soccer practice"),
+    "Viola": ("viola", "viola lesson", "viola lessons", "viola class", "viola classes"),
+    "Violin": ("violin", "violin lesson", "violin lessons", "violin class", "violin classes"),
 }
 
 
@@ -157,7 +160,7 @@ def parse_kids_events(events, default_timezone="UTC"):
 
 
 def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *, event_timezone=None):
-    """Project only configured child names, recognized labels and today's timed intervals."""
+    """Project today's approved activity labels, optional child names and times."""
     if not children:
         return []
     zone = ZoneInfo(display_timezone)
@@ -169,25 +172,40 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
         summary = event.get("summary")
         if event.get("status") == "cancelled" or not isinstance(summary, str) or len(summary) > 256:
             continue
-        words = " " + _agenda_words(summary) + " "
+        normalized = _agenda_words(summary)
+        words = f" {normalized} "
         matches = [name for word, name in children.items() if f" {word} " in words]
-        labels = [label for label, aliases in activities.items() if any(f" {alias} " in words for alias in aliases)]
-        if not matches or len(labels) != 1 or any(word in words for word in (" cancelled ", " canceled ")):
+        # Without a named child, trust only an exact activity title from the
+        # selected family calendar. A longer title may describe an adult event.
+        labels = [label for label, aliases in activities.items()
+                  if any(f" {alias} " in words for alias in aliases) and (matches or normalized in aliases)]
+        if len(labels) != 1 or any(word in words for word in (" cancelled ", " canceled ")):
             continue
         start_data, end_data = event.get("start"), event.get("end")
-        if not all(isinstance(item, dict) and "date" not in item for item in (start_data, end_data)):
+        if not isinstance(start_data, dict) or not isinstance(end_data, dict):
             continue
-        start_zone = start_data.get("timeZone") or event_timezone or display_timezone
-        start = _event_time({**start_data, "timeZone": start_zone})
-        end = _event_time({**end_data, "timeZone": end_data.get("timeZone") or start_zone})
+        all_day = "date" in start_data and "date" in end_data
+        if all_day and "dateTime" not in start_data and "dateTime" not in end_data:
+            # Date-only events keep the calendar's civil dates on the wall.
+            start = _midnight(start_data["date"], display_timezone)
+            end = _midnight(end_data["date"], display_timezone)
+        elif "date" not in start_data and "date" not in end_data:
+            start_zone = start_data.get("timeZone") or event_timezone or display_timezone
+            start = _event_time({**start_data, "timeZone": start_zone})
+            end = _event_time({**end_data, "timeZone": end_data.get("timeZone") or start_zone})
+        else:
+            continue
         if start is None or end is None:
             continue
         start, end = start.astimezone(UTC), end.astimezone(UTC)
-        if not (day_start < end and start < day_end and timedelta(0) < end - start <= timedelta(days=1)):
+        if not (day_start < end and start < day_end and start < end):
             continue
-        for name in matches:
-            entries.add((_iso(start), _iso(end), name + " " + labels[0]))
-    return [{"title": label, "start": start, "end": end} for start, end, label in sorted(entries)[:48]]
+        if not all_day and end - start > timedelta(days=1):
+            continue
+        titles = [name + " " + labels[0] for name in matches] or labels
+        entries.update((_iso(start), _iso(end), title, all_day) for title in titles)
+    return [{"title": label, "start": start, "end": end, **({"all_day": True} if all_day else {})}
+            for start, end, label, all_day in sorted(entries)[:48]]
 
 
 def kids_snapshot(intervals, last_sync, now=None, stale_after=1800, source=""):
@@ -561,16 +579,18 @@ class HouseholdCalendars:
         if outlook.get("stale") is False and config.get("kids_filter_enabled") is True and not config.get("guest_mode"):
             children, activities = _agenda_preferences(self.agenda_path)
             activity_sync = family.get("activity_last_sync")
-            if (children and family.get("activity_scope") == _binding(children, activities)
+            display_zone = config.get("timezone", "UTC")
+            if (children and family.get("activity_scope") == _binding(children, activities, display_zone)
                     and calendar_fresh(activity_sync, now, config.get("kids_stale_minutes", 30))):
-                zone = ZoneInfo(config.get("timezone", "UTC"))
+                zone = ZoneInfo(display_zone)
                 day = now.astimezone(zone).date()
-                allowed = {name + " " + label for name in children.values() for label in activities}
+                allowed = set(activities) | {name + " " + label for name in children.values() for label in activities}
                 agenda = []
                 cached = family.get("activities")
                 for item in cached[:48] if isinstance(cached, list) else []:
                     try:
-                        if not isinstance(item, dict) or set(item) != {"title", "start", "end"} or item["title"] not in allowed:
+                        if (not isinstance(item, dict) or set(item) not in ({"title", "start", "end"}, {"title", "start", "end", "all_day"})
+                                or ("all_day" in item and item["all_day"] is not True) or item["title"] not in allowed):
                             continue
                         start, end = _stamp(item["start"]), _stamp(item["end"])
                         if start.astimezone(zone).date() <= day <= (end - timedelta(microseconds=1)).astimezone(zone).date() and start < end:
@@ -655,7 +675,7 @@ class HouseholdCalendars:
                 family.update(intervals=parse_kids_events(result["items"], result["timezone"]),
                               activities=parse_kids_activities(result["items"], children, activities, now, display_zone,
                                                                event_timezone=result["timezone"]),
-                              activity_scope=_binding(children, activities), activity_last_sync=_iso(now),
+                              activity_scope=_binding(children, activities, display_zone), activity_last_sync=_iso(now),
                               last_sync=_iso(now), error=None)
             except CalendarError as error:
                 family["error"] = str(error)

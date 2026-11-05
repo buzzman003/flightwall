@@ -1,0 +1,13 @@
+FLIGHT WALL 0.4.11
+
+The family outlook again shows ten days of Mom's House, Dad's House,
+change days and unknown days. Today's Activities is a separate card
+for the selected family calendar. It recognizes jiu-jitsu, soccer,
+dance, gymnastics, viola, violin and configured aliases. It shows the
+calendar's own times and all-day entries, with extra pages on busy days.
+Guest mode and stale or unavailable data hide activity details.
+The OpenAI API is not used to process family calendar events.
+
+LED dots now use crisp, whole-screen-pixel gaps in both the OpenGL
+and software renderers. Glow is off by default on new installations.
+Saved display preferences are preserved by the update.

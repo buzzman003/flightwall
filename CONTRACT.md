@@ -1,5 +1,14 @@
 # Flight Wall implementation contract
 
+0.4.11: The family outlook shows ten calendar days of custody. Today's
+Activities is a separate slot from the same selected family calendar.
+Activity labels are derived locally from approved aliases, with only
+labels, optional configured names, and times retained. Guest mode,
+staleness, and backend outages suppress activity details on each frame.
+Leave-time conflicts stay on the relevant flight or airport visit cards.
+At zero Glow, both renderers draw crisp LED dots and dark gaps directly
+at the presentation size. The geographic and radar inset stays clear.
+
 0.4.9 published/verified/active: shorten Alexa dinner help and accept "set dinner card" as a
 meal-entry prompt. Do not change invocation, scoped credentials, save timing,
 the optional sides/ready-time dialogue or dinner visibility. This companion
@@ -94,7 +103,7 @@ match is mandatory. A chosen leave time is separate from scheduled departure;
 conflicting notes retain a warning. Dinner's per-frame snack cutoff is17:00
 in the configured household zone, within its existing end-exclusive window.
 
-- config keys: `calendar_name` (FC View), `calendar_id` (empty), `airline` (empty until selected), `demo` (true until Google setup), `timezone` (UTC), `rotation_seconds` (15), `logical_width` (512), `logical_height` (256), `brightness` (0.7), `glow` (0.25), `dot_gap` (0.22), `led_effect` (true), `show_deadheads` (true), `takeover_hours` (18), `sleep_start` (23:00), `sleep_end` (06:00), `sleep_enabled` (false), `nearby_enabled` (false), `flightaware_enabled` (false), `flightaware_poll_seconds` (120), `updates_enabled` (false), `update_manifest_url` (empty), `update_public_key` (empty), `update_interval_minutes` (15), `public_url` (empty), `control_port` (8765).
+- config keys: `calendar_name` (FC View), `calendar_id` (empty), `airline` (empty until selected), `demo` (true until Google setup), `timezone` (UTC), `rotation_seconds` (15), `logical_width` (512), `logical_height` (256), `brightness` (0.7), `glow` (0), `dot_gap` (0.22), `led_effect` (true), `show_deadheads` (true), `takeover_hours` (18), `sleep_start` (23:00), `sleep_end` (06:00), `sleep_enabled` (false), `nearby_enabled` (false), `flightaware_enabled` (false), `flightaware_poll_seconds` (120), `updates_enabled` (false), `update_manifest_url` (empty), `update_public_key` (empty), `update_interval_minutes` (15), `public_url` (empty), `control_port` (8765).
 - Each flight: `id`, `number` (string, may have airline prefix), `origin` and `destination` (IATA codes), `start` and `end` (RFC3339 with offset), `deadhead` (bool), optional `report` RFC3339, `source` calendar name. Do not pass crew/raw private descriptions to renderer or public logs.
 - Snapshot: `flights` list, `last_sync` RFC3339 or null, `error` sanitized string or null, `source` string, `demo` bool. All dates timezone-aware.
 - Renderer state: snapshot plus `now` RFC3339, `view` (`details`, `map`, `schedule`, `nearby`), optional `live` (position details explicitly from real provider; never fabricate a live marker). `render_frame(state, config, size=(512,256)) -> PIL.Image.Image RGB`. `selected_flight` supplied by app or renderer selects upcoming/in-progress flight. Output must label scheduled interpolation as schedule estimate, not live. Offline map geometry bundled.

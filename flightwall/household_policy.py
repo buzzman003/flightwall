@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import math
 import re
 from urllib.parse import urlsplit
-from .outlook import trip_preview
+from .outlook import ACTIVITIES_PER_PAGE, today_activities, trip_preview
 from .personal import personal_card_visible
 from .card_preferences import card_enabled
 
@@ -364,8 +364,15 @@ def build_rotation(status, config, now=None):
         if (fetched and issued and timedelta(0) <= now - fetched < timedelta(seconds=600)
                 and timedelta(0) <= now - issued < timedelta(seconds=900)):
             add("airport_alerts")
-    if config.get("custody_outlook_enabled", True) and status.get("custody_outlook", {}).get("days"):
+    outlook = status.get("custody_outlook") or {}
+    if config.get("custody_outlook_enabled", True) and outlook.get("days"):
         add("custody_outlook")
+    if snapshot.get("demo") is not True and card_enabled("today_activities", config):
+        activities = today_activities(outlook, config, now, backend_available=status.get("backend_available", True))
+        if activities is not None:
+            pages = max(1, math.ceil(len(activities) / ACTIVITIES_PER_PAGE))
+            for page in range(pages):
+                add("today_activities", f"today_activities:{page}", agenda_page=page)
     if config.get("local_visits_enabled", True):
         for item in _cards(status.get("local_visits")):
             if card_visible("local_visit", item, context, config, now):

@@ -133,6 +133,7 @@ def entry_render_state(status, config, entry, now=None):
              "dinner_options": status.get("dinner_options", {}),
              "dinner_today_selected": status.get("dinner_today_selected", False),
              "timers": status.get("timers", []), "custody_outlook": status.get("custody_outlook", {}),
+             "agenda_page": entry.get("agenda_page", 0),
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
              "weather": status.get("weather", {}),
@@ -150,7 +151,7 @@ def entry_render_state(status, config, entry, now=None):
              "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
-    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
+    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "today_activities", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):
         artwork = decode_artwork(image_data)
@@ -353,37 +354,47 @@ def is_sleeping(config, now=None):
     return start <= current < end if start < end else current >= start or current < end
 
 
+def _led_axis(cells, pixels, gap):
+    pitch = pixels / cells
+    if not gap or pitch < 2:
+        return b"\xff" * pixels
+    space = min(int(pitch) - 1, max(1, math.floor(pitch * gap + .5)))
+    before, after = (space + 1) // 2, space // 2
+    mask = bytearray(pixels)
+    start = 0
+    for index in range(1, cells + 1):
+        # The nearest-neighbor boundary is ceil(index * pitch - 0.5).
+        end = (2 * index * pixels + cells - 1) // (2 * cells)
+        lit = end - start - space
+        mask[start + before:end - after] = b"\xff" * lit
+        start = end
+    return bytes(mask)
+
+
 @lru_cache(maxsize=4)
-def _led_mask(width, height, scale, gap):
-    # Supersample one cell so large gaps remain valid at small TV scales.
-    # Drawing directly at 2x used to invert the rectangle at gap > 0.5.
-    high_scale = scale * 8
-    tile = Image.new("L", (high_scale, high_scale))
-    draw = ImageDraw.Draw(tile)
-    margin = gap * high_scale / 2
-    draw.rounded_rectangle((margin, margin, high_scale - 1 - margin, high_scale - 1 - margin),
-                           radius=max(1, (high_scale - 2 * margin) * .15), fill=255)
-    tile = tile.resize((scale, scale), Image.Resampling.LANCZOS)
-    # Repeat a full row rather than pasting each of 131,072 cells per frame.
-    row = Image.new("L", (width * scale, scale))
-    for x in range(0, row.width, scale):
-        row.paste(tile, (x, 0))
-    mask = Image.new("L", (width * scale, height * scale))
-    for y in range(0, mask.height, scale):
-        mask.paste(row, (0, y))
-    return mask
+def _led_mask(frame_size, size, gap):
+    columns = _led_axis(frame_size[0], size[0], gap)
+    dark = bytes(size[0])
+    rows = _led_axis(frame_size[1], size[1], gap)
+    return Image.frombytes("L", size, b"".join(columns if row else dark for row in rows))
 
 
 def led_image(frame, config, scale=4):
     """Export the same logical pixel layout with a portable LED treatment."""
     scale = max(1, min(int(scale), 8))
-    out = frame.convert("RGB").resize((frame.width * scale, frame.height * scale), Image.Resampling.NEAREST)
-    if config.get("led_effect", True) and scale > 1:
+    return _render_led(frame, config, (frame.width * scale, frame.height * scale))
+
+
+def _render_led(frame, config, size):
+    out = frame.convert("RGB").resize(size, Image.Resampling.NEAREST)
+    pitch = min(size[0] / frame.width, size[1] / frame.height)
+    if config.get("led_effect", True) and pitch >= 2:
         gap = max(0, min(float(config.get("dot_gap", .22)), .65))
-        mask = _led_mask(frame.width, frame.height, scale, round(gap, 4))
-        out = ImageChops.multiply(out, Image.merge("RGB", (mask, mask, mask)))
+        if gap:
+            mask = _led_mask(frame.size, size, round(gap, 4))
+            out = Image.composite(out, Image.new("RGB", size), mask)
         if config.get("glow", 0):
-            halo = out.filter(ImageFilter.GaussianBlur(max(.5, scale * .32)))
+            halo = out.filter(ImageFilter.GaussianBlur(pitch * .32))
             out = ImageChops.add(out, ImageEnhance.Brightness(halo).enhance(config["glow"] * .6))
     return ImageEnhance.Brightness(out).enhance(config.get("brightness", .7))
 
@@ -660,25 +671,37 @@ class ShaderScreen:
             void main(){gl_Position=gl_Vertex; uv=gl_MultiTexCoord0.xy;}
             """
             fragment = """#version 120
-            uniform sampler2D board; uniform vec2 grid;
+            uniform sampler2D board; uniform vec2 grid; uniform vec2 outputSize;
             uniform float level; uniform float gap; uniform float bloom; uniform float enabled;
             varying vec2 uv;
             void main(){
-                vec2 cell=(floor(uv*grid)+vec2(0.5))/grid;
-                vec3 c=texture2D(board,cell).rgb;
-                vec2 p=abs(fract(uv*grid)-vec2(0.5))*2.0;
-                // Integrate the LED edge over the display pixel footprint.
-                // A fixed edge misses every gap at the common 3x TV scale.
-                vec2 footprint=max(fwidth(uv*grid)*2.0,vec2(0.001));
-                vec2 coverage=clamp((vec2(1.0-gap)-p)/footprint+vec2(0.5),0.0,1.0);
-                float mask=coverage.x*coverage.y;
-                vec3 halo=vec3(0.0);
-                halo+=texture2D(board,cell+vec2(1.0/grid.x,0.0)).rgb;
-                halo+=texture2D(board,cell-vec2(1.0/grid.x,0.0)).rgb;
-                halo+=texture2D(board,cell+vec2(0.0,1.0/grid.y)).rgb;
-                halo+=texture2D(board,cell-vec2(0.0,1.0/grid.y)).rgb;
-                vec3 led=c*(0.04+0.96*mask)+bloom*(halo*0.045+c*0.12);
-                gl_FragColor=vec4(mix(c,led,enabled)*level,1.0);
+                vec2 pitch=outputSize/grid;
+                if(enabled<0.5 || min(pitch.x,pitch.y)<2.0){
+                    gl_FragColor=vec4(texture2D(board,uv).rgb*level,1.0);
+                    return;
+                }
+                vec2 pixel=floor(uv*outputSize);
+                vec2 index=floor((pixel+vec2(0.5))*grid/outputSize);
+                vec2 cell=(index+vec2(0.5))/grid;
+                vec3 color=texture2D(board,cell).rgb;
+                vec3 led=color;
+                // Place the same whole-pixel gap around each cell boundary.
+                // Fit can alternate cell widths, but never fades their edges.
+                if(gap>0.0){
+                    vec2 space=min(floor(pitch)-vec2(1.0),max(vec2(1.0),floor(pitch*gap+vec2(0.5))));
+                    vec2 start=ceil(index*outputSize/grid-vec2(0.5))+ceil(space*0.5);
+                    vec2 end=ceil((index+vec2(1.0))*outputSize/grid-vec2(0.5))-floor(space*0.5);
+                    vec2 mask=step(start,pixel)*(vec2(1.0)-step(end,pixel));
+                    led*=mask.x*mask.y;
+                }
+                if(bloom>0.0){
+                    vec3 halo=texture2D(board,cell+vec2(1.0/grid.x,0.0)).rgb;
+                    halo+=texture2D(board,cell-vec2(1.0/grid.x,0.0)).rgb;
+                    halo+=texture2D(board,cell+vec2(0.0,1.0/grid.y)).rgb;
+                    halo+=texture2D(board,cell-vec2(0.0,1.0/grid.y)).rgb;
+                    led+=bloom*(halo*0.045+color*0.12);
+                }
+                gl_FragColor=vec4(led*level,1.0);
             }
             """
             self.program = compileProgram(compileShader(vertex, GL.GL_VERTEX_SHADER), compileShader(fragment, GL.GL_FRAGMENT_SHADER))
@@ -720,7 +743,8 @@ class ShaderScreen:
             GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB, frame.width, frame.height, 0, GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame.tobytes())
             GL.glUniform1i(GL.glGetUniformLocation(self.program, "board"), 0)
             GL.glUniform2f(GL.glGetUniformLocation(self.program, "grid"), frame.width, frame.height)
-            for name, val in {"level": config.get("brightness", .7), "gap": config.get("dot_gap", .22), "bloom": config.get("glow", .25), "enabled": float(config.get("led_effect", True))}.items():
+            GL.glUniform2f(GL.glGetUniformLocation(self.program, "outputSize"), dest_w, dest_h)
+            for name, val in {"level": config.get("brightness", .7), "gap": config.get("dot_gap", .22), "bloom": config.get("glow", 0), "enabled": float(config.get("led_effect", True))}.items():
                 GL.glUniform1f(GL.glGetUniformLocation(self.program, name), val)
             GL.glBegin(GL.GL_QUADS)
             for uv, point in (((0, 1), (-1, -1)), ((1, 1), (1, -1)), ((1, 0), (1, 1)), ((0, 0), (-1, 1))):
@@ -742,11 +766,8 @@ class ShaderScreen:
             GL.glUseProgram(0)
         else:
             self.screen.fill((0, 0, 0))
-            factor = max(1, math.ceil(dest_w / frame.width))
-            out = led_image(frame, config, factor)
+            out = _render_led(frame, config, (dest_w, dest_h))
             surface = pygame.image.frombytes(out.tobytes(), out.size, "RGB")
-            if surface.get_size() != (dest_w, dest_h):
-                surface = pygame.transform.smoothscale(surface, (dest_w, dest_h))
             self.screen.blit(surface, (x, y))
             if patch:
                 image, (px, py, pw, ph) = patch

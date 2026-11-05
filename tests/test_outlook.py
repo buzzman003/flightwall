@@ -143,3 +143,16 @@ def test_operating_priority_precedes_new_household_views():
         if entry["view"] not in {"details", "map"}:
             assert rotation[index - 1]["view"] in {"details", "map"}
             assert rotation[index - 1]["duration_seconds"] == 60
+
+
+def test_activities_rotate_separately_and_page_without_exposing_guest_details():
+    now = dt("2026-10-31T12:00:00Z")
+    activity = {"title": "Soccer Game", "start": now.isoformat(), "end": "2026-10-31T13:00:00Z"}
+    outlook = {"days": [{"date": "2026-10-31", "state": "home"}], "stale": False,
+               "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+               "activities": [dict(activity, title=f"Activity {index}") for index in range(7)]}
+    status = {"snapshot": {"demo": False}, "custody_outlook": outlook}
+    deck = build_rotation(status, {}, now)
+    assert [entry["agenda_page"] for entry in deck if entry["view"] == "today_activities"] == [0, 1]
+    guest = build_rotation(status, {"guest_mode": True}, now)
+    assert {entry["view"] for entry in guest} == {"home", "custody_outlook"}

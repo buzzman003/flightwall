@@ -351,7 +351,7 @@ class HouseholdManagerTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(self.manager.path.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE((self.root / "accounts").stat().st_mode), 0o700)
 
-    def test_family_agenda_caches_only_named_children_and_recognized_timed_labels(self):
+    def test_family_agenda_caches_only_approved_todays_activities(self):
         private_json(self.manager.agenda_path, {"children": ["Rory"], "activities": {"Soccer": ["futsal"]}})
 
         def agenda_api(client, path, parameters):
@@ -362,7 +362,12 @@ class HouseholdManagerTests(unittest.TestCase):
                           description="PRIVATE-DESCRIPTION", id="PRIVATE-ID"),
                     event("Futsal for Rory", "2026-10-22T21:00:00Z", "2026-10-22T22:00:00Z"),
                     event("Adult dance", "2026-10-22T18:00:00Z", "2026-10-22T19:00:00Z"),
-                    event("Rory appointment"), all_day("Rory Dance"),
+                    event("Rory appointment"), all_day("Rory Dance", zone="America/New_York"),
+                    all_day("Soccer Game", start="2026-10-23", end="2026-10-24", zone="America/New_York"),
+                    event("Soccer Game", "2026-10-22T15:00:00Z", "2026-10-22T16:00:00Z"),
+                    event("Rory's Viola Lesson", "2026-10-22T16:00:00Z", "2026-10-22T17:00:00Z"),
+                    event("Violin Class", "2026-10-22T17:00:00Z", "2026-10-22T18:00:00Z"),
+                    event("Violin Class with PRIVATE-ADULT", "2026-10-22T18:00:00Z", "2026-10-22T19:00:00Z"),
                     event("Rory Gymnastics", id="cancelled", updated="2026-10-21T12:00:00Z"),
                     {"id": "cancelled", "status": "cancelled", "updated": "2026-10-21T13:00:00Z"},
                 ])
@@ -371,6 +376,10 @@ class HouseholdManagerTests(unittest.TestCase):
         with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
             outlook = self.manager.sync()["custody_outlook"]
         self.assertEqual(outlook["activities"], [
+            {"title": "Rory Dance", "start": "2026-10-22T05:00:00Z", "end": "2026-10-23T05:00:00Z", "all_day": True},
+            {"title": "Soccer", "start": "2026-10-22T15:00:00Z", "end": "2026-10-22T16:00:00Z"},
+            {"title": "Rory Viola", "start": "2026-10-22T16:00:00Z", "end": "2026-10-22T17:00:00Z"},
+            {"title": "Violin", "start": "2026-10-22T17:00:00Z", "end": "2026-10-22T18:00:00Z"},
             {"title": "Rory Jiu-jitsu", "start": "2026-10-22T19:00:00Z", "end": "2026-10-22T20:00:00Z"},
             {"title": "Rory Soccer", "start": "2026-10-22T21:00:00Z", "end": "2026-10-22T22:00:00Z"},
         ])

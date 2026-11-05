@@ -117,13 +117,23 @@ class GuiInputTests(unittest.TestCase):
         with patch.object(pygame.display, "flip"):
             screen.draw(frame, {"display_scale_mode": "fit", "led_effect": False, "brightness": 1})
         self.assertEqual(tuple(screen.screen.get_at((0, 59)))[:3], (0, 0, 0))
-        red = tuple(screen.screen.get_at((0, 60)))[:3]
-        blue = tuple(screen.screen.get_at((1919, 1019)))[:3]
-        self.assertGreaterEqual(red[0], 250)  # SDL smoothscale can round by 1-2 levels.
-        self.assertEqual(red[1:], (0, 0))
-        self.assertEqual(blue[:2], (0, 0))
-        self.assertGreaterEqual(blue[2], 250)
+        self.assertEqual(tuple(screen.screen.get_at((0, 60)))[:3], (255, 0, 0))
+        self.assertEqual(tuple(screen.screen.get_at((1919, 1019)))[:3], (0, 0, 255))
         self.assertEqual(tuple(screen.screen.get_at((1919, 1020)))[:3], (0, 0, 0))
+
+    def test_software_leds_at_1080p_fit_have_dark_gaps_and_unblended_centers(self):
+        import pygame
+        from flightwall.display import ShaderScreen
+        screen = ShaderScreen.__new__(ShaderScreen)
+        screen.pygame, screen.gl = pygame, None
+        screen.screen = pygame.Surface((1920, 1080))
+        frame = Image.new("RGB", (512, 256), (255, 255, 255))
+        with patch.object(pygame.display, "flip"):
+            screen.draw(frame, {"display_scale_mode": "fit", "brightness": 1, "dot_gap": .2})
+        row = [screen.screen.get_at((x, 61)).r for x in range(1920)]
+        self.assertEqual(set(row), {0, 255})
+        self.assertEqual(row.count(0), 512)
+        self.assertEqual(sum(a == 0 and b == 255 for a, b in zip(row, row[1:])), 512)
 
     def test_refresh_and_led_shortcuts_survive_backend_outage(self):
         import pygame
@@ -202,6 +212,13 @@ class ShaderTests(unittest.TestCase):
             self.assertEqual(fit.getpixel((40, 0)), (255, 0, 0))
             self.assertEqual(fit.getpixel((279, 239)), (0, 0, 255))
             self.assertEqual(fit.getpixel((280, 239)), (0, 0, 0))
+            fit_led = capture({"display_scale_mode": "fit", "brightness": 1, "dot_gap": .2})
+            # 3.75x is also the board pitch on a 1080p screen. There is
+            # exactly one black gap per dot, with no phase-dependent fade.
+            row = [fit_led.getpixel((x, 113))[0] for x in range(40, 280)]
+            self.assertEqual(set(row), {0, 255})
+            self.assertEqual(row.count(0), 64)
+            self.assertEqual(sum(a == 0 and b == 255 for a, b in zip(row, row[1:])), 64)
         finally:
             pygame.quit()
 

@@ -22,6 +22,7 @@ VIEW_FIELDS = {
     'nearby': 'nearby_card_visible', 'weather': 'weather_card_visible',
     'national_radar': 'radar_card_visible', 'trip_weather': 'trip_weather_cards_visible',
     'airport_alerts': 'airport_alert_cards_visible', 'custody_outlook': 'custody_card_visible',
+    'today_activities': 'custody_card_visible',
     'local_visit': 'local_visit_cards_visible', 'flight_watch': 'flight_watch_cards_visible',
     'dinner_options': 'dinner_options_card_visible',
 }

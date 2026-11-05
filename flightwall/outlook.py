@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 import hashlib
 
 UTC = timezone.utc
+ACTIVITIES_PER_PAGE = 6
 
 
 def stamp(value):
@@ -18,6 +19,36 @@ def calendar_fresh(last_sync, now, minutes, *, failed=False):
         return not failed and -300 <= (now - stamp(last_sync)).total_seconds() <= minutes * 60
     except (ValueError, TypeError, AttributeError, OverflowError):
         return False
+
+
+def today_activities(outlook, config, now, *, backend_available=True):
+    """Return today's private agenda, or None when it cannot be shown."""
+    if (not backend_available or config.get("guest_mode") or config.get("demo")
+            or config.get("kids_filter_enabled", True) is not True
+            or not isinstance(outlook, dict) or outlook.get("stale") is not False):
+        return None
+    minutes = config.get("kids_stale_minutes", 30)
+    if not (calendar_fresh(outlook.get("last_sync"), now, minutes)
+            and calendar_fresh(outlook.get("activity_last_sync"), now, minutes)):
+        return None
+    source = outlook.get("activities")
+    if not isinstance(source, list):
+        return None
+    zone = ZoneInfo(config.get("timezone") or outlook.get("timezone") or "UTC")
+    day = now.astimezone(zone).date()
+    start_of_day = datetime.combine(day, time(), zone).astimezone(UTC)
+    end_of_day = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
+    rows = []
+    for item in source[:48]:
+        if not isinstance(item, dict) or not isinstance(item.get("title"), str) or not item["title"].strip():
+            continue
+        try:
+            start, end = stamp(item.get("start")), stamp(item.get("end"))
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            continue
+        if start < end and start < end_of_day and end > start_of_day:
+            rows.append((start.astimezone(zone), end.astimezone(zone), item["title"], item.get("all_day") is True))
+    return sorted(rows, key=lambda row: (row[0].astimezone(UTC), row[1].astimezone(UTC), row[2]))
 
 
 def custody_outlook(intervals, last_sync, config, now, *, failed=False):

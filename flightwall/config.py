@@ -18,7 +18,7 @@ DEFAULTS = {
     **CARD_DEFAULTS,
     "calendar_name": "FC View", "calendar_id": "", "airline": "", "demo": True,
     "timezone": "UTC", "rotation_seconds": 15, "logical_width": 512, "logical_height": 256,
-    "brightness": 0.7, "glow": 0.25, "dot_gap": 0.22, "led_effect": True,
+    "brightness": 0.7, "glow": 0.0, "dot_gap": 0.22, "led_effect": True,
     "show_deadheads": True, "takeover_hours": 18,
     "sleep_start": "23:00", "sleep_end": "06:00", "sleep_enabled": False,
     "nearby_enabled": False, "home_latitude": None, "home_longitude": None,

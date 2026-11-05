@@ -149,6 +149,7 @@ def test_actual_gl_map_is_oriented_unshaded_and_handles_odd_rgb_row_width():
         assert result.getpixel((100, 390)) == (40, 200, 100)
         assert result.getpixel((101, 390)) == (40, 200, 100)
         assert result.getpixel((100, 580)) == (0, 0, 255)
-        assert result.getpixel((100, 20)) != result.getpixel((101, 20))
+        assert result.getpixel((99, 20)) == (0, 0, 0)
+        assert result.getpixel((100, 20)) == (255, 255, 255)
     finally:
         pygame.quit()

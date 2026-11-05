@@ -1067,3 +1067,12 @@ opt into integrations one at a time using HOUSEHOLD-SETUP.txt.
   working display session. Service registration was checked; it does not
   prove a cold boot. Alexa speech routing still needs the updated model and
   a physical Echo check.
+
+0.4.11 SOURCE CHECKS
+
+* Synthetic calendar fixtures cover separate custody and activity cards,
+  ten calendar dates, the current local day, additional activity names,
+  all-day events, guest mode, and unavailable data.
+* OpenGL framebuffer and software tests check bright centers and fully
+  dark gaps at fractional fit sizes, including the 1920 x 1080 fit.
+  The final appearance on the owner's physical TV is a separate check.
