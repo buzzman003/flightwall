@@ -51,6 +51,21 @@ def today_activities(outlook, config, now, *, backend_available=True):
     return sorted(rows, key=lambda row: (row[0].astimezone(UTC), row[1].astimezone(UTC), row[2]))
 
 
+def agenda_focus(rows, now):
+    """Mark active and next timed rows without changing the calendar order."""
+    now = now.astimezone(UTC)
+    timed = [(index, start.astimezone(UTC), end.astimezone(UTC))
+             for index, (start, end, _, all_day) in enumerate(rows) if not all_day]
+    next_start = min((start for _, start, _ in timed if start > now), default=None)
+    labels = [""] * len(rows)
+    for index, start, end in timed:
+        if start <= now < end:
+            labels[index] = "NOW"
+        elif start == next_start:
+            labels[index] = "NEXT"
+    return labels
+
+
 def custody_outlook(intervals, last_sync, config, now, *, failed=False):
     zone = ZoneInfo(config.get("timezone", "UTC"))
     fresh = calendar_fresh(last_sync, now, config.get("kids_stale_minutes", 30), failed=failed)

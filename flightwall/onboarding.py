@@ -32,6 +32,7 @@ WIZARD_SETTINGS = frozenset({
     "lisa_notifications_enabled", "chris_notification_apps", "lisa_notification_apps",
     "lisa_private_enabled", "health_enabled", "health_query", "inspiration_enabled",
     "inspiration_topics", "inspiration_sources", "guest_mode", "openai_enabled", "openai_model",
+    "brief_focus_enabled",
     "hotel_details_enabled",
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
     "local_visits_enabled", "shopping_ticker_enabled", "shopping_ticker_visible",
@@ -263,6 +264,9 @@ class OnboardingRouter:
         if patch.get("dinner_options_enabled") is True or "dinner_options_preferences" in patch:
             self._consent(body, "chris")
             self._record_consent("chris", "dinner-options")
+        if patch.get("brief_focus_enabled") is True:
+            self._consent(body, "chris")
+            self._record_consent("chris", "flight-brief-focus")
         for person in PEOPLE:
             private_fields = {person + "_gmail_enabled", person + "_notifications_enabled"}
             selection_fields = ({"chris_lawyer_senders", "chris_lawyer_domains", "chris_notification_apps"}

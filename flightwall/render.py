@@ -1181,7 +1181,7 @@ def _custody_outlook(draw, state, config, now):
 
 
 def _today_activities(draw, state, config, now):
-    from .outlook import ACTIVITIES_PER_PAGE, today_activities
+    from .outlook import ACTIVITIES_PER_PAGE, agenda_focus, today_activities
 
     outlook = state.get("custody_outlook") or {}
     zone = _tz({"timezone": config.get("timezone") or outlook.get("timezone") or "UTC"})
@@ -1203,6 +1203,7 @@ def _today_activities(draw, state, config, now):
     if pages > 1:
         date_label += f" / {page + 1} OF {pages}"
     _text(draw, (497, 44), date_label, MUTED, align="right")
+    focus = agenda_focus(rows, now)
     for index, (start, end, title, all_day) in enumerate(rows[offset:offset + ACTIVITIES_PER_PAGE]):
         y = 60 + index * 28
         draw.rectangle((15, y, 497, y + 24), fill=PANEL, outline=LINE)
@@ -1213,8 +1214,12 @@ def _today_activities(draw, state, config, now):
             ends = "NEXT DAY" if end.date() > day else format_time(end)
             clock = f"{begins} - {ends}"
         _text(draw, (23, y + 9), clock, CYAN, max_width=132)
-        scale = 2 if _width(title, 2) <= 327 else 1
-        _text(draw, (163, y + (6 if scale == 2 else 9)), title, WHITE, scale, max_width=327)
+        marker = focus[offset + index]
+        width = 286 if marker else 327
+        scale = 2 if _width(title, 2) <= width else 1
+        _text(draw, (163, y + (6 if scale == 2 else 9)), title, WHITE, scale, max_width=width)
+        if marker:
+            _text(draw, (488, y + 9), marker, GREEN if marker == "NOW" else AMBER, align="right")
 
 
 def visible_timers(state, now):
@@ -1390,6 +1395,9 @@ def render_frame(state, config, size=BASE_SIZE):
     elif view == "flight_status":
         from .flight_status_view import render_operating
         render_operating(draw, image, state, config, now)
+    elif view == "flight_brief":
+        from .flight_brief_view import render_brief
+        render_brief(draw, state, config, now)
     elif view in {"operating_map", "trip_weather", "national_radar", "airport_alerts"}:
         from .flight_context_views import render_context
         render_context(draw, image, state, config, now)

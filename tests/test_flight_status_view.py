@@ -49,6 +49,16 @@ class OperatingStatusViewTests(unittest.TestCase):
         self.assertEqual((image.size, image.mode), ((512, 256), "RGB"))
         self.assertFalse(any("CONFIDENCE" in label or "CANCELLED" in label for label in labels))
 
+    def test_taxi_labels_depend_on_reported_phase_boundaries(self):
+        self.assertIn("TAXI-OUT PHASE / GATE OUT", capture(status())[0])
+        self.assertIn("AIRBORNE / TAXI OUT 17 MIN", capture(status(actual_off="2026-11-01T18:42:00Z"))[0])
+        self.assertIn("TAXI-IN PHASE / LANDED", capture(status(actual_on="2026-11-01T19:43:00Z"))[0])
+        self.assertIn("AT ARRIVAL GATE", capture(status(actual_in="2026-11-01T19:57:00Z"))[0])
+        self.assertIn("AT ARRIVAL GATE / TAXI IN 14 MIN", capture(status(
+            actual_on="2026-11-01T19:43:00Z", actual_in="2026-11-01T19:57:00Z"))[0])
+        scheduled = status(actual_out=None, estimated_out="2026-11-01T18:42:00Z", estimated_on="2026-11-01T19:43:00Z")
+        self.assertIn("SCHEDULED / PROVIDER UPDATE", capture(scheduled)[0])
+
     def test_same_event_fallback_keeps_runway_times_distinct_from_gate_times(self):
         value = status(scheduled_out=None, actual_out=None, scheduled_in=None, estimated_in=None,
                        scheduled_off="2026-11-01T18:25:00Z", actual_off="2026-11-01T18:25:00Z",

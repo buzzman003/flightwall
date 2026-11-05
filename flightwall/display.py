@@ -151,7 +151,11 @@ def entry_render_state(status, config, entry, now=None):
              "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
-    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "today_activities", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
+    if view == "flight_brief":
+        from .flight_context import build_flight_context
+        state["flight_context"] = build_flight_context(status, config, now)
+        state["brief_focus"] = status.get("brief_focus")
+    if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "flight_brief", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "today_activities", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):
         artwork = decode_artwork(image_data)

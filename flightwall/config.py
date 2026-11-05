@@ -52,6 +52,7 @@ DEFAULTS = {
     "inspiration_enabled": False, "inspiration_topics": "", "inspiration_sources": "[]",
     "health_enabled": False, "health_query": "", "health_max_age_hours": 168,
     "openai_enabled": False, "openai_model": "gpt-5-mini", "openai_daily_limit": 5,
+    "brief_focus_enabled": False,
     "hotel_details_enabled": False,
     "brief_leave_times_enabled": False, "brief_leave_policy": "conflict",
     "display_scale_mode": "fit", "timers_enabled": True,

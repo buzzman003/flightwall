@@ -17,7 +17,7 @@ CARD_LABELS = {
 }
 CARD_DEFAULTS = {key: True for key in CARD_LABELS}
 VIEW_FIELDS = {
-    **{view: 'flight_cards_visible' for view in ('details', 'map', 'schedule', 'operating_map', 'flight_status')},
+    **{view: 'flight_cards_visible' for view in ('details', 'map', 'schedule', 'operating_map', 'flight_status', 'flight_brief')},
     'trip_summary': 'trip_cards_visible', 'trip_map': 'trip_cards_visible',
     'nearby': 'nearby_card_visible', 'weather': 'weather_card_visible',
     'national_radar': 'radar_card_visible', 'trip_weather': 'trip_weather_cards_visible',

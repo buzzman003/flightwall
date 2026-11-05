@@ -1,3 +1,15 @@
+FLIGHT WALL 0.4.13
+
+Flight Brief groups significant FlightAware timing changes, relevant FAA
+airport advisories, observed endpoint weather and matched VPS leave-home and
+departure times. The provider card uses observed gate and runway events for
+taxi phases. Today's Activities marks the current and next timed events locally.
+
+Under Setup > Connections, Chris can opt in to OpenAI flight-brief ordering.
+It uses the saved key and at most four small text requests per UTC day. Only
+coarse categories are sent. Local ordering works offline and remains available
+if the API fails. No new email or Alexa permissions are required.
+
 FLIGHT WALL 0.4.9 - PUBLISHED, VERIFIED AND ACTIVE
 
 Shortens dinner help to one spoken example and adds "set dinner card" as a

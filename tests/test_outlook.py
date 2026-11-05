@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from flightwall.outlook import custody_outlook, local_visits, planned_buzz_days, trip_preview
+from flightwall.outlook import agenda_focus, custody_outlook, local_visits, planned_buzz_days, today_activities, trip_preview
 from flightwall.household_policy import build_rotation
 
 
@@ -156,3 +156,34 @@ def test_activities_rotate_separately_and_page_without_exposing_guest_details():
     assert [entry["agenda_page"] for entry in deck if entry["view"] == "today_activities"] == [0, 1]
     guest = build_rotation(status, {"guest_mode": True}, now)
     assert {entry["view"] for entry in guest} == {"home", "custody_outlook"}
+
+
+def test_agenda_focus_marks_concurrent_rows_and_advances_at_exact_boundaries():
+    now = dt("2026-10-31T18:00:00Z")
+    activities = [
+        {"title": "All day", "start": "2026-10-31T05:00:00Z", "end": "2026-11-01T05:00:00Z", "all_day": True},
+        {"title": "Completed", "start": "2026-10-31T17:00:00Z", "end": "2026-10-31T18:00:00Z"},
+        {"title": "Soccer", "start": "2026-10-31T17:45:00Z", "end": "2026-10-31T18:30:00Z"},
+        {"title": "Dance", "start": "2026-10-31T18:00:00Z", "end": "2026-10-31T18:30:00Z"},
+        {"title": "Violin", "start": "2026-10-31T18:20:00Z", "end": "2026-10-31T18:40:00Z"},
+        {"title": "Viola", "start": "2026-10-31T18:20:00Z", "end": "2026-10-31T18:50:00Z"},
+        {"title": "Later", "start": "2026-10-31T19:00:00Z", "end": "2026-10-31T19:30:00Z"},
+    ]
+    outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+               "activities": activities}
+    rows = today_activities(outlook, {"timezone": "America/Chicago"}, now)
+    assert agenda_focus(rows, now) == ["", "", "NOW", "NOW", "NEXT", "NEXT", ""]
+    assert agenda_focus(rows, now + timedelta(minutes=30)) == ["", "", "", "", "NOW", "NOW", "NEXT"]
+    assert agenda_focus(rows, now + timedelta(hours=2)) == [""] * len(rows)
+    assert agenda_focus([], now) == []
+
+
+def test_agenda_focus_orders_repeated_wall_times_by_instant():
+    now = dt("2026-11-01T06:30:00Z")
+    outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+               "activities": [{"title": "Earlier", "start": "2026-11-01T06:20:00Z", "end": "2026-11-01T06:40:00Z"},
+                              {"title": "Later", "start": "2026-11-01T07:20:00Z", "end": "2026-11-01T07:40:00Z"}]}
+    rows = today_activities(outlook, {"timezone": "America/Chicago"}, now)
+    assert rows[0][0].strftime("%H:%M") == rows[1][0].strftime("%H:%M")
+    assert agenda_focus(rows, rows[0][0] + timedelta(minutes=10)) == ["NOW", "NEXT"]
+    assert agenda_focus(rows, now + timedelta(hours=1)) == ["", "NOW"]

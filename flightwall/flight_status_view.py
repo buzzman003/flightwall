@@ -73,7 +73,7 @@ def render_operating(draw, image, state, config, now):
     A provider tracking-ended flag never becomes an airline-cancellation claim.
     Calendar/report times remain in their existing independent schedule views.
     """
-    from .flight_alerts import fresh_status
+    from .flight_alerts import fresh_status, provider_timeline
     from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _tz
     _header(draw, state, now, "MY FLIGHT / PROVIDER UPDATE")
     original = state.get("operating_status")
@@ -119,8 +119,14 @@ def render_operating(draw, image, state, config, now):
     elif phase == "blocked":
         label, color = "TRACKING BLOCKED / CHECK AIRLINE", AMBER
     else:
-        label = {"scheduled": "SCHEDULED / PROVIDER UPDATE", "departed_gate": "DEPARTED GATE",
-                 "airborne": "AIRBORNE", "landed": "LANDED", "at_gate": "AT ARRIVAL GATE"}.get(phase, "FLIGHT PHASE UNKNOWN")
+        timeline = provider_timeline(status, now) or {}
+        label = {"scheduled": "SCHEDULED / PROVIDER UPDATE", "taxi_out": "TAXI-OUT PHASE / GATE OUT",
+                 "airborne": "AIRBORNE", "taxi_in": "TAXI-IN PHASE / LANDED",
+                 "at_gate": "AT ARRIVAL GATE"}.get(timeline.get("phase"), "FLIGHT PHASE UNKNOWN")
+        if timeline.get("phase") == "airborne" and "taxi_out_minutes" in timeline:
+            label += f" / TAXI OUT {round(timeline['taxi_out_minutes'])} MIN"
+        if timeline.get("phase") == "at_gate" and "taxi_in_minutes" in timeline:
+            label += f" / TAXI IN {round(timeline['taxi_in_minutes'])} MIN"
         color = CYAN
     _text(draw, (256, 93), label, color, align="center", max_width=464)
     zone = _tz(config)

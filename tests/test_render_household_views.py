@@ -133,6 +133,7 @@ class CustodyRenderTests(unittest.TestCase):
 
     def test_agenda_is_separate_and_hidden_from_guests_and_stale_frames(self):
         self.outlook.update(activities=[
+            {"title": "Rory Soccer", "start": "2026-10-31T17:30:00Z", "end": "2026-10-31T19:00:00Z"},
             {"title": "Rory Dance", "start": "2026-10-31T20:00:00Z", "end": "2026-10-31T21:00:00Z"},
             {"title": "Violin Lesson", "start": "2026-11-01T20:00:00Z", "end": "2026-11-01T21:00:00Z"}],
                             activity_last_sync=NOW.isoformat(), roster_last_sync=NOW.isoformat(), buzz_plan={"2026-10-31": {
@@ -143,7 +144,8 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertNotIn("LEAVE TIME CONFLICT", labels)
         agenda = self.state | {"view": "today_activities"}
         labels, _ = labels_for(agenda)
-        self.assertIn("Rory Dance", labels)
+        self.assertEqual([label for label in labels if label in {"Rory Soccer", "Rory Dance", "NOW", "NEXT"}],
+                         ["Rory Soccer", "NOW", "Rory Dance", "NEXT"])
         self.assertIn("3:00 PM - 4:00 PM", labels)
         self.assertNotIn("MOM'S HOUSE", labels)
         self.assertNotIn("Violin Lesson", labels)
@@ -151,7 +153,7 @@ class CustodyRenderTests(unittest.TestCase):
                               (agenda | {"now": (NOW + timedelta(minutes=31)).isoformat()}, {}),
                               (agenda | {"backend_available": False}, {})):
             labels, _ = labels_for(state, **config)
-            self.assertNotIn("Rory Dance", labels)
+            self.assertTrue({"Rory Soccer", "Rory Dance", "NOW", "NEXT"}.isdisjoint(labels))
 
     def test_household_clock_labels_repeated_dst_hour_correctly(self):
         before, image = labels_for(self.state | {"now": "2026-11-01T06:30:00Z"})

@@ -1,5 +1,17 @@
 # Flight Wall implementation contract
 
+0.4.13: Flight Brief is sourced from the currently matched operating leg.
+Show roster times as planned, FlightAware clocks as observed or estimated,
+FAA notices as airport-level advisories and METAR conditions as observations.
+Revalidate provider freshness and leg identity when rendering, including during
+pause. Gate and runway events bound taxi phases without inferring surface
+movement. Keep the exact opted-in Buzz leave-home time separate from departure
+and keep its conflict warning even when an owner-selected policy supplies a time.
+Guest mode hides the brief, and the optional OpenAI ordering sees only category
+codes. It cannot add rows or move safety and conflict rows down. The private
+ledger reserves at most four small requests per UTC day before making any calls.
+The family agenda labels concurrent active and next-start events locally.
+
 0.4.12: Compose the original 512 x 256 card directly into its final TV
 viewport, with the same whole-pixel LED treatment as the shopping and timer
 strips. OpenGL and software present the same composed pixels. Remove the

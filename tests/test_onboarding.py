@@ -81,6 +81,19 @@ class OnboardingTests(unittest.TestCase):
     def consent(self, person="lisa"):
         return {"consenting_person": person, "owner_consent": True}
 
+    def test_brief_focus_requires_separate_chris_consent(self):
+        self.login()
+        body = {"settings": {"brief_focus_enabled": True}}
+        for consent in ({}, self.consent("lisa")):
+            self.assertEqual(self.call("/setup/settings", body | consent).status, 400)
+        self.assertFalse(self.config.get()["brief_focus_enabled"])
+        self.assertEqual(self.call("/setup/settings", body | self.consent("chris")).status, 200)
+        self.assertTrue(self.config.get()["brief_focus_enabled"])
+        self.assertFalse(self.config.get()["dinner_options_enabled"])
+        self.assertFalse(self.config.get()["openai_enabled"])
+        self.assertEqual(self.call("/setup/settings", {"settings": {"brief_focus_enabled": False}}).status, 200)
+        self.assertFalse(self.config.get()["brief_focus_enabled"])
+
     def test_dinner_generation_has_its_own_consent_and_cannot_enable_lisa_features(self):
         self.login()
         patch = {"dinner_options_enabled": True, "dinner_options_monthly_limit_usd": 3,

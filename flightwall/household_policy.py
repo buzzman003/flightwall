@@ -348,6 +348,11 @@ def build_rotation(status, config, now=None):
             and (not strict or isinstance(selected, dict) and tracked.get("id") == selected.get("id"))
             and any(flight.get("id") == tracked.get("id") for flight, _, _ in _flights(status, config))):
         add("flight_status", "flight_status:" + str(tracked.get("id") or "current"))
+    if (isinstance(tracked, dict) and status.get("flight_context") and status.get("backend_available", True) is True
+            and (not strict or isinstance(selected, dict) and tracked.get("id") == selected.get("id"))):
+        from .flight_brief_view import brief_rows
+        if brief_rows(status["flight_context"], config):
+            add("flight_brief", "flight_brief:" + str(tracked.get("id") or "current"))
     section = status.get("trip_weather")
     if config.get("trip_weather_enabled") is True and snapshot.get("demo") is False and isinstance(section, dict):
         seen = set()

@@ -182,6 +182,47 @@ def fresh_status(status, now, backend_available=True):
     return result
 
 
+def provider_timeline(status, now):
+    """Use only observed OOOI clocks, without inferring surface movement."""
+    current = fresh_status(status, now)
+    if current.get("status") != "fresh" or current.get("source") != SOURCE:
+        return None
+    observed = stamp(current["fetched_at"])
+    times = current.get("times")
+    times = times if isinstance(times, dict) else {}
+    actual = {}
+    for key, event in (("out", "gate_out"), ("off", "takeoff"), ("on", "landing"), ("in", "gate_in")):
+        try:
+            when = stamp(times.get("actual_" + key))
+        except (ValueError, TypeError, OverflowError):
+            continue
+        if when <= observed:
+            actual[event] = when
+    ordered = list(actual.values())
+    if any(first > second for first, second in zip(ordered, ordered[1:])):
+        actual.clear()
+    phase = "scheduled"
+    for event, value in (("gate_out", "taxi_out"), ("takeoff", "airborne"),
+                         ("landing", "taxi_in"), ("gate_in", "at_gate")):
+        if event in actual:
+            phase = value
+    blocked = current.get("phase") == "blocked"
+    diverted = current.get("diverted") is True
+    ended = current.get("cancelled") is True or current.get("phase") == "tracking_ended"
+    if blocked or diverted or ended:
+        # The service need not confirm a diversion airport. Do not attach
+        # observed landing/gate clocks to the original destination in that case.
+        phase = "blocked" if blocked else "diverted" if diverted else "tracking_ended"
+        actual.clear()
+    result = {"phase": phase, "fetched_at": observed.isoformat(), "diverted": diverted,
+              "tracking_ended": ended, "events": {key: value.isoformat() for key, value in actual.items()}}
+    for key, first, second in (("taxi_out_minutes", "gate_out", "takeoff"),
+                               ("taxi_in_minutes", "landing", "gate_in")):
+        if first in actual and second in actual:
+            result[key] = (actual[second] - actual[first]).total_seconds() / 60
+    return result
+
+
 def alert_card(status, now):
     result = fresh_status(status, now)
     if result.get("status") != "fresh" or result.get("phase") == "blocked":

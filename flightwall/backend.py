@@ -16,6 +16,8 @@ from .render import demo_snapshot
 from .updater import UpdateManager
 from .personal import PersonalStore, PersonalError, personal_card_visible
 from .dinner_options import DinnerOptions
+from .brief_focus import BriefFocus
+from .flight_brief_view import brief_rows
 from .recipe_mail import RecipeMail
 from .household_calendar import HouseholdCalendars
 from .presence import PresenceStore
@@ -29,6 +31,7 @@ from .flight_watches import FlightWatchStore, tracking_available
 from .weather import WeatherFeed
 from .trip_weather import TripWeatherFeed, select_airports
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
+from .flight_context import build_flight_context
 from .flight_alerts import SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fresh_status, stamp as flight_stamp
 
 
@@ -76,6 +79,7 @@ class Runtime:
         self.environment = FlightEnvironmentFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
         self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal)
+        self.brief_focus = BriefFocus(self.data_dir, self.config.get, self.personal._locked, self.dinner_options._key)
         self.recipe_mail = RecipeMail(data_dir, self.personal._locked, enabled=self._recipe_mail_enabled)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
@@ -100,6 +104,7 @@ class Runtime:
         self._environment_worker = None
         self._dinner_worker = None
         self._recipe_worker = None
+        self._brief_worker = None
         # One transient confirmed arrival, never a location/presence history.
         self._recent_vps_arrival = None
         self._mail_refresh = threading.Event()
@@ -232,6 +237,7 @@ class Runtime:
                 trip_weather["status"] = "idle"
             if status["airport_alerts"].get("status") not in {"demo", "off"}:
                 status["airport_alerts"]["status"] = "outside_window"
+        status["flight_context"] = build_flight_context(status, config, now)
         # Global radar has a broader day/day-before context, including shown
         # deadheads and legs without a supported METAR station. Do not couple
         # it to the narrower operating-airport weather/advisory selection.
@@ -301,6 +307,9 @@ class Runtime:
         setup_body = ("Open the setup page on your phone or laptop to connect calendars and household cards."
                       if config["public_url"] else "Use the setup guide to open this address through a localhost SSH tunnel.")
         status["setup"] = {"url": setup_url, "title": "Make this wall yours", "body": setup_body}
+        if self.brief_focus.enabled():
+            rows = brief_rows(status.get("flight_context"), config)
+            status["brief_focus"] = self.brief_focus.selection((row[0] for row in rows), now.date().isoformat())
         return status
 
     def _vps_arrival(self, snapshot, config, operating, provider, now):
@@ -375,6 +384,8 @@ class Runtime:
         ideas = status.get("dinner_options", {})
         status["dinner_options"] = {"status": ideas.get("status"), "date": ideas.get("date"),
                                    "option_count": len(ideas.get("options", []))}
+        status.pop("flight_context", None)
+        status.pop("brief_focus", None)
         return status
 
     def setup_get(self):
@@ -644,6 +655,19 @@ class Runtime:
         config = self.config.get()
         return config.get("demo") is False and config.get("personal_enabled") is True
 
+    def _run_brief_focus(self):
+        while not self.stop_event.is_set():
+            try:
+                if self.brief_focus.enabled():
+                    now = datetime.now(timezone.utc)
+                    status = self.display_status(now)
+                    rows = brief_rows(status.get("flight_context"), self.config.get())
+                    if not self.stop_event.is_set():
+                        self.brief_focus.poll((row[0] for row in rows), now.date().isoformat())
+            except Exception:
+                pass  # The optional model never blocks the board or logs response content.
+            self.stop_event.wait(60)
+
     def _run_recipe_mail(self):
         while not self.stop_event.is_set():
             try:
@@ -707,6 +731,8 @@ class Runtime:
         self._dinner_worker.start()
         self._recipe_worker = threading.Thread(target=self._run_recipe_mail, name="flightwall-recipe-mail", daemon=True)
         self._recipe_worker.start()
+        self._brief_worker = threading.Thread(target=self._run_brief_focus, name="flightwall-brief-focus", daemon=True)
+        self._brief_worker.start()
         return self
 
     def stop(self):
@@ -725,3 +751,5 @@ class Runtime:
             self._dinner_worker.join(timeout=2)
         if self._recipe_worker:
             self._recipe_worker.join(timeout=2)
+        if self._brief_worker:
+            self._brief_worker.join(timeout=2)

@@ -1,3 +1,14 @@
+0.4.13 FLIGHT BRIEF AND FAMILY AGENDA
+
+Tests use synthetic FlightAware gate/runway clocks, FAA advisories, endpoint
+METAR observations and exact VPS calendar matches. The OpenAI tests use mocked
+responses and cover consent defaults, category-only input, refusal, stale and
+outage behavior, and restart-safe request accounting. Actual taxi or diversion
+observations depend on FlightAware reporting. Verify a real operating leg on the
+TV and separately opt in to the text feature before trying a paid request.
+The release does not introduce automatic outbound flight or family messages.
+The current Alexa voice model and Lambda remain the deployment baseline.
+
 0.4.9 PUBLISHED, VERIFIED AND ACTIVE - NOVEMBER 2 UTC / NOVEMBER 1 CENTRAL
 
 Release: https://github.com/buzzman003/flightwall/releases/tag/v0.4.9
