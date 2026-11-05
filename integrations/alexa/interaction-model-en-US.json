@@ -294,14 +294,18 @@
         {
           "name": "StartTimerIntent",
           "slots": [
-            {"name": "TimerLabel", "type": "TIMER_LABEL"},
-            {"name": "TimerDuration", "type": "AMAZON.DURATION"}
+            {"name": "TimerLabel", "type": "TIMER_LABEL", "samples": ["{TimerLabel}"]},
+            {"name": "TimerDuration", "type": "AMAZON.DURATION", "samples": ["{TimerDuration}"]}
           ],
           "samples": [
             "start a timer", "set a timer",
             "start a {TimerLabel} timer for {TimerDuration}",
             "set a {TimerLabel} timer for {TimerDuration}",
+            "set {TimerLabel} timer for {TimerDuration}",
+            "add a {TimerLabel} timer for {TimerDuration}",
+            "add {TimerLabel} timer for {TimerDuration}",
             "start a timer for {TimerDuration} called {TimerLabel}",
+            "set a timer for {TimerDuration} called {TimerLabel}",
             "set a timer for {TimerDuration}",
             "add a {TimerLabel} {TimerDuration} timer",
             "add {TimerLabel} {TimerDuration} timer",
@@ -580,6 +584,27 @@
       "delegationStrategy": "SKILL_RESPONSE",
       "intents": [
         {
+          "name": "StartTimerIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "TimerLabel",
+              "type": "TIMER_LABEL",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {"elicitation": "Timer.Label"}
+            },
+            {
+              "name": "TimerDuration",
+              "type": "AMAZON.DURATION",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {"elicitation": "Timer.Duration"}
+            }
+          ]
+        },
+        {
           "name": "AddDinnerIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -637,6 +662,14 @@
       ]
     },
     "prompts": [
+      {
+        "id": "Timer.Label",
+        "variations": [{"type": "PlainText", "value": "What should I call the timer?"}]
+      },
+      {
+        "id": "Timer.Duration",
+        "variations": [{"type": "PlainText", "value": "How long should it run?"}]
+      },
       {
         "id": "Dinner.Meal",
         "variations": [

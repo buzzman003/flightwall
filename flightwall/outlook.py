@@ -2,6 +2,7 @@
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 import hashlib
+import json
 
 UTC = timezone.utc
 ACTIVITIES_PER_PAGE = 6
@@ -150,86 +151,49 @@ def local_visits(snapshot, now, *, include_future=False):
 
 
 def planned_buzz_days(snapshot, config, now):
-    """Project scheduled duty and matched VPS stays into the seven-day family card.
+    """Mark known trip dates in the ten-day family outlook, including VPS stays.
 
-    An arrival clock is a VPS arrival. Only a verified leave clock supplies
-    a home departure time. An uncovered roster interval has no planned state.
+    Source and owner-entered trip end dates are exclusive. Older caches provide
+    only timed duties, so their uncovered gaps stay unmarked. These are planned
+    duties, independent of phone presence and the visibility of deadhead legs.
     """
+    from .mycrew import clean_trip_days
+
     if (snapshot.get("demo") or not calendar_fresh(snapshot.get("last_sync"), now,
             config.get("kids_stale_minutes", 30), failed=bool(snapshot.get("error")))):
         return {}
     zone = ZoneInfo(config.get("timezone", "UTC"))
     today = now.astimezone(zone).date()
-    midnight = datetime.combine(today, time(), zone).astimezone(UTC)
-    include_leaves = config.get("brief_leave_times_enabled") is True
-    chosen_leave_policy = config.get("brief_leave_policy") in {"recommended", "report_safe"}
-    stays, leave_by_departure = [], {}
-    for visit in local_visits(snapshot, midnight, include_future=True):
-        if visit["airport"] != "VPS" or "departure" not in visit:
-            continue
-        arrival, departure = stamp(visit["arrival"]), stamp(visit["departure"])
-        conflict = include_leaves and visit.get("leave_conflict") is True
-        leave = stamp(visit["leave_at"]) if include_leaves and "leave_at" in visit and (not conflict or chosen_leave_policy) else None
-        stays.append((arrival, leave or departure, leave, conflict))
-        if leave:
-            leave_by_departure[departure] = leave
-
-    flights = []
+    trip_days = clean_trip_days(snapshot.get("trip_days"))
+    try:
+        trip_days += clean_trip_days(json.loads(config.get("planned_trip_days", "[]")))
+    except (ValueError, TypeError, RecursionError):
+        pass
+    duty = []
     for row in snapshot.get("flights", []):
         try:
             start, end = stamp(row["start"]), stamp(row["end"])
-            if start < end:
-                flights.append((start, end, row))
+            if start >= end:
+                continue
         except (KeyError, ValueError, TypeError, AttributeError, OverflowError):
             continue
-    flights.sort(key=lambda leg: (leg[0], leg[1]))
-    duty = []
-    for index, (departure, arrival, row) in enumerate(flights):
-        if row.get("deadhead") and not config.get("show_deadheads", True):
-            continue
-        start, basis = departure, "flight"
-        previous = flights[index - 1] if index else None
-        if row.get("origin") == "VPS" and departure in leave_by_departure:
-            start, basis = leave_by_departure[departure], "leave"
-        elif (previous and previous[2].get("destination") == row.get("origin") != "VPS"
-                and departure - timedelta(days=4) <= previous[1] <= departure
-                and (config.get("show_deadheads", True) or not previous[2].get("deadhead"))):
-            start, basis = previous[1], "connection"
-        else:
-            try:
-                report = stamp(row.get("report"))
-                if (departure - timedelta(days=1) <= report <= departure
-                        and (previous is None or previous[1] <= report)):
-                    start, basis = report, "report"
-            except (ValueError, TypeError, AttributeError, OverflowError):
-                pass
-        duty.append((start, arrival, basis))
+        try:
+            report = stamp(row.get("report"))
+            if start - timedelta(days=1) <= report <= start:
+                start = report
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            pass
+        duty.append((start, end))
 
     days = {}
-    for offset in range(7):
+    for offset in range(10):
         day = today + timedelta(days=offset)
         start = datetime.combine(day, time(), zone).astimezone(UTC)
         end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
-        home = next((item for item in stays if item[0] < end and start < item[1]), None)
-        away = [item for item in duty if item[0] < end and start < item[1]]
-        if not home and not away:
-            continue
-        row = {"home": bool(home), "away": bool(away)}
-        if home:
-            arrival, _, leave, conflict = home
-            if start <= arrival < end:
-                row["arrival"] = arrival.isoformat()
-            if leave and start <= leave < end:
-                row["leave"] = leave.isoformat()
-            if conflict and (leave is None or start <= leave < end):
-                row["leave_conflict"] = True
-            elif leave is None:
-                row["leave_unknown"] = True
-        if away:
-            first, _, basis = min(away, key=lambda item: item[0])
-            if start <= first < end and basis != "connection":
-                row.update(away_start=first.isoformat(), away_basis=basis)
-        days[day.isoformat()] = row
+        key = day.isoformat()
+        if (any(item["start_date"] <= key < item["end_date"] for item in trip_days)
+                or any(a < end and start < b for a, b in duty)):
+            days[key] = {"gone": True}
     return days
 
 

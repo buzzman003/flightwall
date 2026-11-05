@@ -1,6 +1,6 @@
 """Opt-in official national radar and FAA airport programs, never a briefing.
 
-Both requests are global fixed public URLs: scheduled airports only select
+Requests use fixed public URLs and radar boxes: scheduled airports only select
 what is displayed locally. Source clocks are distinct from retrieval clocks.
 FAA XML follows https://www.fly.faa.gov/fly/dtd/AirportStatus.dtd; the DTD is
 documentation only and is never fetched or expanded by this parser.
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 import hashlib
 from io import BytesIO
 import json
@@ -85,15 +84,6 @@ def request_bytes(url):
         if not raw or len(raw) > limit:
             raise ValueError("Flight environment response exceeds bounds")
         return raw, response.headers.get("Last-Modified")
-
-
-def _source_header(value):
-    try:
-        if not isinstance(value, str) or len(value) > 100:
-            return None
-        return _iso(_now(parsedate_to_datetime(value)))
-    except (TypeError, ValueError, OverflowError):
-        return None
 
 
 def _radar_png(raw):
@@ -272,6 +262,8 @@ class FlightEnvironmentFeed:
                                 if basis not in {"embedded_utc", "advertised_observation"}:
                                     continue
                                 parsed.update(scope=scope, clock_basis=basis)
+                                if basis == "advertised_observation" and row.get("geometry") == radar_tools.map_geometry(scope):
+                                    parsed["geometry"] = radar_tools.map_geometry(scope)
                                 if row.get("animation") is not None:
                                     try:
                                         parsed["animation"] = radar_tools.validate_animation(row["animation"])
@@ -318,36 +310,30 @@ class FlightEnvironmentFeed:
 
     def _fetch_radar(self, scope, now):
         """Only the chosen public scope; never phone/home coordinates or tiles."""
-        observed = None
-        if scope in {"national", "southeast"}:
-            url = RADAR_URL if scope == "national" else radar_tools.SOUTHEAST_URL
-            raw, modified = request_bytes(url)
-            frames, durations = radar_tools.decode_loop(raw)
-            issued, basis = _source_header(modified), "embedded_utc"
-        else:
-            raw, _ = request_bytes(radar_tools.CAPABILITIES_URL)
-            observed = radar_tools.observation_times(raw, now)
+        raw, _ = request_bytes(radar_tools.CAPABILITIES_URL)
+        observed = radar_tools.observation_times(raw, now)
+        if not self._radar_requested(scope, now):
+            raise ValueError("Radar scope/consent changed")
+        with self._lock:
+            previous = copy.deepcopy(self._cache.get("radar", {}))
+        geometry = radar_tools.map_geometry(scope)
+        if (previous.get("scope") == scope and previous.get("geometry") == geometry
+                and previous.get("animation", {}).get("observed_at") == observed
+                and self._radar_files_match(previous)):
+            return dict(previous, fetched_at=_iso(now)), None, None
+        if self._radar_legend is None:
+            self._radar_legend, _ = request_bytes(radar_tools.LEGEND_URL)
+        frames = []
+        for at in observed:
             if not self._radar_requested(scope, now):
                 raise ValueError("Radar scope/consent changed")
-            with self._lock:
-                previous = copy.deepcopy(self._cache.get("radar", {}))
-            if (previous.get("scope") == scope and previous.get("animation", {}).get("observed_at") == observed
-                    and self._radar_files_match(previous)):
-                return dict(previous, fetched_at=_iso(now)), None, None
-            if self._radar_legend is None:
-                self._radar_legend, _ = request_bytes(radar_tools.LEGEND_URL)
-            frames = []
-            for at in observed:
-                if not self._radar_requested(scope, now):
-                    raise ValueError("Radar scope/consent changed")
-                raw, _ = request_bytes(radar_tools.map_url(scope, at))
-                frames.append(radar_tools.compose_wms(raw, scope, at, self._radar_legend))
-            durations = [200] * len(frames)
-            durations[-1] = 1500
-            issued, basis = observed[-1], "advertised_observation"
+            raw, _ = request_bytes(radar_tools.map_url(scope, at))
+            frames.append(radar_tools.compose_wms(raw, scope, at, self._radar_legend))
+        durations = [200] * len(frames)
+        durations[-1] = 1500
         poster, animation, metadata = radar_tools.encode_loop(frames, durations, observed)
-        row = {"fetched_at": _iso(now), "issued_at": issued, "image_sha256": hashlib.sha256(poster).hexdigest(),
-               "scope": scope, "clock_basis": basis, "animation": metadata}
+        row = {"fetched_at": _iso(now), "issued_at": observed[-1], "image_sha256": hashlib.sha256(poster).hexdigest(),
+               "scope": scope, "clock_basis": "advertised_observation", "geometry": geometry, "animation": metadata}
         return row, poster, animation
 
     def _radar_requested(self, scope, now):
@@ -418,8 +404,9 @@ class FlightEnvironmentFeed:
                 row = {}
             section = {"status": mode, "fetched_at": row.get("fetched_at"), "issued_at": row.get("issued_at"),
                        "source": "NOAA/NWS national radar" if radar else "FAA airport status",
-                       "source_url": (RADAR_URL if scope == "national" else radar_tools.SOUTHEAST_URL if scope == "southeast"
-                                      else "https://opengeo.ncep.noaa.gov/geoserver/www/index.html") if radar else "https://nasstatus.faa.gov/"}
+                       "source_url": "https://opengeo.ncep.noaa.gov/geoserver/www/index.html" if radar else "https://nasstatus.faa.gov/"}
+            if radar and row.get("image_sha256") and row.get("clock_basis", "embedded_utc") == "embedded_utc":
+                section["source_url"] = RADAR_URL if scope == "national" else radar_tools.SOUTHEAST_URL
             if radar:
                 available = False
                 try:
@@ -460,5 +447,9 @@ class FlightEnvironmentFeed:
                                     section["status"] = "stale"
                 except (KeyError, ValueError, TypeError, OverflowError):
                     section["status"] = "unavailable"
+            if radar:
+                section["home_marker_eligible"] = (section["status"] == "ready"
+                    and row.get("clock_basis") == "advertised_observation"
+                    and row.get("geometry") == radar_tools.map_geometry(scope))
             result[key] = section
         return result

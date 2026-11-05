@@ -1,3 +1,24 @@
+0.4.14 READING CONTROLS, WEATHER WINDOWS, DINNER PHOTOS AND WINDOW FOCUS
+
+Synthetic tests cover duration overrides, pause/hold clocks, high-resolution
+photo visibility and insets, shared dinner image allowance, retry-safe picture
+binding, recipe mail deduplication, fresh Home weather gates and TAF coverage,
+planned duty date spans, fixed NOAA radar geometry and verified X11 focus.
+The source launcher uses focus, but existing stable launchers are intentionally
+preserved by signed updates and need a separately verified wrapper deployment.
+New Alexa timer elicitations require the matching Lambda and interaction model.
+Physical Echo recognition remains distinct from simulator and HTTP checks.
+The selected calendars did not contain the commute. Separate dated public
+schedule candidates were checked against an exact roster report and preserve
+a later viable backup. Tests cover stale/ambiguous schedules, report changes,
+restart-safe batch reservations, the shared FlightAware cap, Home-only refresh
+and no mutation of operating flights. Availability and boarding are unverified.
+The phone may report Unknown when stationary; a fresh phone report is required
+for the Home-only preview. Windows acceptance passed 1398 tests and 551 subtests
+with 55 expected platform/native skips before the final commute integration.
+The matching Alexa model built successfully and the uploaded Lambda code hash
+matched the reviewed package. Physical speech recognition is a separate check.
+
 0.4.13 FLIGHT BRIEF AND FAMILY AGENDA
 
 Tests use synthetic FlightAware gate/runway clocks, FAA advisories, endpoint

@@ -1,5 +1,6 @@
 """Keyboard/controller TV options, with bounded discrete map-range controls."""
-from .card_preferences import CARD_LABELS
+import json
+from .card_preferences import CARD_LABELS, TIMING_LABELS
 
 RADIUS_PRESETS = (2.5, 5, 10, 25, 50, 100)
 RADAR_SCOPES = ('national', 'southeast', 'local', 'hyperlocal')
@@ -8,6 +9,7 @@ GROUPS = (
                  'led_effect', 'sleep_enabled', 'shopping_ticker_visible')),
     ('CARDS', tuple(CARD_LABELS)),
     ('MAPS', ('nearby_radius_miles', 'national_radar_scope', 'national_radar_flight_only')),
+    ('TIMING', tuple('timing:' + name for name in TIMING_LABELS)),
 )
 LABELS = {
     'brightness': 'Brightness', 'dot_gap': 'Dot spacing',
@@ -16,6 +18,7 @@ LABELS = {
     'shopping_ticker_visible': 'Shopping ticker', 'nearby_radius_miles': 'Aircraft radius',
     'national_radar_scope': 'Radar area', 'national_radar_flight_only': 'Radar schedule',
     **CARD_LABELS,
+    **{'timing:' + name: label for name, label in TIMING_LABELS.items()},
 }
 
 
@@ -37,6 +40,15 @@ def _choice(value, values, direction):
 
 def next_value(config, name, direction):
     direction = 1 if direction >= 0 else -1
+    if name.startswith('timing:') and name[7:] in TIMING_LABELS:
+        values = json.loads(config.get('card_seconds', '{}'))
+        key = name[7:]
+        value = _choice(values.get(key, 0), (0, 5, 10, 15, 20, 30, 45, 60, 90, 120), direction)
+        if value:
+            values[key] = value
+        else:
+            values.pop(key, None)
+        return json.dumps(values, sort_keys=True, separators=(',', ':'))
     if name in CARD_LABELS or name in {'led_effect', 'sleep_enabled', 'shopping_ticker_visible', 'national_radar_flight_only'}:
         return not config.get(name, True)
     if name == 'nearby_radius_miles':
@@ -52,6 +64,9 @@ def next_value(config, name, direction):
 
 def value_label(config, name):
     value = config.get(name, True)
+    if name.startswith('timing:'):
+        seconds = json.loads(config.get('card_seconds', '{}')).get(name[7:])
+        return f'{seconds} SEC' if seconds else 'GLOBAL'
     if name in CARD_LABELS:
         return 'SHOW' if value is True else 'HIDE'
     if name == 'nearby_radius_miles':

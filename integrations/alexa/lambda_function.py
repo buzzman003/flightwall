@@ -40,6 +40,8 @@ DINNER_TEXT_SLOTS = {"AddDinnerIntent": "Meal", **dict.fromkeys(DINNER_DAY_INTEN
                      "SetDinnerSidesIntent": "Sides", "SetDinnerReadyTimeIntent": "ReadyTime"}
 DINNER_CANCEL_PHRASES = {"cancel", "cancel that", "cancel dinner", "cancel the dinner", "stop",
                          "stop dinner", "never mind", "nevermind"}
+TIMER_CANCEL_PHRASES = {"cancel", "cancel that", "cancel timer", "cancel the timer", "stop",
+                        "stop timer", "stop the timer", "never mind", "nevermind"}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
             "american": "AA", "american airlines": "AA", "aa": "AA",
             "united": "UA", "united airlines": "UA", "ua": "UA",
@@ -828,6 +830,19 @@ def _save_timer(client, pending):
                      "on Flight Wall.")
 
 
+def _elicit_timer(pending, slot, prompt):
+    slots = {name: {"name": name, "confirmationStatus": "NONE"}
+             for name in ("TimerLabel", "TimerDuration")}
+    if pending.get("label"):
+        slots["TimerLabel"]["value"] = pending["label"]
+    if pending.get("duration_seconds"):
+        slots["TimerDuration"]["value"] = f"PT{pending['duration_seconds']}S"
+    result = _speech(prompt, pending)
+    result["response"]["directives"] = [{"type": "Dialog.ElicitSlot", "slotToElicit": slot,
+        "updatedIntent": {"name": "StartTimerIntent", "confirmationStatus": "NONE", "slots": slots}}]
+    return result
+
+
 def _timer_dialog(client, name, values, pending, request):
     if not pending or pending["kind"] != "timer" or pending.get("phase") == "retry":
         pending = {"kind": "timer", "phase": "collect", "request_id": _request_id(request.get("requestId"))}
@@ -839,9 +854,9 @@ def _timer_dialog(client, name, values, pending, request):
             except (ValueError, ArithmeticError):
                 pending[field] = None
     if not pending.get("label"):
-        return _speech("What should I call the timer? Say, call the timer pasta.", pending)
+        return _elicit_timer(pending, "TimerLabel", "What should I call the timer?")
     if not pending.get("duration_seconds"):
-        return _speech("How long should it run? Say, for five minutes. Choose one second to twenty four hours.", pending)
+        return _elicit_timer(pending, "TimerDuration", "How long should it run? Choose one second to twenty four hours.")
     return _save_timer(client, pending)
 
 
@@ -1009,6 +1024,10 @@ def lambda_handler(event, lambda_context):
         pending = _pending(event)
         values = _slots(intent)
         if _dinner_control(values.get(DINNER_TEXT_SLOTS.get(name))) in DINNER_CANCEL_PHRASES:
+            name = "AMAZON.CancelIntent"
+        if (pending and pending["kind"] == "timer" and pending.get("phase") == "collect"
+                and any(_dinner_control(values.get(slot)) in TIMER_CANCEL_PHRASES
+                        for slot in ("TimerLabel", "TimerDuration", "Duration"))):
             name = "AMAZON.CancelIntent"
         if (name == "AMAZON.NoIntent" and pending and pending["kind"] == "dinner"
                 and pending.get("phase") in {"sides", "ready", "ready_confirm"}):

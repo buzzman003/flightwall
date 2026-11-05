@@ -134,6 +134,96 @@ def select_airports(snapshot, now, timezone="UTC"):
     return result
 
 
+def _preview_legs(snapshot, config, now):
+    if not isinstance(snapshot, dict) or snapshot.get("demo") is not False:
+        return []
+    try:
+        zone = ZoneInfo(config.get("timezone", "UTC"))
+    except (KeyError, ValueError, TypeError):
+        return []
+    legs = []
+    today = now.astimezone(zone).date()
+    flights = snapshot.get("flights")
+    for row in flights[:2000] if isinstance(flights, list) else []:
+        if not isinstance(row, dict) or row.get("deadhead") and config.get("show_deadheads", True) is not True:
+            continue
+        try:
+            start, end = _stamp(row.get("start")), _stamp(row.get("end"))
+        except (ValueError, TypeError, OverflowError, OSError):
+            continue
+        if not timedelta(0) < end - start <= timedelta(hours=24):
+            continue
+        if (start <= now < end or start.astimezone(zone).date() == today
+                or end <= now and end.astimezone(zone).date() == today):
+            return []
+        if now < start:
+            legs.append((start, end, row))
+    from .commute import preview_commute_legs
+    legs.extend(preview_commute_legs(snapshot, config, now))
+    legs.sort(key=lambda item: (item[0], item[1]))
+    if not legs or legs[0][0].astimezone(zone).date() != today + timedelta(days=1):
+        return []
+    first_day = legs[0][0].astimezone(zone).date()
+    return [row for row in legs if row[0].astimezone(zone).date() == first_day]
+
+
+def trip_preview_eligible(status, config, now):
+    """Day-before scheduled travel, with a fresh explicit Chris Home report."""
+    from .household_policy import household_context
+    now = _now(now)
+    if (config.get("demo") is not False or config.get("trip_weather_enabled") is not True
+            or config.get("presence_enabled") is not True or status.get("backend_available", True) is not True):
+        return False
+    presence = status.get("presence")
+    chris = presence.get("chris") if isinstance(presence, dict) else None
+    if not isinstance(chris, dict) or chris.get("stale") is not False:
+        return False
+    ttl = config.get("presence_ttl_minutes", 90)
+    if not _number(ttl, 5, 1440):
+        return False
+    try:
+        age = (now - _stamp(chris.get("last_seen") or chris.get("observed_at"))).total_seconds()
+    except (ValueError, TypeError, OverflowError, OSError):
+        return False
+    if not -120 <= age < ttl * 60 or not household_context(status, config, now)["chris_home"]:
+        return False
+    snapshot = status.get("snapshot", status)
+    return bool(_preview_legs(snapshot, config, now))
+
+
+def preview_airports(snapshot, config, now):
+    """First scheduled travel date, including only explicit timed commute legs.
+
+    Roster rotation boundaries cannot be recovered from individual titles.
+    All clocks remain schedule context and never prove physical presence.
+    """
+    now = _now(now)
+    airports, stations = _references()
+    result = []
+    for start, end, leg in _preview_legs(snapshot, config, now):
+        for code, kind, at in ((leg.get("origin"), "departure", start), (leg.get("destination"), "arrival", end)):
+            if not isinstance(code, str) or code not in airports:
+                continue
+            station = stations.get(code)
+            if not isinstance(station, str) or not _ICAO.fullmatch(station):
+                continue
+            target = next((row for row in result if row["iata"] == code), None)
+            if target is None:
+                if len(result) >= 4:
+                    continue
+                target = {"iata": code, "icao": station, "roles": [kind], "windows": []}
+                result.append(target)
+            elif kind not in target["roles"]:
+                target["roles"].append(kind)
+            window = {"kind": kind, "scheduled_at": _iso(at), "start": _iso(at - timedelta(hours=1)),
+                      "end": _iso(at + timedelta(hours=1))}
+            if leg.get("commute_role") in {"primary", "backup"}:
+                window["commute_role"] = leg["commute_role"]
+            if window not in target["windows"]:
+                target["windows"].append(window)
+    return result
+
+
 def request_json(url):
     """Two allowlisted AWC paths, bounded station query, HTTPS, no redirects."""
     parsed = urllib.parse.urlsplit(url)
@@ -265,6 +355,101 @@ def _present(data):
                   cloud_summary="; ".join(clouds) or "Clouds not specified", weather=weather,
                   summary="; ".join(weather + clouds) or "Conditions not specified")
     return result
+
+
+def forecast_category(conditions):
+    """FAA ceiling/visibility category, unknown when the parsed data is incomplete."""
+    if not isinstance(conditions, dict):
+        return None
+    supplied = conditions.get("flight_category")
+    if supplied in ("VFR", "MVFR", "IFR", "LIFR"):
+        return supplied
+    clouds = conditions.get("clouds")
+    clouds = clouds if isinstance(clouds, list) else []
+    ceilings = [row.get("base_ft") for row in clouds if isinstance(row, dict) and row.get("cover") in {"BKN", "OVC", "VV"}]
+    vertical = conditions.get("vertical_visibility_ft")
+    if vertical is not None:
+        ceilings.append(vertical)
+    known = [value for value in ceilings if _number(value, 0, 100000)]
+    ceiling = min(known) if known else None
+    sky_known = bool(clouds or vertical is not None) and len(known) == len(ceilings)
+    visibility = conditions.get("visibility_miles")
+    vis_known = _number(visibility, 0, 200)
+    if vis_known and conditions.get("visibility_greater_than") is True:
+        vis_known = visibility >= 5
+        visibility = max(visibility, 6) if vis_known else None
+    sky_rank = (3 if ceiling < 500 else 2 if ceiling < 1000 else 1 if ceiling <= 3000 else 0) if ceiling is not None else 0
+    vis_rank = (3 if visibility < 1 else 2 if visibility < 3 else 1 if visibility <= 5 else 0) if vis_known else 0
+    rank = max(sky_rank, vis_rank)
+    if rank == 3 or sky_known and vis_known:
+        return ("VFR", "MVFR", "IFR", "LIFR")[rank]
+    return None
+
+
+def forecast_window(taf, window, now):
+    """All TAF changes within the scheduled +/-1h window, without extrapolation.
+
+    The colored baseline is prevailing only. Temporary, probability and
+    becoming groups remain separately labeled alternatives, never certainty.
+    """
+    now = _now(now)
+    unavailable = {"coverage": "unavailable", "segments": [], "conditions": None, "alternatives": []}
+    try:
+        at, start, end = (_stamp(window[key]) for key in ("scheduled_at", "start", "end"))
+        valid_start, valid_end = (_stamp(taf[key]) for key in ("valid_start", "valid_end"))
+        checked, issued = (_stamp(taf[key]) for key in ("checked_at", "issued_at"))
+        if (taf.get("source") != "AviationWeather.gov" or taf.get("status") != "ready" or taf.get("stale") is not False
+                or not 0 <= (now - checked).total_seconds() < CACHE_MAX_AGE
+                or not 0 <= (now - issued).total_seconds() < TAF_MAX_AGE
+                or not timedelta(0) < valid_end - valid_start <= timedelta(hours=48)
+                or now >= valid_end
+                or not start == at - timedelta(hours=1) or not end == at + timedelta(hours=1)):
+            return unavailable
+    except (KeyError, ValueError, TypeError, OverflowError, OSError):
+        return unavailable
+    periods = []
+    for row in taf.get("periods", [])[:48] if isinstance(taf.get("periods"), list) else []:
+        try:
+            a, b = _stamp(row["start"]), _stamp(row["end"])
+            becoming = _stamp(row["becoming_at"]) if row.get("becoming_at") is not None else None
+            if (valid_start <= a < b <= valid_end and a < end and start < b
+                    and row.get("change") in ("BASE", "FM", "BECMG", "TEMPO", "PROB", "UNKNOWN")
+                    and (becoming is None or a <= becoming <= b)):
+                periods.append((a, b, becoming, row))
+        except (KeyError, ValueError, TypeError, AttributeError, OverflowError, OSError):
+            continue
+
+    def prevailing(moment):
+        bases = [row for row in periods if row[0] <= moment < row[1] and row[3]["change"] in ("BASE", "FM")]
+        selected = max(bases, key=lambda row: row[0]) if bases else None
+        changes = [row for row in periods if row[3]["change"] == "BECMG" and row[2] is not None
+                   and row[2] <= moment < row[1] and (selected is None or row[2] >= selected[0])]
+        if changes:
+            selected = max(changes, key=lambda row: row[2])
+        return selected[3] if selected else None
+
+    boundaries = {start, end}
+    for boundary in (valid_start, valid_end):
+        if start < boundary < end:
+            boundaries.add(boundary)
+    for a, b, becoming, _ in periods:
+        boundaries.update(point for point in (a, b, becoming) if point is not None and start < point < end)
+    boundaries = sorted(boundaries)
+    segments = []
+    for a, b in zip(boundaries, boundaries[1:]):
+        conditions = prevailing(a + (b - a) / 2)
+        segments.append({"start": _iso(a), "end": _iso(b), "category": forecast_category(conditions)})
+    alternatives = []
+    for a, b, becoming, row in periods:
+        change = row["change"]
+        if change in ("BASE", "FM") or change == "BECMG" and becoming is not None and becoming <= start:
+            continue
+        item = {"change": change, "probability": row.get("probability"), "category": forecast_category(row)}
+        if item not in alternatives:
+            alternatives.append(item)
+    covered = sum((_stamp(row["end"]) - _stamp(row["start"])).total_seconds() for row in segments if row["category"] is not None)
+    return {"coverage": "full" if covered == (end - start).total_seconds() else "partial" if covered else "unavailable",
+            "segments": segments, "conditions": prevailing(at), "alternatives": alternatives}
 
 
 def parse_metar(row, station, now):
@@ -438,13 +623,18 @@ class TripWeatherFeed:
                 self._forecasts[station] = WeatherFeed(self.data_dir / "trip-weather" / station, settings)
             return self._forecasts[station]
 
-    def poll(self, snapshot, now=None):
+    def poll(self, snapshot, now=None, *, preview=False):
         now = _now(now)
         if not self._poll_lock.acquire(blocking=False):
             return self.status(now)
         try:
             mode = self._mode()
-            targets = select_airports(snapshot, now, timezone=self.config_getter().get("timezone", "UTC")) if mode == "enabled" else []
+            config = self.config_getter()
+            targets = select_airports(snapshot, now, timezone=config.get("timezone", "UTC")) if mode == "enabled" else []
+            if mode == "enabled" and preview is True:
+                planned = preview_airports(snapshot, config, now)
+                codes = {row["iata"] for row in planned}
+                targets = (planned + [row for row in targets if row["iata"] not in codes])[:4]
             identity = tuple((row["iata"], row["icao"]) for row in targets)
             with self._lock:
                 self._targets = targets

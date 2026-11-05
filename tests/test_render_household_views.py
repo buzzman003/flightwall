@@ -131,6 +131,32 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertNotIn("DAD'S HOUSE", labels)
         self.assertNotIn("CHANGE DAY", labels)
 
+    def test_custody_outlook_adds_only_fresh_planned_buzz_gone_labels(self):
+        self.outlook.update(
+            roster_last_sync=NOW.isoformat(),
+            buzz_plan={"2026-10-31": {"gone": True}, "2026-11-01": {"gone": True},
+                       "2026-11-02": {"gone": True}, "2026-11-03": {"home": True}})
+        before = deepcopy(self.state)
+        labels, image = labels_for(self.state)
+        self.assertEqual(labels.count("BUZZ GONE"), 3)
+        self.assertIn("BUZZ = PLANNED DUTY", labels)
+        self.assertIn("MOM'S HOUSE", labels)
+        self.assertIn("DAD'S HOUSE", labels)
+        self.assertIn("CHANGE DAY", labels)
+        self.assertNotIn("BUZZ HOME", labels)
+        self.assertEqual(self.state, before)
+        self.assertEqual(image.size, (512, 256))
+        for state, config in ((self.state, {"guest_mode": True}),
+                              (self.state | {"backend_available": False}, {}),
+                              (self.state | {"demo": True}, {})):
+            hidden, _ = labels_for(state, **config)
+            self.assertNotIn("BUZZ GONE", hidden)
+            self.assertNotIn("BUZZ = PLANNED DUTY", hidden)
+        self.outlook["roster_last_sync"] = (NOW - timedelta(minutes=31)).isoformat()
+        hidden, _ = labels_for(self.state)
+        self.assertNotIn("BUZZ GONE", hidden)
+        self.assertIn("MOM'S HOUSE", hidden)
+
     def test_agenda_is_separate_and_hidden_from_guests_and_stale_frames(self):
         self.outlook.update(activities=[
             {"title": "Rory Soccer", "start": "2026-10-31T17:30:00Z", "end": "2026-10-31T19:00:00Z"},

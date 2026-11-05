@@ -29,6 +29,7 @@ def parser():
     gui.add_argument("--windowed", action="store_true")
     gui.add_argument("--frames", type=int, help=argparse.SUPPRESS)
     commands.add_parser("service", help="Run calendar, settings and updates without opening the display")
+    commands.add_parser("focus", help="Bring the existing local Flight Wall display to the front")
     authorize = commands.add_parser("authorize", help="Authorize your own Google Calendar read-only")
     authorize.add_argument("--credentials", required=True, type=Path)
     authorize.add_argument("--no-browser", action="store_true")
@@ -47,6 +48,12 @@ def parser():
     config = commands.add_parser("config", help="View or change local configuration")
     config.add_argument("--set", nargs=2, action="append", metavar=("KEY", "VALUE"), default=[])
     commands.add_parser("sync", help="Refresh selected calendars from the current account setup")
+    commute = commands.add_parser("commute-plan", help="Save a private VPS/ATL schedule plan against an exact roster report")
+    commute.add_argument("--date", required=True, help="Central travel date, YYYY-MM-DD")
+    commute.add_argument("--candidates", required=True, type=Path, help="Local JSON list of source-dated scheduled flight candidates")
+    schedules = commands.add_parser("commute-schedules", help="Read scheduled VPS/ATL clocks through the existing bounded AeroAPI budget")
+    schedules.add_argument("--date", required=True, help="Central travel date, YYYY-MM-DD")
+    schedules.add_argument("--idents", required=True, nargs="+", help="At most eight exact DL flight numbers")
     recipe = commands.add_parser("recipe-email", help="Privately configure email for future selected recipes")
     commands.add_parser("recipe-email-status", help="Check recipe email readiness without showing private data")
     recipe.add_argument("--sender", required=True)
@@ -214,6 +221,11 @@ def _owner_token(path):
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        if args.command == "focus":
+            from .window_focus import focus_window
+            focused = focus_window(args.install_dir, args.data_dir)
+            emit({"focused": focused})
+            return 0 if focused else 1
         store = ConfigStore(args.data_dir)
         command = args.command or "gui"
         if command == "config":
@@ -255,6 +267,23 @@ def main(argv=None):
                 snapshot = CalendarClient(args.data_dir, store.get()).sync()
             emit({"flights": len(snapshot["flights"]), "last_sync": snapshot["last_sync"], "source": snapshot["source"], "error": snapshot["error"]})
             return 1 if snapshot["error"] else 0
+        elif command == "commute-plan":
+            from .backend import Runtime
+            from .commute import CommuteStore, report_leg
+            if args.candidates.is_symlink() or not args.candidates.is_file() or args.candidates.stat().st_size > 32768:
+                raise ValueError("Choose a regular local commute-candidates JSON file under 32 KB")
+            candidates = json.loads(args.candidates.read_text(encoding="utf-8"))
+            snapshot = Runtime(args.data_dir, args.install_dir).snapshot()
+            anchor = report_leg(snapshot, args.date, datetime.now(timezone.utc), store.get())
+            if anchor is None:
+                raise ValueError("The first scheduled ATL leg needs an exact roster report clock")
+            result = CommuteStore(args.data_dir).save(candidates, anchor, datetime.now(timezone.utc))
+            emit(result)
+            return 0 if result["status"] == "ready" else 1
+        elif command == "commute-schedules":
+            from .commute import lookup_schedules
+            from .feeds import FlightFeeds
+            emit(lookup_schedules(FlightFeeds(store.data_dir), store.get(), args.date, args.idents, datetime.now(timezone.utc)))
         elif command == "recipe-email":
             from .config import private_json
             from .recipe_mail import validate_mail_settings

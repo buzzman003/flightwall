@@ -133,6 +133,10 @@ class HouseholdVoiceTests(unittest.TestCase):
     def test_start_timer_gathers_missing_values_and_preserves_first_request_id(self):
         first = self.call("StartTimerIntent", {"TimerDuration": "PT45S"})
         self.assertIn("What should I call", speech(first))
+        directive = first["response"]["directives"][0]
+        self.assertEqual((directive["type"], directive["slotToElicit"]), ("Dialog.ElicitSlot", "TimerLabel"))
+        self.assertEqual(directive["updatedIntent"]["name"], "StartTimerIntent")
+        self.assertEqual(directive["updatedIntent"]["slots"]["TimerDuration"]["value"], "PT45S")
         self.assertFalse(self.board.starts)
         saved = self.call("SetTimerLabelIntent", {"TimerLabel": "Tea"}, first, "label-turn")
         self.assertIn("45 seconds", speech(saved))
@@ -142,6 +146,9 @@ class HouseholdVoiceTests(unittest.TestCase):
 
     def test_timer_uses_existing_for_duration_followup(self):
         first = self.call("StartTimerIntent", {"TimerLabel": "Pasta"})
+        directive = first["response"]["directives"][0]
+        self.assertEqual(directive["slotToElicit"], "TimerDuration")
+        self.assertEqual(directive["updatedIntent"]["slots"]["TimerLabel"]["value"], "Pasta")
         saved = self.call("SetDurationIntent", {"Duration": "PT1.5M"}, first)
         self.assertIn("1 minute, 30 seconds", speech(saved))
         self.assertEqual(self.board.store.list_timers()[0]["duration_seconds"], 90)
@@ -153,11 +160,49 @@ class HouseholdVoiceTests(unittest.TestCase):
         matches = [row for row in intents if phrase in row.get("samples", [])]
         self.assertEqual([row["name"] for row in matches], ["StartTimerIntent"])
         self.assertIn("{TimerLabel} {TimerDuration} timer", matches[0]["samples"])
-        self.assertIn({"name": "TimerDuration", "type": "AMAZON.DURATION"}, matches[0]["slots"])
+        duration = next(slot for slot in matches[0]["slots"] if slot["name"] == "TimerDuration")
+        self.assertEqual(duration["type"], "AMAZON.DURATION")
         response = self.call(matches[0]["name"], {"TimerLabel": "Reading", "TimerDuration": "PT5M"})
         self.assertIn("Started the Reading timer for 5 minutes on Flight Wall", speech(response))
         self.assertEqual(self.board.starts, [{"label": "Reading", "duration_seconds": 300,
                                             "source": "alexa", "request_id": "synthetic-initial"}])
+
+    def test_plain_timer_slot_replies_complete_the_original_request_once(self):
+        initial = self.call("StartTimerIntent")
+        label = self.call("StartTimerIntent", {"TimerLabel": "Reading"}, initial, "label-turn")
+        saved = self.call("StartTimerIntent", {"TimerDuration": "PT5M"}, label, "duration-turn")
+        self.assertIn("Started the Reading timer for 5 minutes on Flight Wall", speech(saved))
+        self.assertEqual(self.board.starts, [{"label": "Reading", "duration_seconds": 300,
+                                            "source": "alexa", "request_id": "synthetic-initial"}])
+        self.assertNotIn("directives", saved["response"])
+
+    def test_timer_slot_elicitation_can_cancel_without_saving_a_control_word(self):
+        for name, slots in (("StartTimerIntent", {"TimerLabel": "cancel"}),
+                            ("SetTimerLabelIntent", {"TimerLabel": "never mind"}),
+                            ("SetTimerDurationIntent", {"TimerDuration": "stop the timer"})):
+            with self.subTest(name=name):
+                initial = self.call("StartTimerIntent", {"TimerDuration": "PT2M"})
+                result = self.call(name, slots, initial)
+                self.assertTrue(result["response"]["shouldEndSession"])
+                self.assertIn("cancelled", speech(result))
+        self.assertFalse(self.board.starts)
+
+    def test_timer_model_supports_direct_and_short_followup_requests(self):
+        path = Path(__file__).parents[1] / "integrations/alexa/interaction-model-en-US.json"
+        model = json.loads(path.read_text())["interactionModel"]
+        start = next(row for row in model["languageModel"]["intents"] if row["name"] == "StartTimerIntent")
+        for phrase in ("set a {TimerLabel} timer for {TimerDuration}",
+                       "add a {TimerLabel} {TimerDuration} timer",
+                       "add a {TimerLabel} timer for {TimerDuration}"):
+            self.assertIn(phrase, start["samples"])
+        dialog = next(row for row in model["dialog"]["intents"] if row["name"] == "StartTimerIntent")
+        prompts = {row["id"] for row in model["prompts"]}
+        for slot in start["slots"]:
+            self.assertIn("{" + slot["name"] + "}", slot["samples"])
+            rule = next(row for row in dialog["slots"] if row["name"] == slot["name"])
+            self.assertEqual(rule["type"], slot["type"])
+            self.assertTrue(rule["elicitationRequired"])
+            self.assertIn(rule["prompts"]["elicitation"], prompts)
 
     def test_invalid_duration_and_label_do_not_write(self):
         for duration in ("PT0S", "PT0.5S", "P2D", "P1M", "unknown"):

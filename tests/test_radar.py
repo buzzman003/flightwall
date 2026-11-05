@@ -1,7 +1,6 @@
 """Actual observation frames, fixed public scopes, and bounded PNG playback."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from email.utils import format_datetime
 import hashlib
 from io import BytesIO
 import json
@@ -9,11 +8,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import parse_qs, quote, urlsplit
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 import pytest
 
 from flightwall import radar, display, flight_context_views
 from flightwall.flight_environment import FlightEnvironmentFeed
+from flightwall.render import WHITE
 
 UTC = timezone.utc
 NOW = datetime(2026, 11, 1, 17, tzinfo=UTC)
@@ -40,6 +40,17 @@ def capabilities(times):
 
 def stamps(now=NOW):
     return [(now - timedelta(minutes=value)).isoformat() for value in (4, 2, 0)]
+
+
+def wms_response(scope):
+    def request(url):
+        if url == radar.CAPABILITIES_URL:
+            return capabilities(stamps()), None
+        if url == radar.LEGEND_URL:
+            return png((500, 30)), None
+        assert url in [radar.map_url(scope, at) for at in stamps()]
+        return png(radar.SIZES[scope], (255, 0, 0, 80)), None
+    return request
 
 
 def config(**changes):
@@ -102,7 +113,7 @@ def test_capabilities_select_only_exact_advertised_recent_unique_observations():
 
 
 def test_map_requests_are_exact_public_boxes_not_household_coordinates():
-    for scope in ("local", "hyperlocal"):
+    for scope in sorted(radar.SCOPES):
         url = radar.map_url(scope, NOW.isoformat())
         assert radar.request_limit(url) == 4_000_000
         query = parse_qs(urlsplit(url).query)
@@ -138,9 +149,9 @@ def test_environment_always_on_is_a_separate_explicit_choice_and_demo_stays_off(
         assert feed.poll(empty, NOW)["radar"]["status"] == "outside_window"
         request.assert_not_called()
     settings["national_radar_flight_only"] = False
-    with patch("flightwall.flight_environment.request_bytes", return_value=(gif(), format_datetime(NOW, usegmt=True))) as request:
+    with patch("flightwall.flight_environment.request_bytes", side_effect=wms_response("national")) as request:
         state = feed.poll(empty, NOW)
-    assert state["radar"]["status"] == "ready" and request.call_count == 1
+    assert state["radar"]["status"] == "ready" and request.call_count == 5
     assert state["radar"]["animation"]["frame_count"] == 3
     settings["demo"] = True
     with patch("flightwall.flight_environment.request_bytes") as request:
@@ -148,21 +159,83 @@ def test_environment_always_on_is_a_separate_explicit_choice_and_demo_stays_off(
         request.assert_not_called()
 
 
+@pytest.mark.parametrize("scope", sorted(radar.SCOPES))
+def test_home_marker_uses_exact_public_grid_before_contain_without_touching_clock_band(scope):
+    width, height = radar.SIZES[scope]
+    west, south, east, north = radar.map_geometry(scope)["bounds"]
+    longitude, latitude = west + (east - west) * .3, north - (north - south) * .4
+    image = Image.new("RGB", (width, height + radar.FOOTER_HEIGHT), (20, 30, 40))
+    original = image.tobytes()
+    marked = radar.mark_home(image, scope, latitude, longitude)
+    x, y = round(.3 * (width - 1)), round(.4 * (height - 1))
+    assert marked.getpixel((x, y)) == WHITE
+    assert marked.crop((0, height, width, image.height)).tobytes() == image.crop((0, height, width, image.height)).tobytes()
+    assert image.tobytes() == original and marked.info == image.info
+    fitted = ImageOps.contain(marked, (700, 300))
+    mapped_x, mapped_y = round(x * fitted.width / width), round(y * fitted.height / image.height)
+    assert max(sum(fitted.getpixel((px, py))) for px in range(mapped_x - 1, mapped_x + 2)
+               for py in range(mapped_y - 1, mapped_y + 2)) > 500
+
+
+@pytest.mark.parametrize("point", [(None, -86.4), (float("nan"), -86.4), (True, -86.4),
+                                  (40, -86.4), (30.4, -100)])
+def test_invalid_or_outside_home_pin_is_not_drawn(point):
+    width, height = radar.SIZES["hyperlocal"]
+    image = Image.new("RGB", (width, height + radar.FOOTER_HEIGHT), "navy")
+    assert radar.mark_home(image, "hyperlocal", *point).tobytes() == image.tobytes()
+    assert radar.mark_home(image.resize((400, 300)), "hyperlocal", 30.4, -86.4).size == (400, 300)
+
+
+@pytest.mark.parametrize("scope", sorted(radar.SCOPES))
+def test_marker_does_not_enter_footer_at_the_edge_of_the_geographic_rectangle(scope):
+    width, height = radar.SIZES[scope]
+    west, south, east, north = radar.map_geometry(scope)["bounds"]
+    image = Image.new("RGB", (width, height + radar.FOOTER_HEIGHT), "navy")
+    for latitude, longitude in ((north, west), (south, east)):
+        marked = radar.mark_home(image, scope, latitude, longitude)
+        assert marked.crop((0, height, width, image.height)).tobytes() == image.crop((0, height, width, image.height)).tobytes()
+
+
+def test_old_standard_loop_cache_is_visible_but_never_claims_wms_geometry(tmp_path):
+    settings = config()
+    poster, animation, metadata = radar.encode_loop(*radar.decode_loop(gif()))
+    (tmp_path / "national-radar.png").write_bytes(poster)
+    (tmp_path / "national-radar-loop.png").write_bytes(animation)
+    (tmp_path / "flight-environment.json").write_text(json.dumps({"schema": 1, "radar": {
+        "scope": "national", "clock_basis": "embedded_utc", "fetched_at": NOW.isoformat(),
+        "issued_at": NOW.isoformat(), "image_sha256": hashlib.sha256(poster).hexdigest(), "animation": metadata}}))
+    feed = FlightEnvironmentFeed(tmp_path, lambda: settings)
+    feed._snapshot = {"demo": False, "flights": []}
+    old = feed.status(NOW)["radar"]
+    assert old["status"] == "ready" and old["image_available"] and not old["home_marker_eligible"]
+    with patch("flightwall.flight_environment.request_bytes", side_effect=wms_response("national")):
+        current = feed.poll({"demo": False, "flights": []}, NOW)["radar"]
+    assert current["home_marker_eligible"] and current["clock_basis"] == "advertised_observation"
+    cache = json.loads(feed.path.read_text())
+    cache["radar"]["geometry"]["bounds"][0] += 1
+    feed.path.write_text(json.dumps(cache))
+    reloaded = FlightEnvironmentFeed(tmp_path, lambda: settings)
+    reloaded._snapshot = {"demo": False, "flights": []}
+    assert not reloaded.status(NOW)["radar"]["home_marker_eligible"]
+
+
 def test_scope_switch_invalidates_old_picture_immediately_and_fetches_only_new_scope(tmp_path):
     settings = config()
     feed = FlightEnvironmentFeed(tmp_path, lambda: settings)
-    with patch("flightwall.flight_environment.request_bytes", return_value=(gif(), format_datetime(NOW, usegmt=True))):
+    with patch("flightwall.flight_environment.request_bytes", side_effect=wms_response("national")):
         feed.poll({"demo": False, "flights": []}, NOW)
     settings["national_radar_scope"] = "southeast"
     state = feed.status(NOW)["radar"]
     assert not state["image_available"] and state["animation"] is None
     assert state["scope"] == "southeast" and state["issued_at"] is None
-    with patch("flightwall.flight_environment.request_bytes", return_value=(gif(), format_datetime(NOW, usegmt=True))) as request:
+    with patch("flightwall.flight_environment.request_bytes", side_effect=wms_response("southeast")) as request:
         state = feed.poll({"demo": False, "flights": []}, NOW)["radar"]
-    assert state["status"] == "ready" and request.call_args.args == (radar.SOUTHEAST_URL,)
+    assert state["status"] == "ready" and state["home_marker_eligible"]
+    assert [call.args[0] for call in request.call_args_list] == [
+        radar.CAPABILITIES_URL, *[radar.map_url("southeast", at) for at in stamps()]]
 
 
-@pytest.mark.parametrize("scope", ["local", "hyperlocal"])
+@pytest.mark.parametrize("scope", sorted(radar.SCOPES))
 def test_scoped_observations_batch_once_cache_frames_and_skip_duplicate_image_queries(tmp_path, scope):
     settings = config(national_radar_scope=scope)
     feed = FlightEnvironmentFeed(tmp_path, lambda: settings)
@@ -180,6 +253,7 @@ def test_scoped_observations_batch_once_cache_frames_and_skip_duplicate_image_qu
             patch("flightwall.flight_environment.time.monotonic", return_value=100):
         state = feed.poll({"demo": False, "flights": []}, NOW)["radar"]
     assert state["status"] == "ready" and state["clock_basis"] == "advertised_observation"
+    assert state["home_marker_eligible"]
     assert state["animation"]["observed_at"] == stamps() and state["issued_at"] == stamps()[-1]
     assert len(seen) == 5 and feed.animation_path.exists()
     assert "bbox" not in json.dumps(state) and "PUBLIC" not in feed.path.read_text()
@@ -258,7 +332,7 @@ def test_opt_out_during_capabilities_fetch_stops_followup_requests_and_writes(tm
 def test_future_or_mismatched_observation_clock_cache_cannot_claim_ready(tmp_path):
     settings = config()
     feed = FlightEnvironmentFeed(tmp_path, lambda: settings)
-    with patch("flightwall.flight_environment.request_bytes", return_value=(gif(), format_datetime(NOW, usegmt=True))):
+    with patch("flightwall.flight_environment.request_bytes", side_effect=wms_response("national")):
         feed.poll({"demo": False, "flights": []}, NOW)
     feed._cache["radar"]["clock_basis"] = "advertised_observation"
     feed._cache["radar"]["animation"]["observed_at"] = stamps()

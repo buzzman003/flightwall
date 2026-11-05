@@ -1,3 +1,14 @@
+TIMER FOLLOW-UP UPDATE (0.4.14)
+
+  "Alexa, tell Flight Wall to set a pasta timer for two minutes."
+Inside the skill, say "set a pasta timer for two minutes" or
+"add a reading five-minute timer". If the name or duration is missing,
+Alexa asks for that field and accepts a short reply such as "reading" or
+"five minutes". Say cancel to stop before the timer is saved.
+These commands create Flight Wall's display timers.
+Both the Lambda and the matching voice-model build must be deployed before
+the new slot follow-ups work on a physical Echo.
+
 DINNER COMMAND UPDATE (0.4.1)
 
 After installing the matching adapter/model, candidate direct forms are:

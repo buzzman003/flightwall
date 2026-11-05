@@ -39,10 +39,14 @@ PUBLIC_CENTER = (30.4001, -86.4715)
 _DEGREES = 69.09342
 _LAT_RANGE = 200 / _DEGREES
 _LON_RANGE = 200 / (_DEGREES * math.cos(math.radians(PUBLIC_CENTER[0])))
-BOUNDS = {"local": (PUBLIC_CENTER[1] - _LON_RANGE, PUBLIC_CENTER[0] - _LAT_RANGE,
+BOUNDS = {"national": (-126.0, 23.0, -65.0, 51.0),
+          "southeast": (-94.0, 23.0, -74.0, 38.0),
+          "local": (PUBLIC_CENTER[1] - _LON_RANGE, PUBLIC_CENTER[0] - _LAT_RANGE,
                     PUBLIC_CENTER[1] + _LON_RANGE, PUBLIC_CENTER[0] + _LAT_RANGE),
           "hyperlocal": (-86.82, 30.28, -86.15, 30.63)}
-SIZES = {"local": (900, 900), "hyperlocal": (1200, 724)}
+SIZES = {"national": (1600, 760), "southeast": (1200, 900),
+         "local": (900, 900), "hyperlocal": (1200, 724)}
+FOOTER_HEIGHT = 74
 _HASH = re.compile(r"[0-9a-f]{64}")
 
 
@@ -62,6 +66,43 @@ def _observation_iso(value):
 
 def _bbox(scope):
     return ",".join(f"{number:.6f}" for number in BOUNDS[scope])
+
+
+def map_geometry(scope):
+    """Public fixed-grid identity, independent of any household coordinate."""
+    return {"crs": "CRS:84", "bounds": [float(value) for value in _bbox(scope).split(",")],
+            "map_size": list(SIZES[scope]), "footer_height": FOOTER_HEIGHT}
+
+
+def mark_home(image, scope, latitude, longitude):
+    """Render a local marker on a verified WMS frame before letterboxing."""
+    if (scope not in BOUNDS or not isinstance(image, Image.Image) or image.mode not in {"RGB", "RGBA"}
+            or image.size != (SIZES[scope][0], SIZES[scope][1] + FOOTER_HEIGHT)
+            or any(type(value) not in (int, float) or not math.isfinite(value)
+                   for value in (latitude, longitude))):
+        return image
+    west, south, east, north = map_geometry(scope)["bounds"]
+    if not west <= longitude <= east or not south <= latitude <= north:
+        return image
+    width, height = SIZES[scope]
+    x = round((longitude - west) * (width - 1) / (east - west))
+    y = round((north - latitude) * (height - 1) / (north - south))
+    marked = image.copy()
+    area = marked.crop((0, 0, width, height))
+    draw = ImageDraw.Draw(area)
+    from .render import CYAN, WHITE, _text
+    radius = max(7, min(12, width // 100))
+    for color, stroke in (((0, 0, 0), 6), (CYAN, 2)):
+        draw.line((x - radius, y, x + radius, y), fill=color, width=stroke)
+        draw.line((x, y - radius, x, y + radius), fill=color, width=stroke)
+    draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=WHITE)
+    label_x = x + radius + 5 if x + radius + 55 < width else x - radius - 55
+    label_x = max(2, min(width - 52, label_x))
+    label_y = max(2, min(height - 16, y - 6))
+    draw.rectangle((label_x - 2, label_y - 2, label_x + 48, label_y + 15), fill=(0, 0, 0))
+    _text(draw, (label_x, label_y), "HOME", WHITE, 2)
+    marked.paste(area, (0, 0))
+    return marked
 
 
 def map_url(scope, observed_at):
@@ -242,7 +283,7 @@ def background(scope):
     from .nearby_map import LAND, MAJOR_ROAD, ROAD, RUNWAY, SHORE, WATER, HIGHWAY_98, _load_asset
     from .operating_map import _world
     width, height = SIZES[scope]
-    west, south, east, north = BOUNDS[scope]
+    west, south, east, north = map_geometry(scope)["bounds"]
     project = lambda point: ((point[0] - west) * width / (east - west), (north - point[1]) * height / (north - south))
     image = Image.new("RGB", (width, height), WATER)
     draw = ImageDraw.Draw(image)
@@ -288,7 +329,7 @@ def compose_wms(raw, scope, observed_at, legend=None):
     image = base.convert("RGBA")
     image.alpha_composite(overlay)
     map_image = image.convert("RGB")
-    image = Image.new("RGB", (map_image.width, map_image.height + 74), (3, 12, 18))
+    image = Image.new("RGB", (map_image.width, map_image.height + FOOTER_HEIGHT), (3, 12, 18))
     image.paste(map_image, (0, 0))
     draw = ImageDraw.Draw(image)
     from .render import CYAN, MUTED, WHITE, _text

@@ -1,5 +1,31 @@
 # Flight Wall implementation contract
 
+0.4.14: Keep the crisp board presentation. Meal images join the same bounded
+presentation layers as maps, with brightness and timer/ticker insets applied.
+Recheck household/card visibility every frame before attaching photos. Custom
+meal images reserve the existing allowance before a request and persist only
+against the exact date, dish and sides. Selecting a saved recipe retains its
+existing email deduplication. A manual meal does not invent or email a recipe.
+
+Card duration overrides affect only named display groups. Pausing and the
+45-second reading hold suspend the current slot clock while eligibility keeps
+refreshing. The progress ring uses that effective slot duration. Detailed trip
+weather requires fresh Chris Home and tomorrow's first travel day, with TAF
+coverage and temporary/probability periods distinguished. Commute plans use
+dated, exact VPS/ATL schedule candidates and the first timed roster report.
+Require a later viable backup; never equate a planned commute with boarding,
+seat availability or operating duty. Bounded schedule lookups share the existing
+FlightAware budget and reserve each report/selection/day batch before calling.
+All radar scopes use fixed public NOAA viewports; the private
+home crosshair is drawn locally only on frames with verified geometry.
+
+Buzz gone reflects explicit source trip dates, owner-entered date spans or
+known timed duty days, including partial travel days and VPS stops. It never
+establishes observed presence. The focus CLI accepts no caller-supplied PID,
+window or command. It validates one GUI and its live launcher before raising it.
+Stable launcher changes are a separate verified deployment step. The pinned
+original recovery helper is preserved.
+
 0.4.13: Flight Brief is sourced from the currently matched operating leg.
 Show roster times as planned, FlightAware clocks as observed or estimated,
 FAA notices as airport-level advisories and METAR conditions as observations.

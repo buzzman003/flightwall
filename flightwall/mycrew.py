@@ -52,6 +52,11 @@ def airport_zone(code):
 
 
 def _duty_date(event):
+    bounds = _rotation_dates(event)
+    return bounds[0] if bounds and bounds[1] - bounds[0] == timedelta(days=1) else None
+
+
+def _rotation_dates(event):
     bounds = []
     for key in ("start", "end"):
         field = event.get(key)
@@ -59,7 +64,41 @@ def _duty_date(event):
         if not isinstance(value, str) or not _DATE.fullmatch(value):
             return None
         bounds.append(date.fromisoformat(value))
-    return bounds[0] if bounds[1] - bounds[0] == timedelta(days=1) else None
+    return bounds if timedelta(0) < bounds[1] - bounds[0] <= timedelta(days=31) else None
+
+
+def clean_trip_days(value):
+    """Retain only bounded, exact date spans from the selected rotation source."""
+    if not isinstance(value, list):
+        return []
+    spans = set()
+    for item in value[:256]:
+        if not isinstance(item, dict) or set(item) != {"start_date", "end_date"}:
+            continue
+        try:
+            bounds = _rotation_dates({"start": {"date": item["start_date"]}, "end": {"date": item["end_date"]}})
+        except (ValueError, OverflowError):
+            continue
+        if bounds:
+            spans.add((bounds[0].isoformat(), bounds[1].isoformat()))
+    return [{"start_date": start, "end_date": end} for start, end in sorted(spans)]
+
+
+def parse_mycrew_trip_days(events):
+    """Project source rotation event dates, without joining separate duties."""
+    spans = []
+    for event in _latest(events):
+        title = event.get("summary")
+        if (event.get("status") == "cancelled" or not isinstance(title, str)
+                or len(title) > 150 or not _ROTATION.fullmatch(" ".join(title.upper().split()))):
+            continue
+        try:
+            bounds = _rotation_dates(event)
+        except (ValueError, OverflowError):
+            continue
+        if bounds:
+            spans.append({"start_date": bounds[0].isoformat(), "end_date": bounds[1].isoformat()})
+    return clean_trip_days(spans)
 
 
 def _local_clock(day, clock, zone):

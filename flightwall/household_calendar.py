@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .calendar_client import CalendarClient, CalendarError, parse_events, _event_time
 from .brief import attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes
 from .config import private_json
-from .mycrew import SOURCE as MYCREW_SOURCE, STATION_LOCAL, airport_zone, parse_mycrew_events
+from .mycrew import SOURCE as MYCREW_SOURCE, STATION_LOCAL, airport_zone, clean_trip_days, parse_mycrew_events, parse_mycrew_trip_days
 from .outlook import calendar_fresh, custody_outlook
 
 try:
@@ -487,6 +487,7 @@ class HouseholdCalendars:
                         clean_layovers.append(item)
                     snapshot["layovers"] = clean_layovers
                     snapshot["brief_leaves"] = clean_brief_leaves(snapshot.get("brief_leaves")) if role == "secondary" else []
+                    snapshot["trip_days"] = clean_trip_days(snapshot.get("trip_days")) if role == "mycrew" else []
                     if valid:
                         roles[role] = cached
                 value["flight_roles"] = roles
@@ -612,6 +613,7 @@ class HouseholdCalendars:
             errors = list(dict.fromkeys(item["error"] for item in matching if item.get("error")))
             flights = {"flights": _merge_flights(matching), "last_sync": min(dates, key=_stamp) if dates else None,
                        "error": " ".join(errors) or None, "source": " + ".join(item["source"] for item in matching), "demo": False}
+            flights["trip_days"] = clean_trip_days([span for item in matching for span in item.get("trip_days", [])])
         else:
             flights = CalendarClient(self.data_dir, config).snapshot()
             if config.get("secondary_calendar_id"):
@@ -717,6 +719,7 @@ class HouseholdCalendars:
                 snapshot = {"flights": flights, "last_sync": _iso(now),
                             "error": None, "source": source, "demo": False,
                             "layovers": parse_labelled_layovers(result["items"], source) if include_hotels else [],
+                            "trip_days": parse_mycrew_trip_days(result["items"]) if role == "mycrew" else [],
                             "brief_leaves": parse_brief_leave_notes(result["items"], config.get("timezone")) if include_leaves else []}
             except CalendarError as error:
                 snapshot["error"] = str(error)

@@ -78,9 +78,10 @@ def test_every_options_row_renders_and_uses_a_valid_allowlisted_setting():
         for selected, name in enumerate(rows):
             frame = Image.new('RGB', (512, 256))
             draw_options(ImageDraw.Draw(frame), DEFAULTS, index, selected)
-            assert name in REMOTE_SETTINGS
+            setting = 'card_seconds' if name.startswith('timing:') else name
+            assert setting in REMOTE_SETTINGS
             assert value_label(DEFAULTS, name)
-            assert validate(name, next_value(DEFAULTS, name, 1)) is not None
+            assert validate(setting, next_value(DEFAULTS, name, 1)) is not None
             assert frame.getbbox() is not None
 
 

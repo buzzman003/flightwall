@@ -76,7 +76,7 @@ def test_ready_has_four_sanitized_images_safe_fields_and_private_recipe_detail(s
     for option, color in zip(result["options"], colors):
         assert set(option) == {"number", "title", "sides", "minutes", "image_data"}
         with Image.open(BytesIO(base64.b64decode(option["image_data"].split(",")[1]))) as image:
-            assert image.size == (256, 256) and image.mode == "RGB"
+            assert image.size == (512, 512) and image.mode == "RGB"
             assert image.getpixel((128, 128)) == color and not image.info
     assert feed.status(NOW, include_recipes=True)["options"][0]["servings"] == 8
     assert feed.voice_context(NOW) == {"dinner_options_date": "2026-11-01", "dinner_options_generation": result["generation"]}
@@ -107,6 +107,173 @@ def test_select_projects_saved_picture_and_notifies_only_after_creating_dinner(s
     callback.assert_called_once()
     assert callback.call_args.args[0]["ingredients"]
     assert calls.call_count == 2  # Reusing an existing image makes no provider call.
+    feed.path.unlink()
+    again = meals.DinnerOptions(feed.data_dir, feed.config_getter, feed.personal)
+    assert again.picture_for(result["item"], NOW) == ready["options"][2]["image_data"]
+
+
+def test_selected_picture_storage_failure_keeps_meal_and_recipe_callback_idempotent(setup, monkeypatch):
+    feed, _, _, personal = setup
+    ready = feed.poll(kids(), NOW)
+    monkeypatch.setattr(feed, "_save_picture", Mock(side_effect=OSError("synthetic picture storage failure")))
+    chosen = {"option": 3, "date": ready["date"], "generation": ready["generation"], "request_id": "picture-write-failure"}
+    callback = Mock()
+    result = feed.select(chosen, NOW, on_selected=callback)
+    assert result["created"] is True and personal.list_items(NOW)[0]["title"] == "Synthetic meal 3"
+    assert feed.select(chosen, NOW, on_selected=callback)["created"] is False
+    callback.assert_called_once()
+
+
+def test_retry_of_replaced_option_cannot_overwrite_current_meal_picture(setup):
+    feed, _, _, _ = setup
+    ready = feed.poll(kids(), NOW)
+    first = {"option": 1, "date": ready["date"], "generation": ready["generation"], "request_id": "old-picture-choice"}
+    second = first | {"option": 2, "request_id": "current-picture-choice"}
+    old = feed.select(first, NOW)
+    current = feed.select(second, NOW)
+    path, = feed.picture_dir.glob("*.json")
+    before = path.read_bytes()
+    assert feed.select(first, NOW)["created"] is False
+    assert path.read_bytes() == before
+    assert feed.picture_for(current["item"], NOW) == ready["options"][1]["image_data"]
+    assert feed._saved_picture(old["item"], feed.config_getter()) is None
+
+
+def test_custom_dinner_picture_is_private_persistent_and_bound_to_exact_meal(setup):
+    feed, config, calls, personal = setup
+    item = personal.create({"kind": "dinner", "title": "Lasagna", "sides": "Italian garlic bread",
+                            "ready_time": "18:45", "date": "2026-11-01"})["item"]
+    original = calls.side_effect
+    def provider(path, key, payload):
+        usage = json.loads(feed.usage_path.read_text())
+        assert usage["reserved_cents"] == 10 and len(usage["attempts"]) == 1
+        assert next(iter(usage["attempts"])).startswith("photo|2026-11-01|")
+        assert path == "/v1/images/generations"
+        assert all(value not in payload["prompt"] for value in (config["dinner_options_preferences"], item["id"], item["start"]))
+        assert "Lasagna" in payload["prompt"] and "Italian garlic bread" in payload["prompt"]
+        return original(path, key, payload)
+    calls.side_effect = provider
+    assert feed.poll_picture(kids(), NOW)
+    picture = feed.picture_for(item, NOW)
+    with Image.open(BytesIO(base64.b64decode(picture.split(",")[1]))) as image:
+        assert image.size == (512, 512) and image.mode == "RGB" and not image.info
+    assert not feed.path.exists()
+    record_path, = feed.picture_dir.glob("*.json")
+    record = json.loads(record_path.read_text())
+    assert set(record) == {"schema", "key", "image_data"}
+    assert not any(value in record_path.read_text() for value in ("Lasagna", "Italian garlic bread", KEY))
+    again = meals.DinnerOptions(feed.data_dir, lambda: config, personal)
+    assert again.poll_picture(kids(), NOW) and calls.call_count == 1
+    assert again.picture_for(item, NOW) == picture
+    assert again.picture_for(item | {"sides": "Salad"}, NOW) is None
+    assert again.picture_for(item | {"cancelled": True}, NOW) is None
+
+
+@pytest.mark.parametrize("changes,kids_change", [
+    ({"demo": True}, {}), ({"dinner_options_enabled": False}, {}),
+    ({"personal_enabled": False}, {}), ({"guest_mode": True}, {}),
+    ({"dinner_options_monthly_limit_usd": 0}, {}), ({}, {"state": "away"}),
+    ({}, {"state": "unknown"}), ({}, {"stale": True}),
+    ({}, {"last_sync": (NOW - timedelta(minutes=30)).isoformat()}),
+])
+def test_custom_picture_requires_generation_consent_budget_and_fresh_kids_home(setup, changes, kids_change):
+    feed, config, calls, personal = setup
+    personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})
+    config.update(changes)
+    assert not feed.poll_picture(kids() | kids_change, NOW)
+    calls.assert_not_called()
+    assert not feed.usage_path.exists() and not feed.picture_dir.exists()
+
+
+def test_custom_pictures_include_future_meals_and_skip_expired_meals(setup):
+    feed, _, calls, personal = setup
+    expired = personal.create({"kind": "dinner", "title": "Yesterday", "date": "2026-10-31"})["item"]
+    tomorrow = personal.create({"kind": "dinner", "title": "Lasagna tomorrow", "date": "2026-11-02"})["item"]
+    assert feed.poll_picture(kids(), NOW)
+    assert calls.call_count == 1 and feed.picture_for(tomorrow, NOW)
+    assert feed.picture_for(expired, NOW) is None
+
+
+def test_changed_same_day_dish_or_sides_gets_a_new_picture_without_reusing_another_meal(setup):
+    feed, _, calls, personal = setup
+    first = personal.create({"kind": "dinner", "title": "Lasagna", "sides": "Garlic bread", "date": "2026-11-01"})["item"]
+    assert feed.poll_picture(kids(), NOW)
+    second = personal.create({"kind": "dinner", "title": "Lasagna", "sides": "Salad", "date": "2026-11-01"})["item"]
+    assert feed.picture_for(second, NOW) is None
+    assert feed.poll_picture(kids(), NOW)
+    assert feed.picture_for(first, NOW) is None and feed.picture_for(second, NOW)
+    usage = json.loads(feed.usage_path.read_text())
+    assert usage["reserved_cents"] == 20 and len(usage["attempts"]) == 2 and calls.call_count == 2
+    assert len(list(feed.picture_dir.glob("*.json"))) == 1
+
+
+def test_failed_custom_picture_keeps_reservation_and_never_retries_after_restart(setup):
+    feed, config, calls, personal = setup
+    item = personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})["item"]
+    calls.side_effect = OSError("provider failure")
+    assert not feed.poll_picture(kids(), NOW)
+    again = meals.DinnerOptions(feed.data_dir, lambda: config, personal)
+    again.poll_picture(kids(), NOW)
+    assert calls.call_count == 1 and again.picture_for(item, NOW) is None
+    assert json.loads(feed.usage_path.read_text())["reserved_cents"] == 10
+
+
+def test_custom_picture_and_four_options_share_one_decimal_monthly_allowance(setup):
+    feed, config, calls, personal = setup
+    config["dinner_options_monthly_limit_usd"] = "0.10"
+    feed.poll(kids(), NOW)
+    item = personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})["item"]
+    assert not feed.poll_picture(kids(), NOW)
+    assert calls.call_count == 2 and feed.picture_for(item, NOW) is None
+    config["dinner_options_monthly_limit_usd"] = "0.20"
+    assert feed.poll_picture(kids(), NOW)
+    assert calls.call_count == 3 and feed.picture_for(item, NOW)
+    usage = json.loads(feed.usage_path.read_text())
+    assert usage["reserved_cents"] == 20 and "2026-11-01" in usage["attempts"]
+    assert len(usage["attempts"]) == 2
+
+
+@pytest.mark.parametrize("change", ["meal", "consent", "kids", "key"])
+def test_custom_picture_revalidates_selection_consent_and_presence_after_provider(setup, change):
+    feed, config, calls, personal = setup
+    item = personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})["item"]
+    presence = kids()
+    def provider(*_):
+        if change == "meal":
+            personal.create({"kind": "dinner", "title": "Tacos", "date": "2026-11-01"})
+        elif change == "consent":
+            config["dinner_options_enabled"] = False
+        elif change == "kids":
+            presence["state"] = "away"
+        else:
+            (feed.data_dir / "openai.key").write_text(KEY + "changed", encoding="ascii")
+        return photo()
+    calls.side_effect = provider
+    assert not feed.poll_picture(presence, NOW)
+    assert not feed.picture_dir.exists() and feed.picture_for(item, NOW) is None
+    assert json.loads(feed.usage_path.read_text())["reserved_cents"] == 10
+
+
+def test_concurrent_custom_picture_workers_share_the_persisted_attempt_reservation(setup):
+    feed, config, calls, personal = setup
+    personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})
+    entered, release = threading.Event(), threading.Event()
+    def provider(*_):
+        entered.set()
+        assert release.wait(5)
+        return photo()
+    calls.side_effect = provider
+    thread = threading.Thread(target=lambda: feed.poll_picture(kids(), NOW))
+    thread.start()
+    assert entered.wait(5)
+    try:
+        other = meals.DinnerOptions(feed.data_dir, lambda: config, personal)
+        other.poll_picture(kids(), NOW)
+    finally:
+        release.set()
+        thread.join(5)
+    assert not thread.is_alive() and calls.call_count == 1
+    assert json.loads(feed.usage_path.read_text())["reserved_cents"] == 10
 
 
 @pytest.mark.parametrize("changed,status", [({"demo": True}, "demo"), ({"demo": 0}, "demo"),

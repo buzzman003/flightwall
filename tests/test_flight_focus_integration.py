@@ -115,7 +115,7 @@ def test_strict_mode_holds_a_confirmed_delayed_leg_when_status_stales_but_stays_
     assert all(row["selected_flight"]["id"] == current["id"] for row in rows if row["view"] in {"details", "map"})
 
 
-def test_trip_weather_is_per_airport_and_radar_advisories_are_short_context_cards():
+def test_detailed_trip_weather_is_hidden_on_duty_and_public_context_still_rotates():
     airports = [{"iata": "ATL", "icao": "KATL", "roles": ["origin"]},
                 {"iata": "MEM", "icao": "KMEM", "roles": ["destination"]}]
     status = state(trip_weather={"status": "partial", "airports": airports}, national_radar={"status": "ready"},
@@ -124,8 +124,7 @@ def test_trip_weather_is_per_airport_and_radar_advisories_are_short_context_card
     cfg = config(trip_weather_enabled=True, national_radar_enabled=True, airport_alerts_enabled=True)
     rows = build_rotation(status, cfg, NOW)
     trip = [row for row in rows if row["view"] == "trip_weather"]
-    assert [row["key"] for row in trip] == ["trip_weather:ATL", "trip_weather:MEM"]
-    assert [row["item"]["iata"] for row in trip] == ["ATL", "MEM"]
+    assert trip == []
     assert all(row["duration_seconds"] == 15 for row in rows if row["view"] in {"trip_weather", "national_radar", "airport_alerts"})
     assert {"national_radar", "airport_alerts"} <= {row["view"] for row in rows}
     assert "airport_alerts" not in {row["view"] for row in build_rotation(status, cfg, NOW + timedelta(seconds=600))}
@@ -229,7 +228,7 @@ def test_workers_are_separate_and_slow_flight_feeds_do_not_block_home_status_or_
     release = threading.Event()
     entered = {key: threading.Event() for key in ("home", "trip", "environment", "calendar")}
     def slow(key):
-        def poll(*args):
+        def poll(*args, **kwargs):
             entered[key].set()
             release.wait(5)
         return poll

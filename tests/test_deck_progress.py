@@ -30,10 +30,10 @@ def test_seven_cards_show_seven_squares_current_advances_left_to_right_and_wraps
             assert frame.getpixel((left+slot*8+2,244)) == (CYAN if slot==cursor.index else LINE)
 
 
-def test_large_deck_is_bounded_and_reports_true_index_total_without_view_types():
+def test_large_deck_is_bounded_without_the_replaced_numeric_counter():
     with patch('flightwall.render._text') as text:
         frame=squares(65,31)
-    assert any(call.args[2]=='32/65' for call in text.call_args_list)
+    assert not any(call.args[2]=='32/65' for call in text.call_args_list)
     assert frame.getpixel((497-12*8+7*8+2,239))==CYAN
     for count,index in ((False,0),(0,0),(7,-1),(7,7),(257,0),('7',0)):
         assert squares(count,index).tobytes() == squares(0,0).tobytes()

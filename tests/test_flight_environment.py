@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from email.utils import format_datetime
 import hashlib
 from io import BytesIO
 import json
@@ -10,6 +9,7 @@ from xml.etree import ElementTree as ET
 from PIL import Image
 import pytest
 
+from flightwall import radar
 from flightwall.flight_environment import (
     FAA_URL, RADAR_URL, MAX_RESPONSE, FlightEnvironmentFeed, _parse_faa,
     _radar_context, _radar_png, request_bytes,
@@ -64,10 +64,18 @@ def setup_feed(tmp_path):
 
 def poll(feed, now=NOW, **kwargs):
     def response(url):
-        if url == RADAR_URL:
-            return kwargs.get("radar", image_bytes()), kwargs.get("modified", format_datetime(now, usegmt=True))
-        assert url == FAA_URL
-        return kwargs.get("faa", faa_bytes()), None
+        if url == FAA_URL:
+            return kwargs.get("faa", faa_bytes()), None
+        if url == radar.CAPABILITIES_URL:
+            observed = kwargs.get("observed_at", now.isoformat())
+            return ('''<WMS_Capabilities xmlns="http://www.opengis.net/wms"><Capability><Layer><Layer>
+                <Name>conus_bref_qcd</Name><Dimension name="time" units="ISO8601">'''
+                + str(observed) + '</Dimension></Layer></Layer></Capability></WMS_Capabilities>').encode(), None
+        if url == radar.LEGEND_URL:
+            return image_bytes((500, 30), format="PNG"), None
+        if url in [radar.map_url(scope, kwargs.get("observed_at", now.isoformat())) for scope in radar.SCOPES]:
+            return kwargs.get("radar", image_bytes(radar.SIZES["national"], format="PNG")), None
+        raise AssertionError("Unexpected fixture request")
     with patch("flightwall.flight_environment.request_bytes", side_effect=response) as network:
         state = feed.poll(kwargs.get("snapshot", snapshot()), now)
     return state, network
@@ -75,8 +83,8 @@ def poll(feed, now=NOW, **kwargs):
 
 def test_ready_sources_keep_distinct_clocks_and_filter_only_selected_airports(setup_feed):
     feed, _ = setup_feed
-    state, network = poll(feed, modified=format_datetime(NOW - timedelta(minutes=3), usegmt=True))
-    assert network.call_count == 2
+    state, network = poll(feed, observed_at=(NOW - timedelta(minutes=3)).isoformat())
+    assert network.call_count == 4
     assert state["radar"]["status"] == state["airport_alerts"]["status"] == "ready"
     assert state["radar"]["issued_at"] != state["radar"]["fetched_at"]
     assert state["radar"]["source_time"] == state["radar"]["issued_at"]
@@ -86,7 +94,8 @@ def test_ready_sources_keep_distinct_clocks_and_filter_only_selected_airports(se
     radar_file = feed.image_path.read_bytes()
     assert hashlib.sha256(radar_file).hexdigest() == state["radar"]["image_sha256"]
     with Image.open(BytesIO(radar_file)) as image:
-        assert image.format == "PNG" and image.mode == "RGB" and image.size == (600, 392)
+        assert image.format == "PNG" and image.mode == "RGB"
+        assert image.size == (radar.SIZES["national"][0], radar.SIZES["national"][1] + radar.FOOTER_HEIGHT)
     serialized = json.dumps(state)
     disk = feed.path.read_text()
     for private in ("PRIVATE_CALENDAR_ID", "PRIVATE_DESCRIPTION", "PRIVATE_CONTACT", "UNKNOWN_CLOSURE", str(feed.path), str(feed.image_path)):
@@ -110,7 +119,7 @@ def test_disabled_or_demo_never_requests_that_feed(setup_feed, setting, value, s
         state = feed.poll(snapshot(), NOW)
     assert state[section]["status"] == status
     requested = [call.args[0] for call in network.call_args_list]
-    assert (RADAR_URL if section == "radar" else FAA_URL) not in requested
+    assert (radar.CAPABILITIES_URL if section == "radar" else FAA_URL) not in requested
 
 
 @pytest.mark.parametrize("data", [{"demo": True}, {"demo": False, "flights": []},
@@ -144,7 +153,7 @@ def test_matching_current_layover_context_and_deadhead_interruption(setup_feed):
                 "end": (NOW + timedelta(hours=32)).isoformat()}
     data = {"demo": False, "flights": [inbound, outbound]}
     state, network = poll(feed, snapshot=data)
-    assert network.call_count == 2
+    assert network.call_count == 4
     assert {row["airport"] for row in state["airport_alerts"]["events"]} == {"ATL"}
     data["flights"].insert(1, {**inbound, "deadhead": True, "start": (NOW - timedelta(hours=1)).isoformat(),
                               "end": (NOW + timedelta(hours=1)).isoformat()})
@@ -193,7 +202,7 @@ def test_poll_cadences_are_independent_and_status_is_network_free(setup_feed):
     assert [call.args[0] for call in network.call_args_list] == [FAA_URL]
     with patch("flightwall.flight_environment.time.monotonic", return_value=700):
         _, network = poll(feed)
-    assert [call.args[0] for call in network.call_args_list] == [RADAR_URL, FAA_URL]
+    assert [call.args[0] for call in network.call_args_list] == [radar.CAPABILITIES_URL, FAA_URL]
 
 
 @pytest.mark.parametrize("minutes,section", [(10, "airport_alerts"), (20, "radar")])
@@ -204,13 +213,12 @@ def test_fetch_freshness_end_is_exclusive_per_status_call(setup_feed, minutes, s
     assert feed.status(NOW + timedelta(minutes=minutes))[section]["status"] == "stale"
 
 
-@pytest.mark.parametrize("modified,status", [(None, "unknown_time"), ("invalid", "unknown_time"),
-    ("Sun, 01 Nov 2026 01:31:00 GMT", "stale"), ("Sun, 01 Nov 2026 00:59:59 GMT", "stale")])
-def test_radar_cannot_relabel_missing_future_or_old_source_as_current(setup_feed, modified, status):
+@pytest.mark.parametrize("observed", [None, "invalid", "2026-11-01T01:31:00Z", "2026-11-01T00:59:59Z"])
+def test_radar_cannot_relabel_missing_future_or_old_source_as_current(setup_feed, observed):
     feed, _ = setup_feed
-    state, _ = poll(feed, modified=modified)
-    assert state["radar"]["status"] == status
-    assert state["radar"]["image_available"]
+    state, _ = poll(feed, observed_at=observed)
+    assert state["radar"]["status"] == "unavailable"
+    assert not state["radar"]["image_available"]
 
 
 @pytest.mark.parametrize("clock,status", [("Sun Nov 1 01:31:00 2026 GMT", "stale"),

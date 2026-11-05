@@ -44,6 +44,9 @@ if args.command == 'gui':
 if args.command == 'service':
     event('service ' + active())
     raise SystemExit(0)
+if args.command == 'focus':
+    event('focus ' + active())
+    raise SystemExit(0 if os.environ.get('FOCUS_SUCCEEDS') == '1' else 1)
 raise SystemExit(2)
 '''
 
@@ -171,9 +174,25 @@ class LaunchLifecycleTests(unittest.TestCase):
         (self.data / "service-running").touch()
         result = self.launch()
         self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.data / "events").exists())
+        self.assertEqual(self.events(), ["focus 0.1.0"])
         self.assertTrue((self.install / "pending.json").exists())
         self.assertTrue((self.data / "service-running").exists())
+        self.assertEqual((lock / "pid").read_text(), str(os.getpid()))
+
+    def test_second_launch_focuses_existing_gui_without_activation_or_service_handoff(self):
+        lock = self.data / "gui-launch.lock"
+        lock.mkdir()
+        (lock / "pid").write_text(str(os.getpid()))
+        (self.data / "service-running").touch()
+        self.env["FOCUS_SUCCEEDS"] = "1"
+        result = self.launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.events(), ["focus 0.1.0"])
+        self.assertTrue((self.install / "pending.json").exists())
+        self.assertTrue((self.data / "service-running").exists())
+        self.assertEqual((self.install / "current").resolve().name, "0.1.0")
+        self.assertEqual((self.install / "update-helper").resolve().name, "0.1.0")
+        self.assertEqual((lock / "pid").read_text(), str(os.getpid()))
 
 
 if __name__ == "__main__":

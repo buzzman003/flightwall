@@ -306,7 +306,9 @@ def build_rotation(status, config, now=None):
     def add(view, key=None, item=None, seconds=None, **extra):
         if not card_enabled(view, config, item):
             return
-        entry = {"key": key or view, "view": view, "duration_seconds": seconds or duration, **extra}
+        from .card_preferences import duration_override
+        entry = {"key": key or view, "view": view,
+                 "duration_seconds": duration_override(view, config, item) or seconds or duration, **extra}
         if item is not None:
             entry["item"] = dict(item)
         entries.append(entry)
@@ -354,13 +356,17 @@ def build_rotation(status, config, now=None):
         if brief_rows(status["flight_context"], config):
             add("flight_brief", "flight_brief:" + str(tracked.get("id") or "current"))
     section = status.get("trip_weather")
-    if config.get("trip_weather_enabled") is True and snapshot.get("demo") is False and isinstance(section, dict):
+    from .trip_weather import trip_preview_eligible
+    if (config.get("trip_weather_enabled") is True and isinstance(section, dict)
+            and trip_preview_eligible(status, config, now)):
         seen = set()
         for airport in _cards(section.get("airports"))[:4]:
             code = airport.get("iata")
             if (isinstance(code, str) and len(code) == 3 and code.isascii() and code.isalpha() and code.isupper()
                     and code not in seen):
-                add("trip_weather", "trip_weather:" + code, item=airport)
+                pages = max(1, math.ceil(len(airport.get("windows", [])) / 2))
+                for page in range(pages):
+                    add("trip_weather", f"trip_weather:{code}:{page}", item=airport, weather_page=page)
                 seen.add(code)
     section = status.get("airport_alerts")
     if (config.get("airport_alerts_enabled") is True and snapshot.get("demo") is False

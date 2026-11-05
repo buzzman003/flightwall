@@ -14,7 +14,8 @@ from flightwall.trip_weather import _report_status, parse_metar, parse_taf
 UTC = timezone.utc
 NOW = datetime(2026, 11, 1, 16, tzinfo=UTC)
 CONFIG = {"demo": False, "timezone": "America/Chicago", "trip_weather_enabled": True,
-          "flightaware_enabled": True, "national_radar_enabled": True, "airport_alerts_enabled": True}
+          "flightaware_enabled": True, "national_radar_enabled": True, "airport_alerts_enabled": True,
+          "presence_enabled": True}
 FLIGHT = {"id": "fictional-context-flight", "number": "DL123", "origin": "ATL", "destination": "VPS",
           "start": "2026-11-01T15:30:00Z", "end": "2026-11-01T17:00:00Z", "deadhead": False}
 
@@ -54,6 +55,9 @@ def airport(now=NOW):
 
 def weather_state(now=NOW):
     return {"demo": False, "backend_available": True, "now": now.isoformat(), "view": "trip_weather",
+            "flights": [FLIGHT | {"start": (now + timedelta(days=1)).isoformat(),
+                                   "end": (now + timedelta(days=1, hours=2)).isoformat()}],
+            "presence": {"chris": {"state": "home", "stale": False, "last_seen": now.isoformat()}},
             "trip_weather": {"status": "ready", "airports": [airport(now)]}}
 
 

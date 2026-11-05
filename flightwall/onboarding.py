@@ -32,7 +32,7 @@ WIZARD_SETTINGS = frozenset({
     "lisa_notifications_enabled", "chris_notification_apps", "lisa_notification_apps",
     "lisa_private_enabled", "health_enabled", "health_query", "inspiration_enabled",
     "inspiration_topics", "inspiration_sources", "guest_mode", "openai_enabled", "openai_model",
-    "brief_focus_enabled",
+    "brief_focus_enabled", "card_seconds",
     "hotel_details_enabled",
     "display_scale_mode", "timers_enabled", "custody_outlook_enabled", "custody_outlook_days", "flight_preview_days",
     "local_visits_enabled", "shopping_ticker_enabled", "shopping_ticker_visible",
@@ -474,6 +474,14 @@ class OnboardingRouter:
                     return True
                 if route == "/setup/settings":
                     result = self._save_settings(body)
+                elif route == "/setup/display/focus":
+                    if body or parsed.query:
+                        raise SetupError("The display focus action takes no parameters.")
+                    callback = self.callbacks.get("focus_display")
+                    focused = callable(callback) and callback() is True
+                    result = {"focused": focused, "message": (
+                        "Flight Wall is at the front of the TV display." if focused else
+                        "Could not bring the display forward. Open Ports > Flight Wall on the TV.")}
                 elif route == "/setup/phone/invite":
                     result = self._invites().create(body)
                 elif route == "/setup/phone/invite/revoke":

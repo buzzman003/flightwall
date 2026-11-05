@@ -1,4 +1,23 @@
 """Display-only card choices; these never grant consent or enable a feed."""
+import json
+
+TIMING_LABELS = {
+    'weather': 'Home weather', 'trip_weather': 'Trip weather', 'national_radar': 'Weather radar',
+    'nearby': 'Nearby aircraft', 'trip_summary': 'Trip schedule', 'trip_map': 'Trip map',
+    'flight_status': 'Live flight', 'flight_brief': 'Flight brief', 'custody_outlook': 'Family outlook',
+    'today_activities': 'Today activities', 'dinner_options': 'Dinner ideas', 'dinner': 'Dinner menu',
+}
+
+
+def duration_override(view, config, item=None):
+    if view == 'personal' and isinstance(item, dict) and item.get('kind') == 'dinner':
+        view = 'dinner'
+    try:
+        values = json.loads(config.get('card_seconds', '{}'))
+        value = values.get(view) if isinstance(values, dict) else None
+        return value if type(value) is int and 3 <= value <= 300 else None
+    except (ValueError, TypeError):
+        return None
 
 CARD_LABELS = {
     'flight_cards_visible': 'Operating flights',

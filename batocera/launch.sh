@@ -24,6 +24,10 @@ if ! mkdir "$GUI_LOCK" 2>/dev/null; then
         ''|*[!0-9]*) echo 'The GUI launcher is already starting, or its lock needs local diagnosis.' >&2; exit 1;;
     esac
     if kill -0 "$OWNER_PID" 2>/dev/null; then
+        if [ -x "$INSTALL_DIR/current/FlightWall" ] &&
+                "$INSTALL_DIR/current/FlightWall" --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" focus >>"$DATA_DIR/logs/launcher.log" 2>&1; then
+            exit 0
+        fi
         echo 'Flight Wall is already open.' >&2
         exit 1
     fi

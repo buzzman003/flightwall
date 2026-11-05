@@ -7,7 +7,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from flightwall.config import ConfigStore
@@ -170,6 +170,46 @@ class OnboardingTests(unittest.TestCase):
                 handler = self.call("/setup/settings", {"settings": {"rotation_seconds": 30}}, headers=headers)
                 self.assertEqual(handler.status, 403)
         self.assertNotEqual(self.config.get()["rotation_seconds"], 30)
+
+    def test_display_focus_calls_one_fixed_action_after_owner_authentication(self):
+        self.login()
+        callback = Mock(return_value=True)
+        self.callbacks["focus_display"] = callback
+        before = self.config.get()
+        result = self.call("/setup/display/focus", {})
+        self.assertEqual(result.status, 200)
+        self.assertTrue(result.value()["focused"])
+        self.assertIn("front of the TV", result.value()["message"])
+        callback.assert_called_once_with()
+        self.assertEqual(self.config.get(), before)
+
+    def test_display_focus_has_clear_no_gui_status_and_never_returns_callback_data(self):
+        self.login()
+        for value in (False, {"private": "callback-detail"}):
+            with self.subTest(value=value):
+                self.callbacks["focus_display"] = Mock(return_value=value)
+                result = self.call("/setup/display/focus", {})
+                self.assertEqual(result.status, 200)
+                self.assertFalse(result.value()["focused"])
+                self.assertIn("Open Ports > Flight Wall on the TV", result.value()["message"])
+                self.assertNotIn("callback-detail", result.wfile.getvalue().decode())
+        self.callbacks.pop("focus_display")
+        self.assertFalse(self.call("/setup/display/focus", {}).value()["focused"])
+
+    def test_display_focus_rejects_parameters_queries_and_untrusted_requests(self):
+        callback = Mock(return_value=True)
+        self.callbacks["focus_display"] = callback
+        self.assertEqual(self.call("/setup/display/focus", {}, authenticated=False).status, 401)
+        self.assertEqual(self.call("/setup/display/focus", {}, authenticated=False,
+                                   headers={"Authorization": "Bearer voice-only-example"}).status, 401)
+        self.login()
+        for headers in ({"X-Setup-CSRF": "wrong"}, {"Origin": "https://other.example.test"}, {"Origin": None}):
+            self.assertEqual(self.call("/setup/display/focus", {}, headers=headers).status, 403)
+        for payload in ({"pid": 123}, {"command": "arbitrary"}, {"launch": True}):
+            self.assertEqual(self.call("/setup/display/focus", payload).status, 400)
+        self.assertEqual(self.call("/setup/display/focus?pid=123", {}).status, 400)
+        self.assertEqual(self.call("/setup/display/focus", method="GET").status, 405)
+        callback.assert_not_called()
 
     def test_transfer_encoding_and_duplicate_length_rejected_and_connection_closed(self):
         self.login()

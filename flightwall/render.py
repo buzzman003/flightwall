@@ -202,6 +202,10 @@ def _header(draw, state, now, page, *, page_scale=1, page_tracking=0):
             draw.rectangle((15 + col * 4, 10 + row * 4, 16 + col * 4, 11 + row * 4), fill=AMBER if row + col == 2 else CYAN)
     _text(draw, (35, 10), "FLIGHTWALL", WHITE, 2)
     _clock(draw, state, now)
+    if state.get("rotation_paused") is True:
+        _text(draw, (250, 13), "PAUSED", AMBER, align="center", max_width=130)
+    elif type(state.get("rotation_hold_seconds")) is int and state["rotation_hold_seconds"] > 0:
+        _text(draw, (250, 13), f"DELAY {state['rotation_hold_seconds']}S", CYAN, align="center", max_width=130)
     draw.line((14, 31, 497, 31), fill=LINE)
     _text(draw, (15, 40), page, CYAN, page_scale, tracking=page_tracking)
 
@@ -273,8 +277,12 @@ def _deck_progress(draw, state):
     columns = min(12, visible)
     left = 497 - columns * 8
     draw.rectangle((300 if count > 12 else left - 4, 234, 498, 254), fill=BG)
-    if count > 12:
-        _text(draw, (left - 9, 242), f"{index + 1}/{count}", MUTED, align="right", max_width=88)
+    remaining = state.get("card_remaining")
+    if type(remaining) in (float, int) and math.isfinite(remaining) and 0 <= remaining <= 1:
+        ring = (left - 21, 237, left - 7, 251)
+        draw.ellipse(ring, outline=LINE, width=2)
+        if remaining > 0:
+            draw.arc(ring, -90, -90 + 360 * remaining, fill=CYAN, width=2)
     for offset in range(visible):
         x = left + (offset % 12) * 8
         y = 237 + (offset // 12) * 10 if count > 12 else 242
@@ -1149,6 +1157,13 @@ def _custody_outlook(draw, state, config, now):
     from .outlook import calendar_fresh
     stale = (outlook.get("stale") is not False or state.get("backend_available") is False
              or not calendar_fresh(outlook.get("last_sync"), now, config.get("kids_stale_minutes", 30)))
+    plan = outlook.get("buzz_plan")
+    plan = plan if isinstance(plan, dict) else {}
+    planned_duty_fresh = (not config.get("guest_mode") and not state.get("demo")
+                          and state.get("backend_available") is not False
+                          and calendar_fresh(outlook.get("roster_last_sync"), now, config.get("kids_stale_minutes", 30)))
+    if planned_duty_fresh and any(isinstance(item, dict) and item.get("gone") is True for item in plan.values()):
+        _text(draw, (497, 51), "BUZZ = PLANNED DUTY", MUTED, align="right", max_width=196)
     _text(draw, (497, 40), zone.key, MUTED, align="right", max_width=196)
     names = {"home": "MOM'S HOUSE", "away": "DAD'S HOUSE", "unknown": "UNKNOWN"}
     colors = {"home": CYAN, "away": AMBER, "unknown": MUTED, "mixed": WHITE}
@@ -1175,9 +1190,12 @@ def _custody_outlook(draw, state, config, now):
                 start = _dt(part.get("start"))
                 label = {"home": "MOM", "away": "DAD", "unknown": "?"}[part_kind]
                 when = format_time(start.astimezone(zone)) if start else "--:--"
-                _text(draw, (x + 6, y + 36 + part_index * 11), when + " " + label, colors[part_kind], max_width=78)
+                _text(draw, (x + 6, y + 33 + part_index * 10), when + " " + label, colors[part_kind], max_width=78)
             if len(segments) > 3:
                 _text(draw, (x + 83, y + 64), "+", MUTED, align="right")
+        duty = plan.get(date.isoformat())
+        if planned_duty_fresh and isinstance(duty, dict) and duty.get("gone") is True:
+            _text(draw, (x + 45, y + 64), "BUZZ GONE", AMBER, align="center", max_width=82)
 
 
 def _today_activities(draw, state, config, now):

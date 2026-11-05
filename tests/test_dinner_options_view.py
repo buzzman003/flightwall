@@ -17,6 +17,23 @@ NOW = datetime(2026, 11, 2, 15, tzinfo=timezone.utc)  # 09:00 CST.
 COLORS = [(180, 40, 30), (30, 150, 80), (30, 80, 180), (180, 140, 30)]
 
 
+def test_food_photos_bypass_led_gaps_and_recheck_expiry_and_kids_home():
+    state, config = fixture()
+    config.update(led_effect=True, brightness=.5, dot_gap=.5)
+    image = Image.new('RGB', (512, 256))
+    display.attach_dinner_photos(image, state, config, (1536, 768), NOW)
+    assert len(image.info['meal_patches']) == 4
+    shown = display._present_frame(image, config, (1536, 768))
+    x, y = 22 * 3 + 30, 113 * 3 + 30
+    assert {shown.getpixel((x + dx, y + dy)) for dx in range(9) for dy in range(9)} == {(90, 20, 15)}
+    for change, instant in (({'kids': state['kids'] | {'state': 'away'}}, NOW),
+                             ({}, NOW + timedelta(minutes=31)),
+                             ({'backend_available': False}, NOW)):
+        blocked = Image.new('RGB', (512, 256))
+        display.attach_dinner_photos(blocked, state | change, config, (1536, 768), instant)
+        assert 'meal_patches' not in blocked.info
+
+
 def picture(color):
     stream = BytesIO()
     Image.new("RGB", (100, 61), color).save(stream, format="PNG")

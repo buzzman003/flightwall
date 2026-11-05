@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import json
 import socket
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import ProxyHandler, Request, build_opener
@@ -32,6 +32,12 @@ def test_selection_maps_actual_daily_option_and_voice_context_never_exposes_reci
     private_json(data / "dinner-options.json", {"schema": 1, "date": "2026-11-01", "generation": GENERATION,
                                                "attempted_at": NOW.isoformat(), "generated_at": NOW.isoformat(),
                                                "status": "ready", "options": rows})
+    private_json(data / "recipe-mail.json", {"sender": "synthetic-sender@gmail.com",
+                                           "recipient": "synthetic-recipient@example.net",
+                                           "app_password": "syntheticonlyabc"})
+    smtp_factory = MagicMock()
+    smtp = smtp_factory.return_value.__enter__.return_value
+    smtp.send_message.return_value = {}
     real_opener = build_opener(ProxyHandler({}))
     writes = []
 
@@ -53,9 +59,11 @@ def test_selection_maps_actual_daily_option_and_voice_context_never_exposes_reci
             return Reply(real_opener.open(local, timeout=timeout), request.full_url)
 
     with patch("flightwall.dinner_options.request_json") as paid_provider, \
+            patch.object(Runtime, "_run_recipe_mail", return_value=None), \
             patch("flightwall.dinner_options._now", side_effect=lambda value=None: NOW if value is None else value.astimezone(timezone.utc)), \
             patch("flightwall.personal._now", return_value=NOW), patch.object(alexa, "_now", return_value=NOW):
         runtime = Runtime(data, tmp_path / "install").start()
+        runtime.recipe_mail.smtp_factory = smtp_factory
         token = runtime.remote.alexa_token_path.read_text().strip()
         environment = {"ALEXA_SKILL_ID": SKILL, "FLIGHTWALL_BASE_URL": "https://board.example",
                        "FLIGHTWALL_ALEXA_TOKEN": token}
@@ -77,6 +85,17 @@ def test_selection_maps_actual_daily_option_and_voice_context_never_exposes_reci
                 items = runtime.personal.list_items(NOW)
                 assert len(items) == 1 and items[0]["title"] == rows[2]["title"]
                 assert items[0]["sides"] == rows[2]["sides"]
+                assert runtime.recipe_mail.status()["recent"]["queued"] == 1
+                smtp_factory.assert_not_called()
+                runtime.recipe_mail.poll()
+                runtime.recipe_mail.poll()
+                smtp.send_message.assert_called_once()
+                message = smtp.send_message.call_args.args[0]
+                assert str(message["To"]) == "synthetic-recipient@example.net"
+                assert rows[2]["title"] in message["Subject"]
+                assert rows[2]["ingredients"][0] in message.get_content()
+                assert rows[2]["steps"][0] in message.get_content()
+                assert runtime.recipe_mail.status()["recent"]["accepted"] == 1
 
                 # Arbitrary caller labels and wrong-generation selections must
                 # not replace the actual board-bound meal through this route.

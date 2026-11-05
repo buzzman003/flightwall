@@ -33,6 +33,7 @@ MAX_BODY = 65536
 SCOPE = "flightwall.control"
 VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SETTING_TYPES = {
+    "card_seconds": "string",
     **{key: "boolean" for key in CARD_DEFAULTS},
     "national_radar_scope": "string", "national_radar_flight_only": "boolean",
     "airline": "string", "timezone": "string", "rotation_seconds": "integer",

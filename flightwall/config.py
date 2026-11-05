@@ -52,17 +52,19 @@ DEFAULTS = {
     "inspiration_enabled": False, "inspiration_topics": "", "inspiration_sources": "[]",
     "health_enabled": False, "health_query": "", "health_max_age_hours": 168,
     "openai_enabled": False, "openai_model": "gpt-5-mini", "openai_daily_limit": 5,
-    "brief_focus_enabled": False,
+    "brief_focus_enabled": False, "card_seconds": "{}", "commute_schedule_idents": "[]",
     "hotel_details_enabled": False,
     "brief_leave_times_enabled": False, "brief_leave_policy": "conflict",
     "display_scale_mode": "fit", "timers_enabled": True,
     "custody_outlook_enabled": True, "custody_outlook_days": 10, "flight_preview_days": 5,
+    "planned_trip_days": "[]",
     "local_visits_enabled": True, "shopping_ticker_enabled": True,
     "shopping_ticker_visible": True, "shopping_enabled": False,
     "shopping_lisa_opt_in": False, "shopping_list_source": "flightwall",
     "shopping_stores": "[]",
 }
 REMOTE_SETTINGS = frozenset({
+    "card_seconds",
     *CARD_DEFAULTS, "national_radar_scope", "national_radar_flight_only",
     "airline", "timezone", "rotation_seconds", "brightness", "glow", "dot_gap",
     "led_effect", "show_deadheads", "takeover_hours", "sleep_start", "sleep_end",
@@ -109,6 +111,39 @@ def validate(key, value):
     if key not in DEFAULTS:
         raise ValueError(f"Unknown setting: {key}")
     original = DEFAULTS[key]
+    if key == "commute_schedule_idents":
+        from .commute import schedule_idents
+        return json.dumps(schedule_idents(value), separators=(",", ":"))
+    if key == "planned_trip_days":
+        from .mycrew import clean_trip_days
+        spans = value
+        if isinstance(value, str):
+            if len(value) > 8192:
+                raise ValueError("Planned trips must be a small JSON list of date spans")
+            try:
+                spans = json.loads(value)
+            except (ValueError, RecursionError):
+                raise ValueError("Planned trips must be a JSON list of date spans") from None
+        if not isinstance(spans, list) or len(spans) > 32:
+            raise ValueError("Choose at most 32 planned trip date spans")
+        cleaned = clean_trip_days(spans)
+        if len(cleaned) != len(spans):
+            raise ValueError("Each planned trip needs unique start_date and exclusive end_date within 31 days")
+        return json.dumps(cleaned, sort_keys=True, separators=(",", ":"))
+    if key == "card_seconds":
+        from .card_preferences import TIMING_LABELS
+        values = value
+        if isinstance(value, str):
+            if len(value) > 2000:
+                raise ValueError("Card seconds must be a small JSON object")
+            try:
+                values = json.loads(value)
+            except (ValueError, RecursionError):
+                raise ValueError("Card seconds must be a JSON object") from None
+        if (not isinstance(values, dict) or set(values) - TIMING_LABELS.keys()
+                or any(type(seconds) is not int or not 3 <= seconds <= 300 for seconds in values.values())):
+            raise ValueError("Choose a known card and an integer duration from 3 to 300 seconds")
+        return json.dumps(values, sort_keys=True, separators=(",", ":"))
     if key == "brief_leave_policy":
         if not isinstance(value, str) or value not in {"conflict", "report_safe", "recommended"}:
             raise ValueError("Choose conflict, report_safe or recommended for Brief leave times")

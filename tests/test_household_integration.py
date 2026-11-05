@@ -117,7 +117,7 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
             visible = self.runtime.display_status(NOW)["custody_outlook"]
             maintenance = self.runtime.status(NOW)["custody_outlook"]
         self.assertEqual(visible["activities"][0]["title"], "Rory Dance")
-        self.assertTrue(visible["buzz_plan"]["2026-10-22"]["away"])
+        self.assertTrue(visible["buzz_plan"]["2026-10-22"]["gone"])
         self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync"}.isdisjoint(maintenance))
 
     def test_lisa_private_cards_require_all_three_fresh_household_conditions(self):

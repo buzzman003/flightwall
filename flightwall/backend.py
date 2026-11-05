@@ -18,6 +18,7 @@ from .personal import PersonalStore, PersonalError, personal_card_visible
 from .dinner_options import DinnerOptions
 from .brief_focus import BriefFocus
 from .flight_brief_view import brief_rows
+from .commute import CommuteStore, attach_commute_plan
 from .recipe_mail import RecipeMail
 from .household_calendar import HouseholdCalendars
 from .presence import PresenceStore
@@ -29,7 +30,7 @@ from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .weather import WeatherFeed
-from .trip_weather import TripWeatherFeed, select_airports
+from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_preview_eligible
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
 from .flight_context import build_flight_context
 from .flight_alerts import SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fresh_status, stamp as flight_stamp
@@ -80,6 +81,7 @@ class Runtime:
         self.personal = PersonalStore(data_dir, self.config.get)
         self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal)
         self.brief_focus = BriefFocus(self.data_dir, self.config.get, self.personal._locked, self.dinner_options._key)
+        self.commute = CommuteStore(self.data_dir)
         self.recipe_mail = RecipeMail(data_dir, self.personal._locked, enabled=self._recipe_mail_enabled)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
@@ -150,7 +152,7 @@ class Runtime:
     def display_status(self, now=None):
         now = now or datetime.now(timezone.utc)
         config = self.config.get()
-        snapshot = self.snapshot()
+        snapshot = attach_commute_plan(self.snapshot(), self.data_dir, config, now)
         flight = choose_flight(snapshot, config, now)
         operating = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
         operating_status = self.feeds.operating_status_for_config(config, operating, now)
@@ -227,14 +229,18 @@ class Runtime:
             airports = {row["iata"] for row in select_airports(snapshot, now, timezone=config.get("timezone", "UTC"))}
         except (KeyError, TypeError, ValueError, OSError, OverflowError):
             airports = set()
+        weather_airports = set(airports)
+        if trip_preview_eligible(status, config, now):
+            weather_airports.update(row["iata"] for row in preview_airports(snapshot, config, now))
         trip_weather = status["trip_weather"]
         trip_weather["airports"] = [row for row in trip_weather.get("airports", [])
-                                    if isinstance(row, dict) and row.get("iata") in airports]
+                                    if isinstance(row, dict) and row.get("iata") in weather_airports]
         status["airport_alerts"]["events"] = [row for row in status["airport_alerts"].get("events", [])
                                               if isinstance(row, dict) and row.get("airport") in airports]
-        if not airports:
+        if not weather_airports:
             if trip_weather.get("status") not in {"demo", "off"}:
                 trip_weather["status"] = "idle"
+        if not airports:
             if status["airport_alerts"].get("status") not in {"demo", "off"}:
                 status["airport_alerts"]["status"] = "outside_window"
         status["flight_context"] = build_flight_context(status, config, now)
@@ -626,7 +632,14 @@ class Runtime:
         # Airport batches/forecasts cannot block home weather or paid tracking.
         while not self.stop_event.is_set():
             try:
-                self.trip_weather.poll(self.snapshot(), datetime.now(timezone.utc))
+                now = datetime.now(timezone.utc)
+                snapshot = self.snapshot()
+                config = self.config.get()
+                presence = self.presence.snapshot(now)
+                self.commute.poll(snapshot, config, self.feeds, now, presence=presence)
+                snapshot = attach_commute_plan(snapshot, self.data_dir, config, now)
+                context = {"snapshot": snapshot, "presence": presence}
+                self.trip_weather.poll(snapshot, now, preview=trip_preview_eligible(context, self.config.get(), now))
             except Exception:
                 pass
             self.stop_event.wait(2)
@@ -647,6 +660,7 @@ class Runtime:
                 if self.config.get().get("dinner_options_enabled") is True:
                     kids = self.household.status().get("kids", {})
                     self.dinner_options.poll(kids, datetime.now(timezone.utc))
+                    self.dinner_options.poll_picture(kids, datetime.now(timezone.utc))
             except Exception:
                 pass  # The generator exposes bounded, nonsecret status only.
             self.stop_event.wait(60)
@@ -711,6 +725,7 @@ class Runtime:
             "receive_notification": self.receive_notification,
             "setup_get": self.setup_get, "setup_save": self.setup_save,
             "get_dinner_options": lambda: self.dinner_options.status(include_recipes=True),
+            "focus_display": lambda: self._focus_display(),
             "setup_calendars": self.household.list_calendars,
             "setup_kids_preview": self.household.preview_kids,
             "setup_refresh": self.refresh_calendar,
@@ -734,6 +749,10 @@ class Runtime:
         self._brief_worker = threading.Thread(target=self._run_brief_focus, name="flightwall-brief-focus", daemon=True)
         self._brief_worker.start()
         return self
+
+    def _focus_display(self):
+        from .window_focus import focus_window
+        return focus_window(self.install_dir, self.data_dir)
 
     def stop(self):
         self.stop_event.set()

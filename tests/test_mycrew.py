@@ -10,7 +10,7 @@ from flightwall.config import ConfigStore, PUBLIC_FIELDS, REMOTE_SETTINGS
 from flightwall.flight_alerts import choose_tracking_flight
 from flightwall.household_calendar import HouseholdCalendars, _merge_flights
 from flightwall.main import _select_calendar
-from flightwall.mycrew import SOURCE, parse_mycrew_events
+from flightwall.mycrew import SOURCE, clean_trip_days, parse_mycrew_events, parse_mycrew_trip_days
 
 
 def duty():
@@ -52,6 +52,28 @@ def test_requires_single_day_rotation_and_selected_carrier_and_respects_cancella
     assert parse_mycrew_events([event | {"end": {"date": "2026-02-08"}}], "DL") == []
     assert parse_mycrew_events([event | {"summary": "Private trip"}], "DL") == []
     assert parse_mycrew_events([event, event | {"status": "cancelled"}], "DL") == []
+
+
+def test_trip_dates_preserve_source_spans_without_joining_separate_duties_or_retaining_notes():
+    first = duty()
+    later = duty() | {"id": "another-private-id", "start": {"date": "2026-02-10"}, "end": {"date": "2026-02-11"}}
+    assert parse_mycrew_trip_days([first, later]) == [
+        {"start_date": "2026-02-06", "end_date": "2026-02-07"},
+        {"start_date": "2026-02-10", "end_date": "2026-02-11"},
+    ]
+    full_rotation = first | {"end": {"date": "2026-02-11"}}
+    projected = parse_mycrew_trip_days([full_rotation, first | {"status": "cancelled"}, later])
+    assert projected == [{"start_date": "2026-02-10", "end_date": "2026-02-11"}]
+    projected = parse_mycrew_trip_days([full_rotation])
+    assert projected == [{"start_date": "2026-02-06", "end_date": "2026-02-11"}]
+    assert not any(value in json.dumps(projected) for value in ("private", "X321", "ATL", "Hotel"))
+    for damaged in (
+        {"summary": "Private vacation"}, {"end": {"date": "2026-03-15"}},
+        {"start": {"date": "2026-02-30"}}, {"end": {"date": "2026-02-06"}},
+        {"start": {"dateTime": "2026-02-06T12:00:00Z"}}, {"end": {"date": "20260211"}},
+    ):
+        assert parse_mycrew_trip_days([full_rotation | damaged]) == []
+    assert clean_trip_days([projected[0] | {"private": "Unapproved"}, *projected, *projected]) == projected
 
 
 def test_refuses_ambiguous_dst_report_and_uses_next_day_arrival_when_unique():
@@ -108,6 +130,10 @@ def test_verified_fc_view_selection_reuses_fetch_and_disabling_hides_its_notes(t
     cached = manager.path.read_text()
     assert calendar_id not in cached and "private-rotation-id" not in cached
     assert "private details" not in cached and "X321" not in cached
+    assert manager.status()["flight_snapshot"]["trip_days"] == [
+        {"start_date": "2026-02-06", "end_date": "2026-02-07"}]
+    assert HouseholdCalendars(tmp_path, store.get).status()["flight_snapshot"]["trip_days"] == [
+        {"start_date": "2026-02-06", "end_date": "2026-02-07"}]
     store.update({"airline": "AA"})
     assert manager.status()["flight_snapshot"]["flights"] == []
     store.update({"mycrew_clock": ""})

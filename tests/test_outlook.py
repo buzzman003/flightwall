@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+from flightwall.config import ConfigStore, PUBLIC_FIELDS, REMOTE_SETTINGS, validate
 from flightwall.outlook import agenda_focus, custody_outlook, local_visits, planned_buzz_days, today_activities, trip_preview
 from flightwall.household_policy import build_rotation
 
@@ -79,39 +82,80 @@ def test_vps_leave_time_stays_distinct_from_next_day_departure():
         assert "leave_at" not in row
 
 
-def test_buzz_plan_preserves_vps_arrival_and_next_day_verified_leave():
+def test_buzz_plan_marks_source_trip_dates_including_vps_stays_and_partial_days():
     now = dt("2026-11-05T18:00:00Z")
-    snapshot = {"last_sync": now.isoformat(), "flights": [
+    snapshot = {"last_sync": now.isoformat(),
+                "trip_days": [{"start_date": "2026-11-06", "end_date": "2026-11-11"}], "flights": [
         leg("in", "ATL", "VPS", "2026-11-07T03:00:00Z", "2026-11-07T05:00:00Z"),
         leg("out", "VPS", "ATL", "2026-11-07T23:00:00Z", "2026-11-08T01:00:00Z",
             leave_at="2026-11-07T21:00:00Z", report="2026-11-07T22:00:00Z"),
     ]}
     config = {"timezone": "America/Chicago", "brief_leave_times_enabled": True}
     plan = planned_buzz_days(snapshot, config, now)
-    assert "2026-11-05" not in plan and "2026-11-08" not in plan
-    assert plan["2026-11-06"]["arrival"] == "2026-11-07T05:00:00+00:00"
-    assert plan["2026-11-07"] == {"home": True, "away": True,
-                                  "leave": "2026-11-07T21:00:00+00:00",
-                                  "away_start": "2026-11-07T21:00:00+00:00", "away_basis": "leave"}
+    assert plan == {f"2026-11-{day:02}": {"gone": True} for day in range(6, 11)}
     snapshot["flights"][1]["leave_conflict"] = True
-    conflicted = planned_buzz_days(snapshot, config, now)["2026-11-07"]
-    assert "leave" not in conflicted and conflicted["leave_conflict"]
-    assert conflicted["away_basis"] == "report"
-    selected = planned_buzz_days(snapshot, config | {"brief_leave_policy": "report_safe"}, now)["2026-11-07"]
-    assert selected["leave"] == "2026-11-07T21:00:00+00:00" and selected["leave_conflict"]
-    assert selected["away_basis"] == "leave"
+    assert planned_buzz_days(snapshot, config, now) == plan
     assert not planned_buzz_days(snapshot, config, now + timedelta(hours=1))
+    assert not planned_buzz_days(snapshot | {"demo": True}, config, now)
+    assert not planned_buzz_days(snapshot | {"error": "Refresh failed"}, config, now)
 
 
-def test_buzz_plan_avoids_inferred_home_after_an_unmatched_vps_arrival():
+def test_buzz_plan_old_caches_mark_known_duties_without_filling_uncertain_gaps():
     now = dt("2026-11-05T18:00:00Z")
     snapshot = {"last_sync": now.isoformat(), "flights": [
         leg("in", "ATL", "VPS", "2026-11-07T03:00:00Z", "2026-11-07T05:00:00Z"),
         leg("out", "ATL", "LAX", "2026-11-07T23:00:00Z", "2026-11-08T01:00:00Z"),
+        leg("dh", "LAX", "ATL", "2026-11-10T00:00:00Z", "2026-11-10T03:00:00Z", deadhead=True),
     ]}
+    plan = planned_buzz_days(snapshot, {"timezone": "America/Chicago", "show_deadheads": False}, now)
+    assert plan == {f"2026-11-{day:02}": {"gone": True} for day in (6, 7, 9)}
+
+
+def test_owner_trip_dates_fill_only_explicit_dates_and_remain_local_private_settings(tmp_path):
+    now = dt("2026-11-05T18:00:00Z")
+    snapshot = {"last_sync": now.isoformat(), "flights": [
+        leg("out", "ATL", "VPS", "2026-11-06T20:00:00Z", "2026-11-06T21:00:00Z"),
+        leg("return", "VPS", "ATL", "2026-11-10T15:00:00Z", "2026-11-10T16:00:00Z"),
+    ]}
+    store = ConfigStore(tmp_path)
+    store.update({"timezone": "America/Chicago"})
+    assert set(planned_buzz_days(snapshot, store.get(), now)) == {"2026-11-06", "2026-11-10"}
+    store.update({"planned_trip_days": '[{"start_date":"2026-11-06","end_date":"2026-11-11"}]'})
+    assert planned_buzz_days(snapshot, store.get(), now) == {
+        f"2026-11-{day:02}": {"gone": True} for day in range(6, 11)}
+    assert "planned_trip_days" not in PUBLIC_FIELDS | REMOTE_SETTINGS
+    assert "planned_trip_days" not in store.public()
+    assert ConfigStore(tmp_path).get()["planned_trip_days"] == store.get()["planned_trip_days"]
+
+
+@pytest.mark.parametrize("value", [
+    '{}', '[{"start_date":"2026-11-06"}]',
+    '[{"start_date":"2026-11-06","end_date":"2026-11-11","name":"Private"}]',
+    '[{"start_date":"2026-11-06","end_date":"2026-11-06"}]',
+    '[{"start_date":"2026-11-06","end_date":"2026-12-08"}]',
+    '[{"start_date":"2026-11-31","end_date":"2026-12-02"}]',
+    '[{"start_date":"2026-11-06","end_date":false}]',
+    '[{"start_date":"2026-11-06","end_date":"2026-11-11"},'
+    '{"start_date":"2026-11-06","end_date":"2026-11-11"}]',
+    '[' + ','.join('{"start_date":"2026-11-06","end_date":"2026-11-11"}' for _ in range(33)) + ']',
+    'x' * 8193,
+])
+def test_owner_trip_dates_reject_malformed_or_oversized_settings(value):
+    with pytest.raises(ValueError):
+        validate("planned_trip_days", value)
+
+
+def test_buzz_plan_covers_ten_dates_and_uses_exact_midnight_boundaries_across_dst():
+    now = dt("2026-10-31T18:00:00Z")
+    snapshot = {"last_sync": now.isoformat(), "flights": [
+        leg("night", "ATL", "VPS", "2026-11-01T05:15:00Z", "2026-11-01T06:00:00Z",
+            report="2026-11-01T04:30:00Z"),
+    ], "trip_days": [{"start_date": "2026-11-09", "end_date": "2026-11-11"}]}
     plan = planned_buzz_days(snapshot, {"timezone": "America/Chicago"}, now)
-    assert len(plan) == 2
-    assert all(not row["home"] and "leave" not in row for row in plan.values())
+    assert plan == {"2026-10-31": {"gone": True}, "2026-11-01": {"gone": True}, "2026-11-09": {"gone": True}}
+    snapshot["flights"][0]["end"] = "2026-11-01T05:00:00Z"
+    snapshot["flights"][0]["start"] = "2026-11-01T04:45:00Z"
+    assert "2026-11-01" not in planned_buzz_days(snapshot, {"timezone": "America/Chicago"}, now)
 
 
 def test_trip_lead_in_hides_distant_roster_and_pages_each_leg():

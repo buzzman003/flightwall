@@ -1,3 +1,31 @@
+FLIGHT WALL 0.4.14
+
+S > Timing sets individual card durations. GLOBAL uses the Display card seconds.
+Space pauses rotation, P holds the current card for 45 seconds, and the small
+circle beside the deck squares shows the remaining card time. The header shows
+PAUSED or the temporary hold countdown.
+
+Trip weather is a graphical day-before preview while Chris has a fresh Home
+report. It uses arrival/departure windows, source-dated forecasts and explicit
+unknown coverage. Dinner photos use clear presentation resolution above the
+LED board and persist with the selected meal. Custom meal images share the
+existing dinner allowance. The family outlook marks planned Buzz duty days.
+
+Setup > Helpful connections > Bring TV display forward restores a running
+display. The focus command also brings one verified existing X11 window forward.
+Fresh installers use it when Ports is selected while the app is already open.
+Existing installations require the separately reviewed stable launcher update.
+The original pinned recovery helper is retained.
+
+Commute planning keeps a primary and one later VPS-to-ATL backup, both scheduled
+to arrive before the exact roster report time. Dated public schedule candidates
+can be imported with commute-plan; commute-schedules can query explicitly chosen
+Delta flight numbers through the existing FlightAware request allowance. A private
+commute_schedule_idents list enables one refresh batch per report/selection/day,
+only on the day before travel while Chris is freshly Home. Current verified
+same-day plans avoid another lookup. These are planned flights, not proof of
+boarding or seat availability, and do not become operating roster legs.
+
 FLIGHT WALL 0.4.13
 
 Flight Brief groups significant FlightAware timing changes, relevant FAA

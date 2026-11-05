@@ -226,6 +226,13 @@ def _period_span(period, config, now):
 
 
 def _trip_weather(draw, image, state, config, now):
+    from .trip_weather import trip_preview_eligible
+    if not trip_preview_eligible(state, config, now):
+        from .render import MUTED, _header, _text
+        _header(draw, state, now, "TRIP WEATHER")
+        _text(draw, (256, 113), "PREVIEW AT HOME THE DAY BEFORE TRAVEL", MUTED, align="center", max_width=470)
+        _footer(draw, state, "SCHEDULED TRAVEL / FRESH HOME REPORT REQUIRED")
+        return
     from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _tz
     source = state.get("trip_weather")
     source = source if isinstance(source, dict) else {}
@@ -233,6 +240,9 @@ def _trip_weather(draw, image, state, config, now):
     if not isinstance(card, dict):
         cards = source.get("airports")
         card = next((c for c in cards if isinstance(c, dict)), {}) if isinstance(cards, list) else {}
+    if isinstance(card.get("windows"), list):
+        _preview_weather(draw, state, config, now, card)
+        return
     iata = card.get("iata")
     iata = iata if isinstance(iata, str) and re.fullmatch(r"[A-Z]{3}", iata) else "---"
     station = card.get("icao")
@@ -248,7 +258,8 @@ def _trip_weather(draw, image, state, config, now):
         _text(draw, (22, 77), "AT " + _clock(metar.get("observed_at"), config, True), MUTED, max_width=220)
         temp = metar.get("temperature_f")
         label = f"{temp:.0f}F" if type(temp) in (int, float) and math.isfinite(temp) and -148 <= temp <= 149 else "TEMP UNKNOWN"
-        _text(draw, (22, 91), label + " / " + _text_value(metar.get("flight_category") or "CAT UNKNOWN", 12), WHITE, max_width=220)
+        category = metar.get("flight_category")
+        _text(draw, (22, 91), label + " / " + _text_value(category or "CAT UNKNOWN", 12), _category_color(category), max_width=220)
         _text(draw, (22, 105), "WIND " + _compact_wind(metar), WHITE, max_width=220)
         ceiling = metar.get("ceiling_ft")
         ceil = f"{ceiling:g} FT" if type(ceiling) in (int, float) and math.isfinite(ceiling) else "NOT REPORTED"
@@ -305,6 +316,105 @@ def _trip_weather(draw, image, state, config, now):
         else:
             _text(draw, (x + 8, 209), "FORECAST UNAVAILABLE", AMBER, max_width=220)
     _footer(draw, state, "AWC / NWS / TIMES " + now.astimezone(_tz(config)).tzname() + " / FAMILY SUMMARY")
+
+
+def _category_color(category):
+    from .render import MUTED
+    return {"VFR": (65, 215, 105), "MVFR": (80, 140, 255),
+            "IFR": (255, 75, 75), "LIFR": (245, 80, 235)}.get(category, MUTED)
+
+
+def _nws_preview_day(forecast, scheduled_at, now):
+    from .render import _dt
+    if (not isinstance(forecast, dict) or forecast.get("source") != "National Weather Service"
+            or forecast.get("status") not in {"ready", "partial"}
+            or not _fresh(forecast.get("issued_at"), now, 43200)
+            or not _fresh(forecast.get("checked_at"), now, 7200)):
+        return None
+    try:
+        day = _dt(scheduled_at).astimezone(ZoneInfo(forecast["timezone"])).date().isoformat()
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return None
+    for key in ("today", "tomorrow"):
+        candidate = forecast.get(key)
+        if (isinstance(candidate, dict) and candidate.get("date") == day and candidate.get("stale") is False
+                and candidate.get("temperature_unit") == "F"):
+            return candidate
+    return None
+
+
+def _preview_weather(draw, state, config, now, card):
+    from .extra_views import _weather_icon, _weather_icon_kind
+    from .render import AMBER, BG, CYAN, LINE, MUTED, PANEL, WHITE, _dt, _header, _text
+    from .trip_weather import forecast_category, forecast_window, preview_airports
+    target = next((row for row in preview_airports(state.get("snapshot", state), config, now)
+                   if row["iata"] == card.get("iata") and row["icao"] == card.get("icao")), None)
+    _header(draw, state, now, "TOMORROW / " + str(card.get("iata", "---")) + " / AIRPORT WEATHER")
+    if target is None:
+        _text(draw, (256, 120), "SCHEDULED AIRPORT WINDOW UNAVAILABLE", MUTED, align="center")
+        _footer(draw, state, "CALENDAR SCHEDULE / NO FORECAST WINDOW")
+        return
+    _text(draw, (15, 55), "FORECAST AT SCHEDULED ARRIVAL / DEPARTURE", CYAN)
+    for index, category in enumerate(("VFR", "MVFR", "IFR", "LIFR")):
+        x = 15 + index * 78
+        draw.rectangle((x, 68, x + 5, 73), fill=_category_color(category))
+        _text(draw, (x + 10, 67), category, _category_color(category))
+    _text(draw, (497, 67), "GRAY = UNKNOWN", MUTED, align="right")
+    windows = target["windows"]
+    page = state.get("weather_page", 0)
+    page = page if type(page) is int and 0 <= page < (len(windows) + 1) // 2 else 0
+    taf = card.get("taf")
+    taf_ready = _report_ready("taf", taf, target["icao"], now)
+    used_daily = False
+    for index, window in enumerate(windows[page * 2:page * 2 + 2]):
+        y = 82 + index * 66
+        draw.rectangle((14, y, 498, y + 61), fill=PANEL, outline=LINE)
+        label = window["kind"].upper()
+        if window.get("commute_role") in {"primary", "backup"}:
+            label = window["commute_role"].upper() + " COMMUTE / " + label
+        _text(draw, (22, y + 5), label + " / " + _clock(window["scheduled_at"], config, True), WHITE, max_width=427)
+        projected = forecast_window(taf if taf_ready else {}, window, now)
+        conditions = projected["conditions"]
+        category = forecast_category(conditions)
+        daily = _nws_preview_day(card.get("forecast"), window["scheduled_at"], now) if conditions is None else None
+        if conditions:
+            _weather_icon(draw, (466, y + 3), _weather_icon_kind(conditions.get("summary")))
+        elif daily:
+            used_daily = True
+            _weather_icon(draw, (466, y + 3), _weather_icon_kind(daily.get("summary")))
+        if daily:
+            _text(draw, (22, y + 19), "NWS DAY / " + _text_value(daily.get("summary")), WHITE,
+                  max_width=188 if projected["alternatives"] else 466)
+        else:
+            _text(draw, (22, y + 19), _compact_wind(conditions or {}), WHITE if conditions else MUTED, max_width=188)
+        alternatives = projected["alternatives"]
+        if alternatives:
+            labels = [_taf_label(row, "ALTERNATIVE") + (" " + row["category"] if row["category"] else "") for row in alternatives]
+            _text(draw, (212, y + 19), " / ".join(labels), AMBER, max_width=278)
+        elif daily is None:
+            _text(draw, (212, y + 19), ("SCHEDULED FORECAST / " + category) if category else "FORECAST CATEGORY UNKNOWN",
+                  _category_color(category), max_width=278)
+        start, end = _dt(window["start"]), _dt(window["end"])
+        for segment in projected["segments"]:
+            left = 22 + round((_dt(segment["start"]) - start) / (end - start) * 467)
+            right = 22 + round((_dt(segment["end"]) - start) / (end - start) * 467)
+            draw.rectangle((left, y + 33, max(left, right - 1), y + 43), fill=_category_color(segment["category"]))
+            if segment["category"] and right - left >= 32:
+                _text(draw, ((left + right) // 2, y + 35), segment["category"], BG, align="center", max_width=right - left - 4)
+        if not projected["segments"] or projected["coverage"] == "unavailable":
+            draw.rectangle((22, y + 33, 489, y + 43), fill=BG)
+            label = "TAF CATEGORY NOT PROVIDED" if conditions else "TAF NOT YET AVAILABLE FOR THIS WINDOW"
+            _text(draw, (256, y + 35), label, MUTED, align="center", max_width=460)
+        elif projected["coverage"] == "partial":
+            _text(draw, (489, y + 5), "PARTIAL", AMBER, align="right", max_width=56)
+        draw.line((256, y + 30, 256, y + 46), fill=WHITE)
+        _text(draw, (22, y + 49), _clock(window["start"], config), MUTED, max_width=190)
+        _text(draw, (256, y + 49), "SCHED +/-1H", MUTED, align="center", max_width=110)
+        _text(draw, (489, y + 49), _clock(window["end"], config), MUTED, align="right", max_width=190)
+    note = ("NWS DAY ISSUED " + _clock(card["forecast"].get("issued_at"), config, True) if used_daily
+            else "TAF PREVAILING / ALTERNATIVES LABELED")
+    _text(draw, (15, 219), note + (f" / {page + 1} OF {(len(windows) + 1) // 2}" if len(windows) > 2 else ""), MUTED, max_width=481)
+    _footer(draw, state, "AWC TAF / ISSUED " + _clock(taf.get("issued_at") if taf_ready else None, config, True))
 
 
 def _radar(draw, image, state, config, now):

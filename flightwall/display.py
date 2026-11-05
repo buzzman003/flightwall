@@ -98,10 +98,10 @@ def decode_artwork(data_url):
 def _decode_artwork_png(data_url):
     try:
         raw = base64.b64decode(data_url.split(",", 1)[1], validate=True)
-        if len(raw) > 800_000:
+        if len(raw) > 1_200_000:
             return None
         with Image.open(io.BytesIO(raw)) as image:
-            if image.format != "PNG" or not 1 <= image.width <= 512 or not 1 <= image.height <= 256:
+            if image.format != "PNG" or not 1 <= image.width <= 512 or not 1 <= image.height <= 512:
                 return None
             return image.convert("RGB")
     except Exception:
@@ -129,6 +129,7 @@ def entry_render_state(status, config, entry, now=None):
     state = {**status.get("snapshot", {}), "now": now.isoformat(), "view": view,
              "selected_flight": selected, "live": live, "nearby": status.get("nearby", []),
              "household_context": context,
+             "presence": status.get("presence", {}),
              "kids": status.get("kids", {}),
              "dinner_options": status.get("dinner_options", {}),
              "dinner_today_selected": status.get("dinner_today_selected", False),
@@ -145,6 +146,7 @@ def entry_render_state(status, config, entry, now=None):
              "national_radar": status.get("national_radar", {}),
              "airport_alerts": status.get("airport_alerts", {}),
              "selected_weather_airport": item if view == "trip_weather" else None,
+             "weather_page": entry.get("weather_page", 0),
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,
@@ -172,6 +174,8 @@ class RotationCursor:
     """Retain a stable slot key while eligible cards are inserted or removed."""
     def __init__(self, entries, now):
         self.index, self.key, self.started_at = 0, None, now
+        self.hold_until = 0
+        self.stopped_at = None
         self.reconcile(entries, now)
 
     def reconcile(self, entries, now):
@@ -180,12 +184,14 @@ class RotationCursor:
             self.index = keys.index(self.key)
         else:
             self.index, self.started_at = 0, now
+            self.stopped_at = now if self.stopped_at is not None else None
             self.key = keys[0] if keys else None
 
     def select(self, entries, index, now):
         if entries:
             self.index = index % len(entries)
             self.key, self.started_at = entries[self.index]["key"], now
+            self.stopped_at = now if self.stopped_at is not None else None
 
     def advance(self, entries, now):
         self.select(entries, self.index + 1, now)
@@ -195,9 +201,19 @@ class RotationCursor:
 
     def tick(self, entries, now, automatic=True):
         self.reconcile(entries, now)
-        if entries and automatic and now - self.started_at >= entries[self.index]["duration_seconds"]:
+        stopped = not automatic or now < self.hold_until
+        if stopped and self.stopped_at is None:
+            self.stopped_at = now
+        elif not stopped and self.stopped_at is not None:
+            self.started_at += now - self.stopped_at
+            self.stopped_at = None
+        if entries and not stopped and now - self.started_at >= entries[self.index]["duration_seconds"]:
             self.advance(entries, now)
         return entries[self.index] if entries else None
+
+    def remaining(self, entry, now):
+        elapsed = max(0, (self.stopped_at if self.stopped_at is not None else now) - self.started_at)
+        return max(0, min(1, 1 - elapsed / entry["duration_seconds"]))
 
 
 class AnalogNavigation:
@@ -609,6 +625,10 @@ def attach_flight_context(frame, state, config, connection, screen_size, now,
                 if image is None:
                     image = connection.local_radar_image(meta.get("image_sha256"))
             if image is not None:
+                if meta.get("home_marker_eligible") is True:
+                    from .radar import mark_home
+                    point = connection.local_map_config()
+                    image = mark_home(image, meta.get("scope"), point.get("home_latitude"), point.get("home_longitude"))
                 from PIL import ImageOps
                 image = ImageOps.contain(image, size, Image.Resampling.LANCZOS)
                 panel = Image.new("RGB", size, (5, 15, 21))
@@ -646,9 +666,44 @@ def geographic_patch(frame, viewport):
     return _presentation_layer(frame, viewport, "geographic_patch")
 
 
+def attach_dinner_photos(frame, state, config, screen_size, now, timer_progress=None, ticker_progress=None):
+    """Place bounded meal photography after the LED composition."""
+    from PIL import ImageOps
+    from .household_policy import dinner_options_visible
+    from .render import _dinner_kids_allowed, _selected_personal
+    photos = []
+    view = state.get("view")
+    if view == "dinner_options" and dinner_options_visible(state, config, now):
+        options = sorted(state["dinner_options"]["options"], key=lambda row: row["number"])
+        for index, option in enumerate(options[:4]):
+            photos.append(((22 + index * 124, 113, 100, 61), decode_artwork(option.get("image_data"))))
+    elif view == "personal" and card_enabled(view, config, state.get("selected_personal_item")):
+        item = _selected_personal(state, now, config)
+        if item and item.get("kind") == "dinner" and _dinner_kids_allowed(state, config, now):
+            photos.append(((400, 81, 88, 88), state.get("dinner_image")))
+    if not photos:
+        return frame
+    left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+    _, _, target_w, target_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+    patches = []
+    for (x, y, w, h), photo in photos:
+        if not isinstance(photo, Image.Image):
+            continue
+        box = (left + x * width / 512, top + y * height / 256, w * width / 512, h * height / 256)
+        size = (max(1, min(2048, round(box[2] * target_w / 512))),
+                max(1, min(1024, round(box[3] * target_h / 256))))
+        patches.append((box, ImageOps.fit(photo.convert("RGB"), size, method=Image.Resampling.LANCZOS)))
+    frame.info["meal_patches"] = patches
+    return frame
+
+
 def _presentation_layer(frame, viewport, name):
+    return _project_layer(frame, viewport, frame.info.get(name))
+
+
+def _project_layer(frame, viewport, value):
     try:
-        box, image = frame.info[name]
+        box, image = value
         left, top, width, height = box
         if (not isinstance(image, Image.Image) or image.mode != "RGB"
                 or not 1 <= image.width <= 2048 or not 1 <= image.height <= 1024
@@ -688,6 +743,11 @@ def _present_frame(frame, config, size):
     if patch:
         image, (x, y, width, height) = patch
         output.paste(image.resize((width, height), Image.Resampling.NEAREST), (x, y))
+    for value in frame.info.get("meal_patches", [])[:4]:
+        patch = _project_layer(frame, viewport, value)
+        if patch:
+            image, (x, y, width, height) = patch
+            output.paste(image.resize((width, height), Image.Resampling.LANCZOS), (x, y))
     brightness = config.get("brightness", .7)
     return output if brightness == 1 else output.point([int(value * brightness) for value in range(256)] * 3)
 
@@ -796,7 +856,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
         nonlocal config, error
         name = settings_rows[settings_row]
         value = next_value(config, name, direction)
-        save_setting(name, value)
+        save_setting("card_seconds" if name.startswith("timing:") else name, value)
 
     def change_group(direction=1):
         nonlocal settings_group, settings_rows, settings_row
@@ -851,6 +911,11 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                     elif event.key == pygame.K_SPACE:
                         automatic = not automatic
                         cursor.started_at = time.monotonic()
+                        cursor.hold_until = 0
+                        cursor.stopped_at = None
+                    elif event.key == pygame.K_p:
+                        automatic = True
+                        cursor.hold_until = time.monotonic() + 45
                     elif event.key == pygame.K_TAB:
                         if settings_open:
                             change_group(-1 if getattr(event, "mod", 0) & pygame.KMOD_SHIFT else 1)
@@ -899,6 +964,9 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
             # Entries have already passed per-frame presence/privacy gates.
             # Priority repeats and individual trip pages are real deck slots.
             state["deck_count"], state["deck_index"] = len(entries), cursor.index
+            state["card_remaining"] = cursor.remaining(entry, now)
+            state["rotation_paused"] = not automatic
+            state["rotation_hold_seconds"] = max(0, math.ceil(cursor.hold_until - now))
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
             sleeping = is_sleeping(config, wall_now)
@@ -916,7 +984,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                 if settings_open:
                     draw_options(draw, config, settings_group, settings_row)
                 else:
-                    for i, line in enumerate(["LEFT/RIGHT BACK/NEXT / TAB NEXT", "SPACE PAUSE / 1-5 SELECT CARD", "S SETTINGS / L LED EFFECT ON-OFF", "G HIDE MESSAGES & PRIVATE CARDS", "R REFRESH CALENDAR / ESC EXIT", "GAMEPAD: D-PAD/STICK BACK/NEXT", "A NEXT / B SETTINGS / SELECT EXIT"]):
+                    for i, line in enumerate(["LEFT/RIGHT BACK/NEXT / TAB NEXT", "SPACE PAUSE / P HOLD 45 SEC", "S SETTINGS / L LED EFFECT ON-OFF", "G HIDE MESSAGES & PRIVATE CARDS", "R REFRESH CALENDAR / ESC EXIT", "GAMEPAD: D-PAD/STICK BACK/NEXT", "A NEXT / B SETTINGS / SELECT EXIT"]):
                         _text(draw, (52, 66 + 20 * i), line, WHITE if i < 6 else MUTED)
             if error:
                 draw = ImageDraw.Draw(frame)
@@ -941,6 +1009,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
                                       wall_now, timer_progress, ticker_progress)
                     attach_flight_context(frame, state, config, connection, display_surface.get_size(),
                                           wall_now, timer_progress, ticker_progress)
+                    attach_dinner_photos(frame, state, config, display_surface.get_size(),
+                                         wall_now, timer_progress, ticker_progress)
             screen.draw(frame, config)
             if frames == 0 and on_healthy:
                 on_healthy()
