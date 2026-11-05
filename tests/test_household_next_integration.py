@@ -95,9 +95,16 @@ def test_only_accepted_fresh_lisa_reports_reach_disabled_alert_engine(household)
         consume.assert_called_once_with("lisa", payload)
         runtime.update_presence("lisa", payload)
         assert consume.call_count == 1
-        with pytest.raises(ValueError):
-            runtime.update_presence("lisa", {**payload, "tst": payload["tst"] - 1})
-        assert consume.call_count == 1
+        before = runtime.presence.path.read_bytes()
+        modified = runtime.presence.path.stat().st_mtime_ns
+        for discarded in ({**payload, "tst": payload["tst"] - 1},
+                          {**payload, "tst": payload["tst"] - 20000},
+                          {"_type": "status", "android": {"loc": 1}},
+                          {"_type": "transition", "event": "leave", "desc": "Other region", "tst": payload["tst"]}):
+            assert runtime.update_presence("lisa", discarded)["updated"] is False
+            assert runtime.presence.path.read_bytes() == before
+            assert runtime.presence.path.stat().st_mtime_ns == modified
+            assert consume.call_count == 1
     assert runtime.config.get()["shopping_enabled"] is False
     assert "lat" not in json.loads(runtime.presence.path.read_text())["people"]["lisa"]
 
