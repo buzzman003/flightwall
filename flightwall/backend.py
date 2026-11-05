@@ -16,6 +16,7 @@ from .render import demo_snapshot
 from .updater import UpdateManager
 from .personal import PersonalStore, PersonalError, personal_card_visible
 from .dinner_options import DinnerOptions
+from .recipe_mail import RecipeMail
 from .household_calendar import HouseholdCalendars
 from .presence import PresenceStore
 from .messages import MessageFeeds
@@ -23,7 +24,7 @@ from .content import SourceContent
 from .household_policy import household_context, filter_personal_items, card_visible
 from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
-from .outlook import local_visits, trip_preview
+from .outlook import local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .weather import WeatherFeed
 from .trip_weather import TripWeatherFeed, select_airports
@@ -75,6 +76,7 @@ class Runtime:
         self.environment = FlightEnvironmentFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
         self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal)
+        self.recipe_mail = RecipeMail(data_dir, self.personal._locked, enabled=self._recipe_mail_enabled)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
         self.shopping_list = ShoppingListStore(data_dir)
@@ -97,6 +99,7 @@ class Runtime:
         self._trip_weather_worker = None
         self._environment_worker = None
         self._dinner_worker = None
+        self._recipe_worker = None
         # One transient confirmed arrival, never a location/presence history.
         self._recent_vps_arrival = None
         self._mail_refresh = threading.Event()
@@ -104,8 +107,10 @@ class Runtime:
 
     @staticmethod
     def _calendar_selection(config):
+        mycrew_id = config.get("mycrew_calendar_id")
         return (bool(config.get("demo")),
-                str(config.get("calendar_id") or config.get("calendar_name") or "FC View"))
+                str(config.get("calendar_id") or config.get("calendar_name") or "FC View"),
+                mycrew_id, config.get("mycrew_clock"), config.get("airline") if mycrew_id else None)
 
     def _calendar_cache_stamp(self):
         try:
@@ -177,7 +182,12 @@ class Runtime:
         status["recent_vps_arrival"] = recent_arrival
         household = self.household.status(now=now)
         status.update(presence=self.presence.snapshot(now), kids=household.get("kids", {}))
-        status["custody_outlook"] = household.get("custody_outlook", {}) if config["family_calendar_id"] else {}
+        outlook = dict(household.get("custody_outlook", {})) if config["family_calendar_id"] else {}
+        if outlook and not config.get("guest_mode"):
+            plan = planned_buzz_days(snapshot, config, now)
+            if plan:
+                outlook.update(buzz_plan=plan, roster_last_sync=snapshot.get("last_sync"))
+        status["custody_outlook"] = outlook
         status["local_visits"] = local_visits(snapshot, now) if config["local_visits_enabled"] else []
         status["trip_preview"] = trip_preview(snapshot, config, now)
         try:
@@ -252,6 +262,11 @@ class Runtime:
         context = household_context(status, config, now)
         status["household_context"] = context
         status["personal_items"] = filter_personal_items(personal_items, status, config, now)
+        for item in status["personal_items"]:
+            if item.get("kind") == "dinner":
+                picture = self.dinner_options.picture_for(item, now)
+                if picture:
+                    item["image_data"] = picture
         try:
             from .personal import dinner_meal_date
             from zoneinfo import ZoneInfo
@@ -340,6 +355,10 @@ class Runtime:
         status = self.display_status(now)
         status["messages"]["lisa"] = []
         status["health"] = []
+        for item in status["personal_items"]:
+            item.pop("image_data", None)
+        status["custody_outlook"] = {key: value for key, value in status.get("custody_outlook", {}).items()
+                                     if key not in {"activities", "activity_last_sync", "buzz_plan", "roster_last_sync"}}
         # Absolute aircraft positions plus home-relative offsets would reveal
         # the private home pin. Maintenance needs only the relative local view;
         # the separate admin TV route retains validated provider coordinates.
@@ -452,7 +471,13 @@ class Runtime:
 
     def select_dinner_option(self, payload):
         from .card_preferences import card_enabled
-        result = self.dinner_options.select(payload)
+        def queue(option, day, generation):
+            try:
+                if self._recipe_mail_enabled():
+                    self.recipe_mail.queue(option, day, generation)
+            except (OSError, ValueError, TypeError, KeyError, PersonalError):
+                pass  # A mail setup or queue error must never undo the saved meal.
+        result = self.dinner_options.select(payload, on_selected=queue)
         config = self.config.get()
         result["display_enabled"] = (config["personal_enabled"]
                                      and card_enabled("personal", config, result.get("item")))
@@ -464,7 +489,7 @@ class Runtime:
         try:
             config = self.config.get()
             profiles_ready = any((self.data_dir / "accounts" / person / "google-token.json").exists() for person in ("chris", "lisa"))
-            if profiles_ready or config["family_calendar_id"] or config["secondary_calendar_id"]:
+            if profiles_ready or config["family_calendar_id"] or config["secondary_calendar_id"] or config["mycrew_calendar_id"]:
                 result = self.household.sync()
                 if not config["demo"]:
                     with self.lock:
@@ -615,6 +640,19 @@ class Runtime:
                 pass  # The generator exposes bounded, nonsecret status only.
             self.stop_event.wait(60)
 
+    def _recipe_mail_enabled(self):
+        config = self.config.get()
+        return config.get("demo") is False and config.get("personal_enabled") is True
+
+    def _run_recipe_mail(self):
+        while not self.stop_event.is_set():
+            try:
+                if self._recipe_mail_enabled():
+                    self.recipe_mail.poll()
+            except Exception:
+                pass  # Never log addresses, credentials, or SMTP bodies.
+            self.stop_event.wait(5)
+
     def _sync_content(self):
         if not self._content_lock.acquire(blocking=False):
             return
@@ -667,6 +705,8 @@ class Runtime:
         self._environment_worker.start()
         self._dinner_worker = threading.Thread(target=self._run_dinner_options, name="flightwall-dinner-options", daemon=True)
         self._dinner_worker.start()
+        self._recipe_worker = threading.Thread(target=self._run_recipe_mail, name="flightwall-recipe-mail", daemon=True)
+        self._recipe_worker.start()
         return self
 
     def stop(self):
@@ -683,3 +723,5 @@ class Runtime:
             self._environment_worker.join(timeout=2)
         if self._dinner_worker:
             self._dinner_worker.join(timeout=2)
+        if self._recipe_worker:
+            self._recipe_worker.join(timeout=2)

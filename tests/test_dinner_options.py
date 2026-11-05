@@ -95,6 +95,20 @@ def test_ready_has_four_sanitized_images_safe_fields_and_private_recipe_detail(s
     assert usage["reserved_cents"] == 10 and len(usage["attempts"]) == 1
 
 
+def test_select_projects_saved_picture_and_notifies_only_after_creating_dinner(setup):
+    feed, _, calls, _ = setup
+    ready = feed.poll(kids(), NOW)
+    chosen = {"option": 3, "date": ready["date"], "generation": ready["generation"], "request_id": "voice-request"}
+    callback = Mock()
+    result = feed.select(chosen, NOW, on_selected=callback)
+    assert feed.picture_for(result["item"], NOW) == ready["options"][2]["image_data"]
+    assert feed.picture_for(result["item"] | {"title": "Different menu"}, NOW) is None
+    feed.select(chosen, NOW, on_selected=callback)
+    callback.assert_called_once()
+    assert callback.call_args.args[0]["ingredients"]
+    assert calls.call_count == 2  # Reusing an existing image makes no provider call.
+
+
 @pytest.mark.parametrize("changed,status", [({"demo": True}, "demo"), ({"demo": 0}, "demo"),
     ({"dinner_options_enabled": False}, "off"), ({"personal_enabled": False}, "off"),
     ({"dinner_options_monthly_limit_usd": 0}, "budget_limited"),

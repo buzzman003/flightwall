@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from flightwall.outlook import custody_outlook, local_visits, trip_preview
+from flightwall.outlook import custody_outlook, local_visits, planned_buzz_days, trip_preview
 from flightwall.household_policy import build_rotation
 
 
@@ -77,6 +77,41 @@ def test_vps_leave_time_stays_distinct_from_next_day_departure():
         legs[1]["leave_at"] = value
         row, = local_visits({"flights": legs}, dt("2026-11-07T01:00:00Z"))
         assert "leave_at" not in row
+
+
+def test_buzz_plan_preserves_vps_arrival_and_next_day_verified_leave():
+    now = dt("2026-11-05T18:00:00Z")
+    snapshot = {"last_sync": now.isoformat(), "flights": [
+        leg("in", "ATL", "VPS", "2026-11-07T03:00:00Z", "2026-11-07T05:00:00Z"),
+        leg("out", "VPS", "ATL", "2026-11-07T23:00:00Z", "2026-11-08T01:00:00Z",
+            leave_at="2026-11-07T21:00:00Z", report="2026-11-07T22:00:00Z"),
+    ]}
+    config = {"timezone": "America/Chicago", "brief_leave_times_enabled": True}
+    plan = planned_buzz_days(snapshot, config, now)
+    assert "2026-11-05" not in plan and "2026-11-08" not in plan
+    assert plan["2026-11-06"]["arrival"] == "2026-11-07T05:00:00+00:00"
+    assert plan["2026-11-07"] == {"home": True, "away": True,
+                                  "leave": "2026-11-07T21:00:00+00:00",
+                                  "away_start": "2026-11-07T21:00:00+00:00", "away_basis": "leave"}
+    snapshot["flights"][1]["leave_conflict"] = True
+    conflicted = planned_buzz_days(snapshot, config, now)["2026-11-07"]
+    assert "leave" not in conflicted and conflicted["leave_conflict"]
+    assert conflicted["away_basis"] == "report"
+    selected = planned_buzz_days(snapshot, config | {"brief_leave_policy": "report_safe"}, now)["2026-11-07"]
+    assert selected["leave"] == "2026-11-07T21:00:00+00:00" and selected["leave_conflict"]
+    assert selected["away_basis"] == "leave"
+    assert not planned_buzz_days(snapshot, config, now + timedelta(hours=1))
+
+
+def test_buzz_plan_avoids_inferred_home_after_an_unmatched_vps_arrival():
+    now = dt("2026-11-05T18:00:00Z")
+    snapshot = {"last_sync": now.isoformat(), "flights": [
+        leg("in", "ATL", "VPS", "2026-11-07T03:00:00Z", "2026-11-07T05:00:00Z"),
+        leg("out", "ATL", "LAX", "2026-11-07T23:00:00Z", "2026-11-08T01:00:00Z"),
+    ]}
+    plan = planned_buzz_days(snapshot, {"timezone": "America/Chicago"}, now)
+    assert len(plan) == 2
+    assert all(not row["home"] and "leave" not in row for row in plan.values())
 
 
 def test_trip_lead_in_hides_distant_roster_and_pages_each_leg():

@@ -568,7 +568,7 @@ def _draw_title(draw, title, xy, width, height, scales=(4, 3, 2), color=WHITE):
         _text(draw, (x, y + index * line_height), line, color, scale, max_width=width)
 
 
-def _personal(draw, state, config, now, item):
+def _personal(draw, state, config, now, item, image=None):
     if item is None:
         _header(draw, state, now, "PERSONAL BOARD")
         _text(draw, (256, 108), "YOUR HOME BOARD IS CLEAR", WHITE, 2, align="center")
@@ -600,19 +600,24 @@ def _personal(draw, state, config, now, item):
         draw.line((489, 62, 489, 81), fill=AMBER)
         sides = item.get("sides") if isinstance(item.get("sides"), str) else None
         ready, ready_until = _dt(item.get("ready_at")), _dt(item.get("ready_until"))
+        photo = state.get("dinner_image")
+        photo_present = image is not None and isinstance(photo, Image.Image)
+        width = 358 if photo_present else 464
+        if photo_present:
+            image.paste(photo.resize((88, 88), Image.Resampling.LANCZOS), (400, 81))
         if sides or ready:
-            _draw_title(draw, item["title"], (25, 89), 464, 40, scales=(3, 2))
+            _draw_title(draw, item["title"], (25, 89), width, 40, scales=(3, 2))
             if sides:
-                _paragraph(draw, "SIDES / " + sides, (25, 134), 464, lines=2, gap=3, color=WHITE)
+                _paragraph(draw, "SIDES / " + sides, (25, 134), width, lines=2, gap=3, color=WHITE)
             if ready:
                 clock = format_time(ready.astimezone(tz))
                 if ready_until and ready_until > ready:
                     clock += " - " + format_time(ready_until.astimezone(tz), include_zone=True)
                 else:
                     clock = format_time(ready.astimezone(tz), include_zone=True)
-                _text(draw, (25, 158), "EXPECTED READY / " + clock, CYAN, max_width=464)
+                _text(draw, (25, 158), "EXPECTED READY / " + clock, CYAN, max_width=width)
         else:
-            _draw_title(draw, item["title"], (25, 96), 464, 62)
+            _draw_title(draw, item["title"], (25, 96), width, 62)
         # Compute on every frame, even when the backend card is cached/paused.
         # The TV's household zone governs the rule, not a stored card's zone.
         snacks_closed = local_now.hour >= 17
@@ -1130,46 +1135,116 @@ def _home(draw, state, config, now):
         _text(draw, (497, 215), f"+{len(items) - 2} MORE ON YOUR BOARD", MUTED, align="right", max_width=242)
 
 
+def _draw_family_house(draw, row, zone, x, y, width):
+    houses = {"home": ("MOM'S HOUSE", CYAN), "away": ("DAD'S HOUSE", AMBER)}
+    kind = row.get("state")
+    if kind == "mixed":
+        segments = row.get("segments")
+        parts = [item for item in segments if isinstance(item, dict)] if isinstance(segments, list) else []
+        parents = {"home": "MOM", "away": "DAD"}
+        if len(parts) == 2 and all(item.get("state") in parents for item in parts):
+            change = _dt(parts[1].get("start"))
+            if change:
+                label = " > ".join(parents[item["state"]] for item in parts)
+                _text(draw, (x, y), label, WHITE, max_width=width - 49)
+                _text(draw, (x + width, y), format_time(change.astimezone(zone)), MUTED, align="right")
+                return
+        _text(draw, (x, y), "CHANGE DAY", WHITE, max_width=width)
+        return
+    label, color = houses.get(kind, ("UNKNOWN", MUTED))
+    _text(draw, (x, y), label, color, max_width=width)
+
+
+def _draw_buzz_plan(draw, row, zone, x, y, width, *, include_leaves):
+    home, away = row.get("home") is True, row.get("away") is True
+    if not home and not away:
+        return
+    label = "BUZZ HOME/GONE PLAN" if home and away else "BUZZ HOME PLAN" if home else "BUZZ GONE PLAN"
+    _text(draw, (x, y), label, WHITE, max_width=width)
+    details = []
+    arrival = _dt(row.get("arrival"))
+    leave = _dt(row.get("leave")) if include_leaves else None
+    if arrival:
+        details.append((arrival, "VPS ARR"))
+    if leave:
+        details.append((leave, "LEAVE"))
+    notice = None
+    if include_leaves and row.get("leave_conflict") is True:
+        notice = "LEAVE TIME CONFLICT"
+    elif row.get("leave_unknown") is True or home and not include_leaves:
+        notice = "LEAVE TIME TBD"
+    away_start = _dt(row.get("away_start"))
+    basis = {"flight": "FLIGHT", "report": "REPORT", "leave": "LEAVE"}.get(row.get("away_basis"))
+    if (len(details) + bool(notice) < 2 and away_start and basis and (basis != "LEAVE" or include_leaves)
+            and (not leave or away_start != leave)):
+        details.append((away_start, basis))
+    lines = [label + " " + format_time(when.astimezone(zone)) for when, label in sorted(details)]
+    if notice and len(lines) < 2:
+        lines.append(notice)
+    elif notice == "LEAVE TIME CONFLICT":
+        lines = [line + " !" if line.startswith("LEAVE ") else line for line in lines]
+    for index, detail in enumerate(lines):
+        _text(draw, (x, y + 10 + index * 9), detail, AMBER if "CONFLICT" in detail or detail.endswith(" !") else MUTED, max_width=width)
+
+
 def _custody_outlook(draw, state, config, now):
-    """Display only derived daily intervals; never guess a missing day's house."""
-    _header(draw, state, now, "FAMILY / NEXT 10 DAYS", page_scale=2)
+    """Display today's agenda and six compact days, with separate roster plans."""
+    from .outlook import calendar_fresh
+    _header(draw, state, now, "FAMILY / NEXT 7 DAYS", page_scale=2)
     outlook = state.get("custody_outlook")
     outlook = outlook if isinstance(outlook, dict) else {}
     zone = _tz({"timezone": config.get("timezone") or outlook.get("timezone") or "UTC"})
     first = now.astimezone(zone).date()
     rows = outlook.get("days")
     days = {row["date"]: row for row in rows if isinstance(row, dict) and isinstance(row.get("date"), str)} if isinstance(rows, list) else {}
-    stale = outlook.get("stale") is not False
-    _text(draw, (497, 40), zone.key, MUTED, align="right", max_width=196)
-    names = {"home": "MOM'S HOUSE", "away": "DAD'S HOUSE", "unknown": "UNKNOWN"}
-    colors = {"home": CYAN, "away": AMBER, "unknown": MUTED, "mixed": WHITE}
-    for index in range(10):
-        date = first + timedelta(days=index)
-        row = days.get(date.isoformat(), {})
-        kind = row.get("state") if not stale else "unknown"
-        kind = kind if kind in colors else "unknown"
-        x, y = 15 + (index % 5) * 98, 60 + (index // 5) * 83
-        draw.rectangle((x, y, x + 89, y + 74), fill=PANEL, outline=CYAN if index == 0 else LINE)
-        _text(draw, (x + 6, y + 7), "TODAY" if index == 0 else date.strftime("%a"), WHITE)
-        _text(draw, (x + 83, y + 7), date.strftime("%m/%d"), MUTED, align="right")
-        if kind != "mixed":
-            _text(draw, (x + 45, y + 30), names[kind], colors[kind], align="center", max_width=82, tracking=1)
-            _text(draw, (x + 45, y + 47), "ALL DAY" if kind != "unknown" else "NO ASSUMPTION", MUTED, align="center", max_width=82)
-        else:
-            _text(draw, (x + 45, y + 22), "CHANGE DAY", WHITE, align="center")
-            segments = row.get("segments")
-            segments = [part for part in segments if isinstance(part, dict)] if isinstance(segments, list) else []
-            if not segments:
-                _text(draw, (x + 45, y + 42), "MIXED / CHECK", MUTED, align="center", max_width=82)
-            for part_index, part in enumerate(segments[:3]):
-                part_kind = part.get("state", "unknown")
-                part_kind = part_kind if part_kind in names else "unknown"
-                start = _dt(part.get("start"))
-                label = {"home": "MOM", "away": "DAD", "unknown": "?"}[part_kind]
-                when = format_time(start.astimezone(zone)) if start else "--:--"
-                _text(draw, (x + 6, y + 36 + part_index * 11), when + " " + label, colors[part_kind], max_width=78)
-            if len(segments) > 3:
-                _text(draw, (x + 83, y + 64), "+", MUTED, align="right")
+    unavailable = state.get("backend_available") is False
+    stale = outlook.get("stale") is not False or unavailable
+    private = not config.get("guest_mode") and not unavailable
+    minutes = config.get("kids_stale_minutes", 30)
+    agenda_ready = (private and not stale and config.get("kids_filter_enabled", True) is True
+                    and calendar_fresh(outlook.get("activity_last_sync"), now, minutes))
+    activities = outlook.get("activities") if agenda_ready else []
+    plans = outlook.get("buzz_plan") if private and calendar_fresh(outlook.get("roster_last_sync"), now, minutes) else {}
+    plans = plans if isinstance(plans, dict) else {}
+    include_leaves = config.get("brief_leave_times_enabled") is True
+
+    draw.rectangle((15, 60, 218, 226), fill=PANEL, outline=CYAN)
+    _text(draw, (23, 67), "TODAY", WHITE, 2)
+    _text(draw, (211, 70), first.strftime("%m/%d"), MUTED, align="right")
+    _draw_family_house(draw, days.get(first.isoformat(), {}) if not stale else {}, zone, 23, 85, 187)
+    draw.line((23, 97, 210, 97), fill=LINE)
+    timed = []
+    for item in activities[:48] if isinstance(activities, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("title"), str):
+            continue
+        start, end = _dt(item.get("start")), _dt(item.get("end"))
+        if start and end and start < end:
+            start, end = start.astimezone(zone), end.astimezone(zone)
+            if start.date() <= first <= (end - timedelta(microseconds=1)).date():
+                timed.append((start, end, item["title"]))
+    for index, (start, end, title) in enumerate(sorted(timed)[:4]):
+        y = 103 + index * 18
+        _text(draw, (23, y), title, WHITE, max_width=187)
+        _text(draw, (23, y + 8), format_time(start) + " - " + format_time(end), MUTED, max_width=187)
+    if not timed and private:
+        _text(draw, (23, 108), "NO TIMED KIDS ACTIVITIES" if agenda_ready else "ACTIVITIES UNAVAILABLE", MUTED, max_width=187)
+    elif len(timed) > 4:
+        _text(draw, (23, 177), f"+{len(timed) - 4} MORE", MUTED, max_width=187)
+    today_plan = plans.get(first.isoformat())
+    if isinstance(today_plan, dict):
+        draw.line((23, 188, 210, 188), fill=LINE)
+        _draw_buzz_plan(draw, today_plan, zone, 23, 195, 187, include_leaves=include_leaves)
+
+    for index in range(6):
+        day = first + timedelta(days=index + 1)
+        x, y = 228 + (index % 2) * 137, 60 + (index // 2) * 56
+        draw.rectangle((x, y, x + 131, y + 54), fill=PANEL, outline=LINE)
+        _text(draw, (x + 6, y + 5), day.strftime("%a"), WHITE)
+        _text(draw, (x + 125, y + 5), day.strftime("%m/%d"), MUTED, align="right")
+        _draw_family_house(draw, days.get(day.isoformat(), {}) if not stale else {}, zone, x + 6, y + 17, 119)
+        plan = plans.get(day.isoformat())
+        if isinstance(plan, dict):
+            _draw_buzz_plan(draw, plan, zone, x + 6, y + 28, 119, include_leaves=include_leaves)
 
 
 def visible_timers(state, now):
@@ -1350,7 +1425,7 @@ def render_frame(state, config, size=BASE_SIZE):
         personal_item = _selected_personal(state, now, config)
         if personal_item and personal_item.get("kind") == "dinner" and not _dinner_kids_allowed(state, config, now):
             personal_item = None
-        _personal(draw, state, config, now, personal_item)
+        _personal(draw, state, config, now, personal_item, image)
     elif view == "dinner_options":
         from .household_policy import dinner_options_visible
         if dinner_options_visible(state, config, now):

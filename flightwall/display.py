@@ -156,6 +156,10 @@ def entry_render_state(status, config, entry, now=None):
         artwork = decode_artwork(image_data)
         if artwork is not None:
             state["artwork_image"] = artwork
+    if view == "personal" and item and item.get("kind") == "dinner" and image_data:
+        artwork = decode_artwork(image_data)
+        if artwork is not None:
+            state["dinner_image"] = artwork
     return state
 
 
@@ -214,7 +218,7 @@ class AnalogNavigation:
 
 ANIMATED_VIEWS = frozenset({
     "details", "map", "schedule", "trip_summary", "trip_map", "home",
-    "flight_status", "custody_outlook", "personal", "local_visit",
+    "flight_status", "personal", "local_visit",
 })
 
 
@@ -530,23 +534,29 @@ def attach_nearby_map(frame, state, config, connection, screen_size, now,
     """
     if (state.get("view") != "nearby" or not card_enabled("nearby", config)
             or config.get("demo") is True or state.get("demo", False) is not False
-            or config.get("nearby_enabled") is not True or config.get("nearby_detailed_map", True) is not True):
+            or config.get("nearby_enabled") is not True):
         return frame
-    try:
-        point = connection.local_map_config()
-        from .nearby_map import render_map
-        left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
-        box = (left + 14 * width / 512, top + 56 * height / 256,
-               297 * width / 512, 149 * height / 256)
-        _, _, dest_w, dest_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
-        size = (max(1, min(2048, round(box[2] * dest_w / 512))),
-                max(1, min(1024, round(box[3] * dest_h / 256))))
-        image = render_map({**config, **point}, size, rows=state.get("nearby", []), now=now)
-        if isinstance(image, Image.Image):
-            frame.info["geographic_patch"] = (box, image)
-    except (OSError, ValueError, TypeError, AttributeError, ImportError):
-        # A missing regional asset or private point retains the position plot.
-        pass
+    left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+    box = (left + 14 * width / 512, top + 56 * height / 256,
+           297 * width / 512, 149 * height / 256)
+    image = None
+    if config.get("nearby_detailed_map", True) is True:
+        try:
+            point = connection.local_map_config()
+            from .nearby_map import render_map
+            _, _, dest_w, dest_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+            # Reuse the same geographic background during strip animation.
+            # The presentation layer scales it into the current content inset.
+            size = (max(256, min(2048, round(297 * dest_w / 512))),
+                    max(128, min(1024, round(149 * dest_h / 256))))
+            image = render_map({**config, **point}, size, rows=state.get("nearby", []), now=now)
+        except (OSError, ValueError, TypeError, AttributeError, ImportError):
+            pass
+    if not isinstance(image, Image.Image):
+        # Preserve the clear schematic while geography or its local point is unavailable.
+        x, y, w, h = box
+        image = frame.crop((round(x), round(y), round(x + w), round(y + h)))
+    frame.info["geographic_patch"] = (box, image)
     return frame
 
 

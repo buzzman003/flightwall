@@ -13,7 +13,7 @@ from flightwall.display import entry_render_state, fresh_household_status
 NOW = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
 
 
-def labels_for(state):
+def labels_for(state, **config):
     labels = []
     original = render._text
 
@@ -22,7 +22,7 @@ def labels_for(state):
         return original(draw, xy, value, *args, **kwargs)
 
     with patch.object(render, "_text", side_effect=capture):
-        image = render.render_frame(state, {"timezone": "America/Chicago"})
+        image = render.render_frame(state, {"timezone": "America/Chicago", **config})
     return labels, image
 
 
@@ -110,26 +110,43 @@ class CustodyRenderTests(unittest.TestCase):
         ]}
         self.state = {"now": NOW.isoformat(), "view": "custody_outlook", "custody_outlook": self.outlook}
 
-    def test_ten_days_show_houses_changes_and_unknown_without_inference(self):
+    def test_seven_days_show_houses_changes_and_unknown_without_inference(self):
         before = deepcopy(self.state)
         labels, image = labels_for(self.state)
         self.assertIn("MOM'S HOUSE", labels)
         self.assertIn("DAD'S HOUSE", labels)
-        self.assertIn("CHANGE DAY", labels)
-        self.assertIn("12:00 AM DAD", labels)
-        self.assertIn("3:00 PM MOM", labels)
-        self.assertEqual(labels.count("UNKNOWN"), 7)
-        self.assertIn("11/09", labels)  # October 31 through November 9, inclusive.
+        self.assertIn("DAD > MOM", labels)
+        self.assertIn("3:00 PM", labels)
+        self.assertEqual(labels.count("UNKNOWN"), 4)
+        self.assertIn("11/06", labels)  # October 31 through November 6, inclusive.
+        self.assertNotIn("ALL DAY", labels)
         self.assertEqual(self.state, before)
         self.assertEqual(image.size, (512, 256))
 
     def test_stale_outlook_hides_previous_houses_and_change_times(self):
         self.outlook["stale"] = True
         labels, image = labels_for(self.state)
-        self.assertEqual(labels.count("UNKNOWN"), 10)
+        self.assertEqual(labels.count("UNKNOWN"), 7)
         self.assertNotIn("MOM'S HOUSE", labels)
         self.assertNotIn("DAD'S HOUSE", labels)
-        self.assertNotIn("3:00 PM MOM", labels)
+        self.assertNotIn("DAD > MOM", labels)
+
+    def test_today_agenda_and_buzz_plan_are_hidden_from_guests_and_stale_frames(self):
+        self.outlook.update(activities=[{"title": "Rory Dance", "start": "2026-10-31T20:00:00Z", "end": "2026-10-31T21:00:00Z"}],
+                            activity_last_sync=NOW.isoformat(), roster_last_sync=NOW.isoformat(), buzz_plan={"2026-10-31": {
+                                "home": True, "away": True, "arrival": "2026-10-31T18:30:00Z", "leave": "2026-10-31T22:00:00Z"}})
+        labels, _ = labels_for(self.state, brief_leave_times_enabled=True)
+        self.assertIn("Rory Dance", labels)
+        self.assertIn("3:00 PM - 4:00 PM", labels)
+        self.assertIn("BUZZ HOME/GONE PLAN", labels)
+        self.assertIn("VPS ARR 1:30 PM", labels)
+        self.assertIn("LEAVE 5:00 PM", labels)
+        for state, config in ((self.state, {"guest_mode": True}),
+                              (self.state | {"now": (NOW + timedelta(minutes=31)).isoformat()}, {}),
+                              (self.state | {"backend_available": False}, {})):
+            labels, _ = labels_for(state, **config)
+            self.assertNotIn("Rory Dance", labels)
+            self.assertNotIn("BUZZ HOME/GONE PLAN", labels)
 
     def test_household_clock_labels_repeated_dst_hour_correctly(self):
         before, image = labels_for(self.state | {"now": "2026-11-01T06:30:00Z"})

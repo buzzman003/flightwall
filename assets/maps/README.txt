@@ -20,6 +20,14 @@ no guarantee of accuracy or fitness for use." The datasets maintainers release
 their selection and formatting under the Public Domain Dedication and License:
 https://opendatacommons.org/licenses/pddl/1-0/
 
+airport-timezones.json maps 7,680 known IATA airport codes to IANA time zone
+names for opt-in MiCrew schedule parsing. It retains just the iata and tz
+columns for codes present in airports.json with one unambiguous nonempty zone.
+Source snapshot: airportsdata v2026.08.03, MIT. The upstream license is included
+as LICENSE-airportsdata.txt. An airport without a valid zone is unavailable to
+the parser.
+https://github.com/mborsetti/airportsdata/blob/fb23038b6fd01e572ce508ac1a077a6e6b3354c5/airportsdata/airports.csv
+
 The renderer's 5 x 7 bitmap alphabet is original project code; no font files or
 system fonts are needed. Map screenshots show fictional demonstration flights.
 The route line is a great-circle reference, never a filed route or live track.
@@ -54,9 +62,46 @@ Water areas use closed ways or complete outer/inner relation rings; open water
 lines are never closed by guessing. Roads retain only class and US98 marker;
 runways retain geometry without airport names, labels or operational details.
 The runtime clips geography to its inset and keeps a true circular traffic
-radius; any viewport outside this regional asset uses the existing radar map.
-Its private display center is used only in memory and stays outside releases.
-Map features are reference geography, not current runway/road operating data.
+radius. Its private display center is used only in memory and stays outside
+releases. Map features are reference geography, not operating data.
+
+GULF COAST NEARBY GEOGRAPHY
+
+gulf-coast.json.gz contains land, water, road and runway vectors in the fixed
+public region west=-90.9, south=28, east=-82, north=33.1. The Fort Walton Beach
+and Destin 10, 25, 50 and 100 mile presets use this wider map as needed. At 50
+miles and above, only major roads and US 98 are drawn. Beyond the regional
+coverage, the renderer uses its generalized Natural Earth world map.
+
+Source files retrieved November 4, 2026, Central Time:
+* Natural Earth 1:10m land and lakes, tagged v5.1.2 (public domain).
+  https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_land.geojson
+  https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_10m_lakes.geojson
+* U.S. Census Bureau TIGERweb 2026 primary and secondary roads (public domain).
+  https://www.census.gov/data/developers/data-sets/TIGERweb-map-service.html
+  https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Transportation/MapServer/layers
+* Public-domain OurAirports runway endpoints from airport-runways.json below.
+
+To rebuild, save the two Natural Earth GeoJSON files as nearby-land.geojson
+and nearby-lakes.geojson. Query TIGERweb Transportation MapServer layers 2
+and 4 and save the two GeoJSON results as nearby-tiger-2.geojson and
+nearby-tiger-4.geojson. Use the following query parameters on each layer:
+
+  where=1=1
+  geometry=-90.9,28,-82,33.1
+  geometryType=esriGeometryEnvelope
+  inSR=4326
+  outSR=4326
+  outFields=MTFCC,NAME,RTTYP
+  geometryPrecision=5
+  maxAllowableOffset=0.0003
+  f=geojson
+
+Run scripts/extract-gulf-coast-map.py --input-dir <source-folder> from the
+repository root using the build-only Shapely dependency. The extractor
+records source checksums, clips and simplifies the vectors, and saves
+the compressed asset. Runtime rendering needs no map service or network
+request. The on-screen attribution reflects the geography actually shown.
 
 AIRPORT WEATHER AND RUNWAY REFERENCES (0.4.7)
 

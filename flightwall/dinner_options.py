@@ -487,7 +487,23 @@ class DinnerOptions:
         return ({"dinner_options_date": result["date"], "dinner_options_generation": result["generation"]}
                 if result["status"] == "ready" else {})
 
-    def select(self, payload, now=None):
+    def picture_for(self, item, now):
+        """Reuse the already generated illustration for this exact dated meal."""
+        try:
+            if item.get("kind") != "dinner" or item.get("cancelled"):
+                return None
+            current = self.status(now)
+            day = dinner_meal_date(item, self.config_getter())
+            if not day or day.isoformat() != current["date"] or current["status"] != "ready":
+                return None
+            title = _selection_title(item["title"])
+            matches = [option for option in current["options"] if _selection_title(option["title"]) == title
+                       and option.get("sides", "").strip().casefold() == (item.get("sides") or "").strip().casefold()]
+            return matches[0].get("image_data") if len(matches) == 1 else None
+        except (OSError, ValueError, TypeError, KeyError):
+            return None
+
+    def select(self, payload, now=None, *, on_selected=None):
         now = _now(now)
         selectors = ({"option", "date", "generation", "request_id"},
                      {"title", "date", "generation", "request_id"})
@@ -526,4 +542,7 @@ class DinnerOptions:
                       "source": "manual", "request_id": payload["request_id"]}
             if option["sides"]:
                 chosen["sides"] = option["sides"]
-            return self.personal.create(chosen)
+            result = self.personal.create(chosen)
+            if result.get("created") and on_selected is not None:
+                on_selected(option, current["date"], current["generation"])
+            return result

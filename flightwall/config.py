@@ -36,6 +36,7 @@ DEFAULTS = {
     "dinner_options_enabled": False, "dinner_options_monthly_limit_usd": 0,
     "dinner_options_preferences": "", "dinner_options_servings": 8, "dinner_options_max_minutes": 60,
     "secondary_calendar_id": "", "secondary_calendar_name": "Buzz Flight Brief",
+    "mycrew_calendar_id": "", "mycrew_clock": "",
     "family_calendar_profile": "chris", "family_calendar_id": "", "family_calendar_name": "",
     "kids_filter_enabled": False, "kids_stale_minutes": 30,
     "presence_enabled": False, "presence_ttl_minutes": 90, "home_radius_m": 200,
@@ -114,6 +115,10 @@ def validate(key, value):
     if key == "national_radar_scope":
         if not isinstance(value, str) or value not in {"national", "southeast", "local", "hyperlocal"}:
             raise ValueError("Choose national, southeast, local or hyperlocal radar")
+        return value
+    if key == "mycrew_clock":
+        if not isinstance(value, str) or value not in {"", "station-local"}:
+            raise ValueError("MiCrew clocks require explicit station-local confirmation")
         return value
     if isinstance(original, bool):
         if not isinstance(value, bool):

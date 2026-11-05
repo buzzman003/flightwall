@@ -60,7 +60,13 @@
             "set dinner menu today to {Meal}",
             "set the dinner menu today to {Meal}",
             "set dinner menu to {Meal} today",
-            "set today dinner to {Meal}"
+            "set today dinner to {Meal}",
+            "today's dinner card is going to be {Meal}",
+            "today's dinner card is {Meal}",
+            "today's dinner is {Meal}",
+            "today's dinner card",
+            "set today's dinner card to {Meal}",
+            "dinner today is going to be {Meal}"
           ]
         },
         {
@@ -85,7 +91,14 @@
             "set dinner menu tomorrow to {Meal}",
             "set the dinner menu tomorrow to {Meal}",
             "set dinner menu to {Meal} tomorrow",
-            "set tomorrow dinner to {Meal}"
+            "set tomorrow dinner to {Meal}",
+            "tomorrow's dinner card is going to be {Meal}",
+            "tomorrow dinner card is going to be {Meal}",
+            "tomorrow's dinner card is {Meal}",
+            "tomorrow's dinner is {Meal}",
+            "tomorrow's dinner card",
+            "set tomorrow's dinner card to {Meal}",
+            "dinner tomorrow is going to be {Meal}"
           ]
         },
         {
@@ -290,6 +303,11 @@
             "set a {TimerLabel} timer for {TimerDuration}",
             "start a timer for {TimerDuration} called {TimerLabel}",
             "set a timer for {TimerDuration}",
+            "add a {TimerLabel} {TimerDuration} timer",
+            "add {TimerLabel} {TimerDuration} timer",
+            "set a {TimerLabel} {TimerDuration} timer",
+            "start a {TimerLabel} {TimerDuration} timer",
+            "{TimerLabel} {TimerDuration} timer",
             "start the {TimerLabel} timer"
           ]
         },

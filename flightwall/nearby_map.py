@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
+import gzip
 import json
 import math
 from pathlib import Path
@@ -17,6 +18,8 @@ from PIL import Image, ImageDraw
 
 
 ASSET_PATH = Path(__file__).resolve().parent.parent / "assets" / "maps" / "fort-walton-destin.json"
+REGIONAL_ASSET_PATH = ASSET_PATH.with_name("gulf-coast.json.gz")
+MAX_ASSET_BYTES = 12 * 1024 * 1024
 WATER = (6, 25, 40)
 LAND = (19, 39, 39)
 SHORE = (52, 88, 96)
@@ -46,13 +49,31 @@ def _ring(value):
 
 @lru_cache(maxsize=1)
 def _load_asset():
+    return _read_asset(ASSET_PATH, "ODbL-1.0")
+
+
+@lru_cache(maxsize=1)
+def _load_regional_asset():
+    return _read_asset(REGIONAL_ASSET_PATH, "public-domain", compressed=True)
+
+
+def _read_asset(path, license_name, *, compressed=False):
     """Only bundled, bounded, explicitly licensed map data is accepted."""
     try:
-        if ASSET_PATH.stat().st_size > 12 * 1024 * 1024:
+        if path.stat().st_size > MAX_ASSET_BYTES:
             return None
-        data = json.loads(ASSET_PATH.read_text(encoding="utf-8"))
+        if compressed:
+            with gzip.open(path, "rb") as source:
+                contents = source.read(MAX_ASSET_BYTES + 1)
+            if len(contents) > MAX_ASSET_BYTES:
+                return None
+        else:
+            contents = path.read_text(encoding="utf-8")
+        data = json.loads(contents)
+        if not isinstance(data, dict):
+            return None
         bounds = data.get("bounds")
-        if (data.get("schema") != 1 or data.get("license") != "ODbL-1.0"
+        if (data.get("schema") != 1 or data.get("license") != license_name
                 or not isinstance(bounds, list) or len(bounds) != 4 or not all(_number(v) for v in bounds)
                 or not -180 <= bounds[0] < bounds[2] <= 180 or not -90 <= bounds[1] < bounds[3] <= 90):
             return None
@@ -92,7 +113,7 @@ def _load_asset():
         if not any(feature[0] == "land" for feature in parsed):
             return None
         return tuple(bounds), tuple(parsed)
-    except (OSError, ValueError, TypeError, KeyError, RecursionError, OverflowError):
+    except (OSError, EOFError, ValueError, TypeError, KeyError, RecursionError, OverflowError):
         return None
 
 
@@ -134,13 +155,19 @@ def _projection(latitude, longitude, radius, size):
 
 @lru_cache(maxsize=4)
 def _base_map(latitude, longitude, radius, size, draw_radius=True):
-    asset = _load_asset()
-    if asset is None:
-        return None
-    bounds, features = asset
     project, center, pixels, footer, extent = _projection(latitude, longitude, radius, size)
-    if any((extent[0] < bounds[0], extent[1] < bounds[1], extent[2] > bounds[2], extent[3] > bounds[3])):
-        return _wide_base_map(latitude, longitude, radius, size, draw_radius)
+    local = _load_asset()
+    if local is not None and _covers(local[0], extent):
+        features = local[1]
+        attribution = "(C) OPENSTREETMAP CONTRIBUTORS / ODbL"
+    else:
+        regional = _load_regional_asset()
+        if regional is None or not _covers(regional[0], extent):
+            if local is None and regional is None:
+                return None
+            return _wide_base_map(latitude, longitude, radius, size, draw_radius)
+        features = regional[1]
+        attribution = "NATURAL EARTH / US CENSUS / OURAIRPORTS"
     image = Image.new("RGB", size, WATER)
     draw = ImageDraw.Draw(image)
     for kind in ("land", "water"):
@@ -160,7 +187,12 @@ def _base_map(latitude, longitude, radius, size, draw_radius=True):
             layer = "runway" if kind == "runway" else "98" if highway_98 else "major" if major else "minor"
             if kind not in {"road", "runway"} or layer != wanted:
                 continue
+            if radius >= 50 and layer == "minor":
+                continue
             points = [project(point) for point in rings[0]]
+            if (max(x for x, _ in points) < 0 or min(x for x, _ in points) >= size[0]
+                    or max(y for _, y in points) < 0 or min(y for _, y in points) >= size[1] - footer):
+                continue
             color = {"minor": ROAD, "major": MAJOR_ROAD, "98": HIGHWAY_98, "runway": RUNWAY}[layer]
             width = max(1, round(size[1] * {"minor": .002, "major": .0035, "98": .005, "runway": .009}[layer]))
             draw.line(points, fill=color, width=width, joint="curve")
@@ -188,8 +220,13 @@ def _base_map(latitude, longitude, radius, size, draw_radius=True):
     # This text is deliberately outside the LED shader. Keep it on every map,
     # including an empty-aircraft view, to satisfy the map-data attribution.
     _text(draw, (5, size[1] - footer + max(1, (footer - 7 * text_scale) // 2)),
-          "(C) OPENSTREETMAP CONTRIBUTORS / ODbL", MUTED, text_scale)
+          attribution, MUTED, text_scale, max_width=size[0] - 10)
     return image
+
+
+def _covers(bounds, extent):
+    return (bounds[0] <= extent[0] and bounds[1] <= extent[1]
+            and bounds[2] >= extent[2] and bounds[3] >= extent[3])
 
 
 @lru_cache(maxsize=4)
@@ -234,7 +271,7 @@ def regional_background(latitude, longitude, radius_miles, size):
         return None
     bounds = asset[0]
     extent = _projection(latitude, longitude, radius, size)[-1]
-    if any((extent[0] < bounds[0], extent[1] < bounds[1], extent[2] > bounds[2], extent[3] > bounds[3])):
+    if not _covers(bounds, extent):
         return None
     image = _base_map(latitude, longitude, radius, size, False)
     return image.copy() if image is not None else None
@@ -283,9 +320,14 @@ def render_map(config, size, rows=(), now=None):
     ranked = sorted(valid.values(), key=lambda item: (item[1], item[4]["hex"]))[:40]
     cx, cy = center
     marker = max(3, round(size[1] / 110))
+    draw.ellipse((cx - marker - 2, cy - marker - 2, cx + marker + 2, cy + marker + 2), fill=(3, 12, 18))
     draw.line((cx - marker, cy, cx + marker, cy), fill=WHITE, width=2)
     draw.line((cx, cy - marker, cx, cy + marker), fill=WHITE, width=2)
     from .render import _text
+    scale = max(1, min(3, size[1] // 180))
+    home_x, home_y = cx + marker + 4, cy + marker + 2
+    draw.rectangle((home_x - 2, home_y - 2, home_x + 23 * scale, home_y + 7 * scale + 1), fill=(3, 12, 18))
+    _text(draw, (home_x, home_y), "HOME", WHITE, scale)
     for index, (_, _, lon, lat, row) in reversed(list(enumerate(ranked))):
         x, y = project((lon, lat))
         color = CYAN if index < 3 else MUTED
@@ -301,7 +343,6 @@ def render_map(config, size, rows=(), now=None):
         else:
             draw.ellipse((x - marker, y - marker, x + marker, y + marker), fill=color, outline=(3, 12, 18))
         if index < 3:
-            scale = max(1, min(3, size[1] // 180))
             tx, ty = min(size[0] - 10 * scale, x + marker + 3), min(size[1] - footer - 10 * scale, max(3, y - marker - 8 * scale))
             _text(draw, (tx + 1, ty + 1), str(index + 1), (0, 0, 0), scale)
             _text(draw, (tx, ty), str(index + 1), CYAN, scale)

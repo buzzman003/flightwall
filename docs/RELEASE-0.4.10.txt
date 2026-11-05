@@ -1,0 +1,24 @@
+FLIGHT WALL 0.4.10
+
+Family Agenda puts today's timed activities on the left and the next six days
+on the right, with custody and planned household availability where known.
+An explicitly selected FC View roster-note source can restore timed legs
+from a supported MiCrew rotation export. It uses airport-local time zones,
+retains only scheduled leg/report fields, and preserves deadhead markings.
+No separate MiCrew account is needed when FC View has the supported notes.
+Detailed nearby geography extends from the local map to the Gulf Coast at
+10, 25, 50 and 100 miles. The map remains crisp with LED effects on the board.
+Verified nearby routes can display IATA or ICAO airport codes.
+
+Alexa has more tomorrow dinner and named timer phrases. Unclear day requests
+get a clarification rather than a silent date switch. Saying cancel at a
+dinner prompt stops the conversation. Use “Alexa, open Flight Wall skill”
+or “Alexa, ask Flight Wall to set tomorrow's dinner to lasagna.”
+
+Selecting a generated meal can show its existing picture and email its full
+recipe when the owner configures a local Gmail app password. No public or
+remote settings accept mail destinations. SMS requires separate setup.
+
+The optional flightwall_autostart service opens the normal Ports entry once
+per boot. Escape returns to the games menu. The signed update preserves
+existing settings, games, trusted keys and the original pinned recovery helper.

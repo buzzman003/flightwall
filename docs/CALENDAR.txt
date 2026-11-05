@@ -130,10 +130,39 @@ Supported synthetic flight titles include:
   DH DL1234 ATL-MEM
 
 Flight start/end timestamps with offsets are authoritative. Airport-local digits
-in the title are not reinterpreted using the home timezone. Unknown/ambiguous
-multi-leg summaries, cancelled events and all-day flight entries are skipped.
+in the title are not reinterpreted using the home timezone. The normal title
+parser skips ambiguous summaries, cancelled events and all-day flight entries.
 A supported Report: 1219L event supplies a report time within its duty interval;
 it does not create another leg from the description.
+
+OPTIONAL MICREW ROTATION NOTES IN FC VIEW
+
+Use this local setup only after verifying that the chosen calendar's numeric
+flight rows belong to your configured airline and their clocks are local to
+each airport. List Chris's calendars and select the exact verified label.
+FC View can serve both the standard flight role and the MiCrew note role.
+Example for a confirmed DL export in a calendar actually named FC View:
+
+  "$FW" config --set airline DL
+  "$FW" select-calendar --person chris --role mycrew --name 'FC View' --station-local
+
+The supported format is a one-day all-day event with a rotation code, a local
+report line such as Report: 0800L, and leg rows such as FR06 DH 123 ATL-SJU
+0900-1300. The weekday and day of month must match the event's explicit date.
+Report and departure clocks use the respective origin airport's time zone.
+An arrival uses its destination time zone and must have a unique date after
+departure. The parser skips ambiguous clocks, unknown airports and unsupported
+rotation layouts. Deadheads stay marked and are excluded from operating-flight
+tracking. These are scheduled times. Any live status comes from its separately
+enabled provider.
+
+Notes are read transiently from the confirmed source. The private cache stores
+only parsed flight fields and report times. Existing timed legs take precedence
+if another source disagrees on the departure clock. To turn off the MiCrew
+note role and refresh the cache:
+
+  "$FW" config --set mycrew_clock '' --set mycrew_calendar_id ''
+  "$FW" sync
 
 Custody uses its own selected source and exact Mom / Mom's House / Mom’s House
 and corresponding Dad aliases. Mom maps to Home; Dad maps to Away. Missing,

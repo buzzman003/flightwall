@@ -146,6 +146,19 @@ class HouseholdVoiceTests(unittest.TestCase):
         self.assertIn("1 minute, 30 seconds", speech(saved))
         self.assertEqual(self.board.store.list_timers()[0]["duration_seconds"], 90)
 
+    def test_named_five_minute_timer_uses_duration_slot_and_starts_on_board(self):
+        model_path = Path(__file__).parents[1] / "integrations/alexa/interaction-model-en-US.json"
+        intents = json.loads(model_path.read_text())["interactionModel"]["languageModel"]["intents"]
+        phrase = "add a {TimerLabel} {TimerDuration} timer"
+        matches = [row for row in intents if phrase in row.get("samples", [])]
+        self.assertEqual([row["name"] for row in matches], ["StartTimerIntent"])
+        self.assertIn("{TimerLabel} {TimerDuration} timer", matches[0]["samples"])
+        self.assertIn({"name": "TimerDuration", "type": "AMAZON.DURATION"}, matches[0]["slots"])
+        response = self.call(matches[0]["name"], {"TimerLabel": "Reading", "TimerDuration": "PT5M"})
+        self.assertIn("Started the Reading timer for 5 minutes on Flight Wall", speech(response))
+        self.assertEqual(self.board.starts, [{"label": "Reading", "duration_seconds": 300,
+                                            "source": "alexa", "request_id": "synthetic-initial"}])
+
     def test_invalid_duration_and_label_do_not_write(self):
         for duration in ("PT0S", "PT0.5S", "P2D", "P1M", "unknown"):
             response = self.call("StartTimerIntent", {"TimerLabel": "Tea", "TimerDuration": duration})

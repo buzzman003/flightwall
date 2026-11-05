@@ -52,6 +52,14 @@ def test_unique_airborne_callsign_is_projected_without_private_or_duplicate_tele
     assert not {"latitude", "longitude", "groundspeed", "altitude", "track", "route"}.intersection(route)
 
 
+def test_nearby_route_falls_back_to_icao_when_iata_is_missing():
+    route = match_nearby_route(data(provider(
+        origin={"code_iata": "ATL", "code_icao": "KATL"},
+        destination={"code_iata": None, "code_icao": "KVPS"})), aircraft(), NOW)
+    assert (route["origin"], route["destination"]) == ("ATL", "KVPS")
+    assert fresh_nearby_route(aircraft(route=route), NOW) == route
+
+
 @pytest.mark.parametrize("callsign", [None, "N123AB", "abc123", "DL123", "DAL 123", "DAL123/../", "search"])
 def test_tail_hex_arbitrary_path_and_noncanonical_callsign_never_become_paid_lookups(callsign):
     assert nearby_commercial_ident(aircraft(callsign=callsign)) is None

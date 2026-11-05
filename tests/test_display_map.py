@@ -51,22 +51,51 @@ def test_map_follows_the_entire_content_inset_and_never_exports_the_pin():
         assert set(frame.info) == {"geographic_patch"}
 
 
-def test_demo_disabled_map_and_missing_asset_keep_position_plot():
-    frame = Image.new("RGB", (512, 256))
+def test_demo_disabled_feed_and_other_views_have_no_nearby_map():
     for state, config in (({"view": "nearby", "demo": True}, {"nearby_enabled": True}),
                           ({"view": "trip_map"}, {"nearby_enabled": True}),
-                          ({"view": "nearby"}, {"nearby_enabled": False}),
-                          ({"view": "nearby"}, {"nearby_enabled": True, "nearby_detailed_map": False})):
+                          ({"view": "nearby"}, {"nearby_enabled": False})):
+        frame = Image.new("RGB", (512, 256))
         with patch("flightwall.nearby_map.render_map") as render:
             attach_nearby_map(frame, state, config, object(), (1920, 1080), NOW)
             render.assert_not_called()
         assert "geographic_patch" not in frame.info
-    with patch("flightwall.nearby_map.render_map", return_value=None):
-        class Connection:
-            def local_map_config(self):
-                return {}
-        attach_nearby_map(frame, {"view": "nearby"}, {"nearby_enabled": True}, Connection(), (1920, 1080), NOW)
-    assert "geographic_patch" not in frame.info
+
+
+@pytest.mark.parametrize("detailed", [False, True])
+def test_schematic_stays_clear_when_geographic_detail_is_disabled_or_unavailable(detailed):
+    class Connection:
+        def local_map_config(self):
+            return {}
+
+    frame = Image.new("RGB", (512, 256), (64, 160, 208))
+    with patch("flightwall.nearby_map.render_map", return_value=None) as render:
+        attach_nearby_map(frame, {"view": "nearby"}, {"nearby_enabled": True, "nearby_detailed_map": detailed},
+                          Connection(), (1920, 1080), NOW)
+    assert render.call_count == int(detailed)
+    box, image = frame.info["geographic_patch"]
+    assert box == (14, 56, 297, 149)
+    assert image.size == (297, 149)
+    assert image.getpixel((20, 20)) == (64, 160, 208)
+
+
+def test_detail_stays_attached_at_small_sizes_and_during_strip_animation():
+    class Connection:
+        def local_map_config(self):
+            return {}
+
+    frame = Image.new("RGB", (512, 256))
+    state = {"view": "nearby",
+             "timers": [{"id": "tea", "label": "Tea", "ends_at": (NOW + timedelta(minutes=5)).isoformat()}]}
+    config = {"nearby_enabled": True}
+    with patch("flightwall.nearby_map.render_map", side_effect=lambda c, size, **kw: Image.new("RGB", size)) as render:
+        attach_nearby_map(frame, state, config, Connection(), (432, 216), NOW, 0, 0)
+        old_box, _ = frame.info["geographic_patch"]
+        attach_nearby_map(frame, state, config, Connection(), (432, 216), NOW, 1, 0)
+        new_box, image = frame.info["geographic_patch"]
+    assert old_box != new_box
+    assert image.size == (256, 128)
+    assert [call.args[1] for call in render.call_args_list] == [(256, 128), (256, 128)]
 
 
 def test_invalid_patch_cannot_draw_over_other_views_or_outside_board():

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Optional Batocera service, once per boot via the normal Ports entry.
+set -eu
+STATE=/run/flightwall-autostart
+DATA=/userdata/system/configs/flightwall
+PORT='/userdata/roms/ports/Flight Wall.sh'
+case "${1:-}" in
+start)
+    [ -x "$PORT" ] || exit 1
+    mkdir -m 700 "$STATE" 2>/dev/null || exit 0
+    mkdir -p "$DATA/logs"
+    nohup /bin/sh "$0" run </dev/null >>"$DATA/logs/autostart.log" 2>&1 &
+    ;;
+run)
+    export DISPLAY=${DISPLAY:-:0.0}
+    tries=0
+    until pgrep -f '^(/usr/bin/)?emulationstation( |$)' >/dev/null && xset q >/dev/null 2>&1; do
+        [ ! -e "$STATE/stopped" ] && [ "$tries" -lt 90 ] || exit 0
+        tries=$((tries + 1))
+        sleep 1
+    done
+    sleep 3
+    [ ! -e "$STATE/stopped" ] || exit 0
+    if pgrep -f '^(/usr/bin/python[^ ]* )?(/usr/bin/)?emulatorlauncher( |$)' >/dev/null; then
+        exit 0
+    fi
+    exec "$PORT"
+    ;;
+stop) [ ! -d "$STATE" ] || touch "$STATE/stopped" ;;
+status) [ -d "$STATE" ] && [ ! -e "$STATE/stopped" ] ;;
+*) exit 2 ;;
+esac

@@ -30,6 +30,9 @@ google-*.json
 config.json
 personal.json
 personal-dinner-details.json
+family-agenda.json
+recipe-mail.json
+recipe-outbox.json
 timers.json
 flight-watches.json
 remote-oauth.json

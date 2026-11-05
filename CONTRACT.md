@@ -225,3 +225,19 @@ Version 0.4.2 integration:
   0.3.0 -> published 0.4.1 -> 0.4.2, including failed-start rollback to 0.4.1.
   Keep the original pinned 0.3.0 helper, trusted key, version floor, all private
   fixtures and the full tested-source/frozen-bundle/signature binding intact.
+
+Version 0.4.10 integration:
+- Family Agenda emphasizes today's timed activities and shows the following six
+  days. Household activity matches are a local, allowlisted projection. Planned
+  home and away windows use eligible roster legs and are not phone presence.
+- Nearby maps show detailed local or regional geography at supported zooms.
+  The map bypasses the LED shader in both renderers but follows display
+  brightness and insets. Verified nearby routes prefer IATA, with ICAO as a
+  fallback. Route freshness, matching, and spend limits are unchanged.
+- A selected generated meal reuses its saved picture; the TV alone receives
+  the picture for a visible dinner. Owner-only recipe mail settings live in
+  recipe-mail.json. The voice token cannot read recipes or specify addresses.
+  SMTP is asynchronous, reserves before submitting, and never retries an
+  uncertain attempt automatically. No mail is sent when unconfigured.
+- Optional boot service uses the stable Ports launcher once per boot; it
+  does not bypass staged activation, rollback, or the existing GUI lock.

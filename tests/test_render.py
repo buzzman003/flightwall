@@ -127,8 +127,9 @@ class RenderTests(unittest.TestCase):
         with patch.object(render, "_text", side_effect=capture):
             render.render_frame(self.state, self.config)
         self.assertTrue(any("DAL123" in label for label in labels))
-        self.assertIn("NEARBY AIRCRAFT / ADSB.LOL", labels)
-        self.assertTrue(any(label.startswith("ROUTE N/A / ") for label in labels))
+        self.assertIn("NEARBY AIRCRAFT", labels)
+        self.assertIn("1 FRESH / ADSB.LOL", labels)
+        self.assertIn("0.5 MI", labels)
 
 
 class PersonalRenderTests(unittest.TestCase):

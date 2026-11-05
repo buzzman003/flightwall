@@ -1,8 +1,8 @@
 THIRD-PARTY SOFTWARE AND DATA
 
 Application code and original 5 x 7 bitmap font: MIT (LICENSE.txt).
-Natural Earth and OurAirports data: public domain. Source details and
-download URLs are recorded in assets/maps/README.txt.
+Natural Earth, OurAirports and U.S. Census Bureau TIGERweb road data: public
+domain. Source details and download URLs are recorded in assets/maps/README.txt.
 
 The frozen executable includes CPython (Python Software Foundation License),
 Pillow (MIT-CMU), pygame (LGPL 2.1), SDL and bundled SDL dependencies (their

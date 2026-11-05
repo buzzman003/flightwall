@@ -36,6 +36,10 @@ HELP = ("You can say, start a pasta timer for five minutes, list timers, or canc
 DINNER_HELP = ("Say, set dinner card to chicken teriyaki. "
                "I'll ask about sides and time.")
 DINNER_DAY_INTENTS = {"AddDinnerTodayIntent": 0, "AddDinnerTomorrowIntent": 1}
+DINNER_TEXT_SLOTS = {"AddDinnerIntent": "Meal", **dict.fromkeys(DINNER_DAY_INTENTS, "Meal"),
+                     "SetDinnerSidesIntent": "Sides", "SetDinnerReadyTimeIntent": "ReadyTime"}
+DINNER_CANCEL_PHRASES = {"cancel", "cancel that", "cancel dinner", "cancel the dinner", "stop",
+                         "stop dinner", "never mind", "nevermind"}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
             "american": "AA", "american airlines": "AA", "aa": "AA",
             "united": "UA", "united airlines": "UA", "ua": "UA",
@@ -273,6 +277,22 @@ def _dinner_meal(value, *, day_selected):
             or (not day_selected and re.search(r"\stonight[.!?]?$", meal, re.I))):
         raise ValueError("meal date is ambiguous")
     return meal
+
+
+def _declared_dinner_day(value):
+    """Recover a full, explicit dinner declaration captured inside the Meal slot."""
+    if isinstance(value, str) and len(value) <= MAX_TITLE + 80:
+        match = re.fullmatch(
+            r"(?:(today|tomorrow)(?:['’]?s)? dinner(?: card| menu)?|dinner(?: card| menu)? (today|tomorrow))"
+            r" (?:is going to be|will be|is) (.+)", value.strip(), re.I)
+        if match:
+            day = (match[1] or match[2]).casefold()
+            return int(day == "tomorrow"), match[3]
+    return None, value
+
+
+def _dinner_control(value):
+    return value.strip().casefold().rstrip(".!?") if isinstance(value, str) else None
 
 
 def _dinner_day_words(value, zone):
@@ -554,13 +574,11 @@ def _dinner_detail(client, name, values, pending, context):
         return _speech("Say yes to retry the unchanged dinner, or no to stop and check the board.", pending)
     # An elicited free-text slot can capture the control phrase rather than
     # switch intents. Never save the literal words "skip" as a side dish.
-    control = values.get("Sides") if name == "SetDinnerSidesIntent" else values.get("ReadyTime")
-    if isinstance(control, str):
-        control = control.strip().casefold().rstrip(".!?")
-        if control in {"skip", "skip that", "no", "none", "no sides", "skip ready time"}:
-            name = "SkipDinnerDetailIntent"
-        elif control in {"save dinner", "save dinner menu", "just save dinner"}:
-            name = "SaveDinnerIntent"
+    control = _dinner_control(values.get(DINNER_TEXT_SLOTS.get(name)))
+    if control in {"skip", "skip that", "no", "none", "no sides", "skip ready time"}:
+        name = "SkipDinnerDetailIntent"
+    elif control in {"save dinner", "save dinner menu", "just save dinner"}:
+        name = "SaveDinnerIntent"
     if name == "SaveDinnerIntent":
         if pending.get("phase") == "ready_confirm":
             for key in ("ready_time", "ready_window_start", "ready_window_end"):
@@ -989,6 +1007,9 @@ def lambda_handler(event, lambda_context):
         intent = request.get("intent", {})
         name = intent.get("name")
         pending = _pending(event)
+        values = _slots(intent)
+        if _dinner_control(values.get(DINNER_TEXT_SLOTS.get(name))) in DINNER_CANCEL_PHRASES:
+            name = "AMAZON.CancelIntent"
         if (name == "AMAZON.NoIntent" and pending and pending["kind"] == "dinner"
                 and pending.get("phase") in {"sides", "ready", "ready_confirm"}):
             client = BoardClient()
@@ -1026,7 +1047,6 @@ def lambda_handler(event, lambda_context):
         if name == "AMAZON.YesIntent" and not pending:
             return _speech("There is no request waiting for confirmation. What would you like?")
         client = BoardClient()
-        values = _slots(intent)
         if name in {"ShowShoppingListIntent", "ReadShoppingListIntent", "AddShoppingItemIntent",
                     "RemoveShoppingItemIntent", "ClearShoppingListIntent"}:
             return _shopping_dialog(client, name, values, pending, request)
@@ -1092,13 +1112,17 @@ def lambda_handler(event, lambda_context):
             _request_id(pending["request_id"])
             return _save(client, pending, context)
         if name == "AddDinnerIntent" or name in DINNER_DAY_INTENTS:
-            explicit_day = name in DINNER_DAY_INTENTS
-            if explicit_day or not pending or pending["kind"] != "dinner" or pending.get("phase") == "retry":
+            spoken_day, meal = _declared_dinner_day(values.get("Meal"))
+            day_offset = spoken_day if spoken_day is not None else DINNER_DAY_INTENTS.get(name)
+            if day_offset is not None or not pending or pending["kind"] != "dinner" or pending.get("phase") == "retry":
                 pending = _new_pending("dinner", request, context)
             pending.setdefault("timezone", context["timezone"])
-            if explicit_day:
+            if day_offset is not None:
                 today = _now().astimezone(ZoneInfo(context["timezone"])).date()
-                pending["date"] = (today + timedelta(days=DINNER_DAY_INTENTS[name])).isoformat()
+                pending["date"] = (today + timedelta(days=day_offset)).isoformat()
+                if spoken_day is not None and "Date" in values and values["Date"] != pending["date"]:
+                    pending["date"] = None
+                    return _speech("I heard conflicting dinner dates. Please say dinner today is or dinner tomorrow is, then the meal.", pending)
             elif "Date" in values:
                 try:
                     pending["date"] = _exact_date(values["Date"])
@@ -1107,7 +1131,7 @@ def lambda_handler(event, lambda_context):
                     return _speech("Which exact day is dinner for? Say, set dinner for tomorrow, or give the exact date.", pending)
             if "Meal" in values:
                 try:
-                    title = _dinner_meal(values["Meal"], day_selected=bool(pending.get("date")))
+                    title = _dinner_meal(meal, day_selected=bool(pending.get("date")))
                     if pending.get("title") and pending["title"] != title:
                         for key in ("sides", "sides_checked", "ready_time", "ready_window_start", "ready_window_end", "ready_checked"):
                             pending.pop(key, None)
@@ -1121,10 +1145,8 @@ def lambda_handler(event, lambda_context):
                 except ValueError as exc:
                     pending.pop("title", None)
                     if str(exc) == "meal date is ambiguous":
-                        prompt = ("Please say dinner is, followed by just the meal."
-                                  if pending.get("date") else
-                                  "Please say dinner today is, or dinner tomorrow is, followed by just the meal.")
-                        return _speech(prompt, pending)
+                        pending["date"] = None
+                        return _speech("Please say dinner today is, or dinner tomorrow is, followed by just the meal.", pending)
                     return _speech("Please give a dinner name of one to 160 characters. "
                                    "Say, dinner is chicken teriyaki.", pending)
             if not pending.get("title"):

@@ -31,6 +31,9 @@ message-*.json
 messages-*.json
 personal.json
 personal-dinner-details.json
+family-agenda.json
+recipe-mail.json
+recipe-outbox.json
 content.json
 research-cache.json
 inspiration-cache.json

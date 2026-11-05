@@ -245,6 +245,18 @@ dinner appears only during a known Mom interval. Appointments appear on their
 scheduled day until the end, default one hour. Local cards do not edit Google.
 Use the personal CLI or configure the supplied Alexa custom skill/Lambda.
 The Alexa credential can create/cancel cards but cannot read flights or mail.
+Generated meal selections can reuse their board picture and email the selected
+recipe once. Delivery is off until a local owner configures it in a private
+interactive terminal:
+
+  /userdata/roms/ports/.data/flightwall/flightwall recipe-email --sender YOUR_GMAIL --recipient RECIPIENT_EMAIL
+
+Enter a dedicated Gmail app password at the hidden prompt. Do not use an
+ordinary sign-in password. This is independent of Calendar and read-only
+Gmail consent. Remove the private recipe-mail.json file to stop future sends.
+The setup command itself does not send an email.
+Use the same launcher with recipe-email-status to see delivery counts.
+Accepted means Gmail accepted the submission, not that it reached the inbox.
 
 Chris's short message previews are limited to Airbnb/VRBO/HomeAway sources
 and explicitly approved lawyer senders, shown when he is known home. Gmail
@@ -280,6 +292,12 @@ have scoped credentials and cannot control the application.
 Remote settings persist immediately. Program changes use signed releases:
 build, sign, publish, verify, stage, activate at the next safe Ports launch,
 with startup rollback. Follow the supplied repository/release workflow.
+To opt in to launching at every boot, install the supplied
+batocera/flightwall_autostart service file at
+/userdata/system/services/flightwall_autostart with mode 755, then run
+`batocera-services enable flightwall_autostart`. It launches the normal Ports
+entry once per boot. Escape returns to the games menu. Disable future automatic
+launches with `batocera-services disable flightwall_autostart`.
 Internet connectivity alone does not create a ChatGPT connection or release
 host. No Google app OAuth, phone, Tailscale device, Amazon/AWS deployment,
 source repository, paid API or actual Batocera machine has been connected

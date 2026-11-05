@@ -1047,3 +1047,23 @@ The application does not know who is standing in front of the TV. Phone reports
 and scheduled custody events control display choices, not access to the room.
 Use guest mode when appropriate. Start with DEMO, verify your own flights, then
 opt into integrations one at a time using HOUSEHOLD-SETUP.txt.
+
+0.4.10 SOURCE AND FIELD CHECKS
+
+* The selected Google account already had read-only access to the calendar
+  containing the supported roster-note format. The verified export uses
+  station-local clocks. A read-only projection recovered scheduled operating
+  and deadhead legs, included the imminent trip in the preview horizon, and
+  recovered paired VPS arrivals/departures. No full description, account
+  identifier, hotel or crew details were retained in that check.
+* Nearby map presentation was visually reviewed at 10, 25, 50 and 100 miles
+  with a public example point. Paid routes still require a fresh unique
+  provider match; no paid lookup was forced for this change.
+* The new recipe path was tested using a simulated Gmail SMTP service,
+  including uncertain submission, duplicate selection and recipient changes.
+  Live sending needs a separately configured owner app password. No recipe
+  was emailed or texted by these tests.
+* Automatic boot launch requires the owner-installed opt-in service and a
+  working display session. Service registration was checked; it does not
+  prove a cold boot. Alexa speech routing still needs the updated model and
+  a physical Echo check.

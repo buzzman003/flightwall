@@ -16,6 +16,15 @@ MAX_STATUS_AGE = 300
 NEARBY_ROUTE_MAX_AGE = 600
 TIME_FIELDS = tuple(kind + "_" + event for event in ("out", "off", "on", "in") for kind in ("scheduled", "estimated", "actual"))
 _RFC3339 = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})")
+_NEARBY_AIRPORT = re.compile(r"[A-Z]{3,4}")
+
+
+def _nearby_airport(airport):
+    for key, length in (("code_iata", 3), ("code_icao", 4)):
+        code = airport.get(key)
+        if isinstance(code, str) and len(code) == length and _NEARBY_AIRPORT.fullmatch(code):
+            return code
+    return None
 
 
 def stamp(value):
@@ -238,8 +247,8 @@ def match_nearby_route(data, aircraft, now):
         origin, destination = item.get("origin"), item.get("destination")
         if not isinstance(origin, dict) or not isinstance(destination, dict):
             continue
-        origin, destination = origin.get("code_iata"), destination.get("code_iata")
-        if not all(isinstance(code, str) and re.fullmatch(r"[A-Z]{3}", code) for code in (origin, destination)) or origin == destination:
+        origin, destination = _nearby_airport(origin), _nearby_airport(destination)
+        if not origin or not destination or origin == destination:
             continue
         provider_tail, observed_tail = item.get("registration"), aircraft.get("registration")
         if provider_tail is not None and (not isinstance(provider_tail, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{0,15}", provider_tail)):
@@ -273,7 +282,7 @@ def fresh_nearby_route(aircraft, now):
     if (route.get("source") != SOURCE
             or not isinstance(route.get("provider_flight_id"), str)
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}", route["provider_flight_id"])
-            or not all(isinstance(route.get(key), str) and re.fullmatch(r"[A-Z]{3}", route[key]) for key in ("origin", "destination"))
+            or not all(isinstance(route.get(key), str) and _NEARBY_AIRPORT.fullmatch(route[key]) for key in ("origin", "destination"))
             or route["origin"] == route["destination"]):
         return None
     fields = {"origin", "destination", "source", "fetched_at", "provider_flight_id", "callsign", "registration", "aircraft_hex", "actual_off"}

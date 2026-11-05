@@ -125,13 +125,27 @@ class NearbyGeographyTests(unittest.TestCase):
                 self.assertIsInstance(empty, Image.Image)
                 self.assertEqual(empty.size, (1110, 555))
                 self.assertEqual(actual.tobytes() == empty.tobytes(), radius <= 5)
-        # The wider basemap has its own declared source and no online tiles.
+
+    def test_wide_gulf_coast_presets_show_detail_and_home(self):
+        for radius in (10, 25, 50, 100):
+            with self.subTest(radius=radius):
+                labels = []
+                with patch.object(render, "_text", side_effect=lambda draw, xy, text, *a, **kw: labels.append(text)):
+                    image = nearby_map.render_map(CONFIG | {"nearby_radius_miles": radius}, (1110, 555), now=NOW)
+                self.assertIn("NATURAL EARTH / US CENSUS / OURAIRPORTS", labels)
+                self.assertIn("HOME", labels)
+                colors = {color for count, color in image.getcolors(1110 * 555)}
+                for color in (nearby_map.WATER, nearby_map.LAND, nearby_map.MAJOR_ROAD,
+                              nearby_map.HIGHWAY_98, nearby_map.RUNWAY):
+                    self.assertIn(color, colors)
+
+    def test_outside_regional_coverage_has_home_and_truthful_attribution(self):
         labels = []
-        nearby_map._base_map.cache_clear()
-        nearby_map._wide_base_map.cache_clear()
         with patch.object(render, "_text", side_effect=lambda draw, xy, text, *a, **kw: labels.append(text)):
-            nearby_map.render_map(CONFIG | {"nearby_radius_miles": 100}, (1110, 555), now=NOW)
+            nearby_map.render_map(CONFIG | {"home_latitude": 39, "home_longitude": -96}, (1110, 555), now=NOW)
         self.assertIn("NATURAL EARTH / LIMITED DETAIL", labels)
+        self.assertIn("HOME", labels)
+        self.assertNotIn("NATURAL EARTH / US CENSUS / OURAIRPORTS", labels)
 
     def test_corrupt_missing_or_unlicensed_asset_is_not_silently_displayed(self):
         valid = json.loads(nearby_map.ASSET_PATH.read_text(encoding="utf-8"))
@@ -144,7 +158,9 @@ class NearbyGeographyTests(unittest.TestCase):
             else:
                 path.stat.return_value.st_size = len(content)
                 path.read_text.return_value = content
-            with self.subTest(content=None if content is None else content[:20]), patch.object(nearby_map, "ASSET_PATH", path):
+            with (self.subTest(content=None if content is None else content[:20]),
+                  patch.object(nearby_map, "ASSET_PATH", path),
+                  patch.object(nearby_map, "_load_regional_asset", return_value=None)):
                 nearby_map._load_asset.cache_clear()
                 nearby_map._base_map.cache_clear()
                 self.assertIsNone(nearby_map.render_map(CONFIG, (1110, 555), now=NOW))

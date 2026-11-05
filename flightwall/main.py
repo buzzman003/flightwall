@@ -36,15 +36,21 @@ def parser():
     authorize.add_argument("--person", choices=["chris", "lisa"], help="Use this person's separate account; omitted keeps the legacy Chris setup")
     calendars = commands.add_parser("calendars", help="List actual calendars visible to the selected Google account")
     calendars.add_argument("--person", choices=["chris", "lisa"], help="Select a separate household account")
-    select = commands.add_parser("select-calendar", help="Assign a primary/secondary flight or family calendar role")
+    select = commands.add_parser("select-calendar", help="Assign a flight, MiCrew rotation or family calendar role")
     select.add_argument("--name", help="Calendar name; defaults to FC View for flights or Buzz Flight Brief for secondary")
     select.add_argument("--id", dest="calendar_id")
     select.add_argument("--person", choices=["chris", "lisa"], help="Select the Google account that owns this calendar")
-    select.add_argument("--role", choices=["flight", "secondary", "family"], default="flight",
-                        help="Chris primary flight (default), Chris secondary flight, or either person's family calendar")
+    select.add_argument("--role", choices=["flight", "secondary", "mycrew", "family"], default="flight",
+                        help="Chris's flight/rotation calendars or either person's family calendar")
+    select.add_argument("--station-local", action="store_true",
+                        help="For mycrew only, confirm its exported clocks use each airport's local time")
     config = commands.add_parser("config", help="View or change local configuration")
     config.add_argument("--set", nargs=2, action="append", metavar=("KEY", "VALUE"), default=[])
     commands.add_parser("sync", help="Refresh selected calendars from the current account setup")
+    recipe = commands.add_parser("recipe-email", help="Privately configure email for future selected recipes")
+    commands.add_parser("recipe-email-status", help="Check recipe email readiness without showing private data")
+    recipe.add_argument("--sender", required=True)
+    recipe.add_argument("--recipient", required=True)
     secret = commands.add_parser("store-secret", help="Store your own optional API credential privately")
     secret.add_argument("name", choices=["flightaware", "openai"])
     secret.add_argument("--file", type=Path)
@@ -115,15 +121,19 @@ def _mirror_legacy_chris(store):
 
 def _scoped_calendars_selected(store):
     config = store.get()
-    return bool(config.get("secondary_calendar_id") or config.get("family_calendar_id") or
+    return bool(config.get("secondary_calendar_id") or config.get("family_calendar_id") or config.get("mycrew_calendar_id") or
                 any((store.data_dir / "accounts" / person / "google-token.json").exists()
                     for person in ("chris", "lisa")))
 
 
-def _select_calendar(store, name=None, calendar_id=None, *, person=None, role="flight"):
+def _select_calendar(store, name=None, calendar_id=None, *, person=None, role="flight", station_local=False):
     from .calendar_client import CalendarClient, CalendarError
-    if role not in {"flight", "secondary", "family"}:
-        raise CalendarError("Choose calendar role flight, secondary or family")
+    if role not in {"flight", "secondary", "mycrew", "family"}:
+        raise CalendarError("Choose calendar role flight, secondary, mycrew or family")
+    if role == "mycrew" and (not station_local or not (name or calendar_id)):
+        raise CalendarError("Select a verified calendar for MiCrew and confirm its airport-local clocks with --station-local.")
+    if station_local and role != "mycrew":
+        raise CalendarError("Use --station-local only when selecting the MiCrew role.")
     legacy = person is None and role == "flight"
     manager = None
     if legacy:
@@ -131,7 +141,7 @@ def _select_calendar(store, name=None, calendar_id=None, *, person=None, role="f
     else:
         from .household_calendar import HouseholdCalendars
         person = person or (store.get().get("family_calendar_profile", "chris") if role == "family" else "chris")
-        if role in {"flight", "secondary"} and person != "chris":
+        if role in {"flight", "secondary", "mycrew"} and person != "chris":
             raise CalendarError("Flight calendar roles use Chris's account. Use --role family for Lisa's family calendar.")
         manager = HouseholdCalendars(store.data_dir, store.get)
         calendars = manager.list_calendars(person)
@@ -148,6 +158,13 @@ def _select_calendar(store, name=None, calendar_id=None, *, person=None, role="f
                           "family_calendar_name": item["name"], "kids_filter_enabled": True})
         elif role == "secondary":
             store.update({"secondary_calendar_id": item["id"], "secondary_calendar_name": item["name"], "demo": False})
+        elif role == "mycrew":
+            from .mycrew import STATION_LOCAL
+            if item["id"] == store.get().get("family_calendar_id"):
+                raise CalendarError("Choose a flight calendar for MiCrew rotation notes, separate from the custody source.")
+            if not store.get().get("airline"):
+                raise CalendarError("Set your operating airline locally before selecting numeric MiCrew flight notes.")
+            store.update({"mycrew_calendar_id": item["id"], "mycrew_clock": STATION_LOCAL})
         else:
             store.update({"calendar_id": item["id"], "calendar_name": item["name"], "timezone": item["timezone"], "demo": False})
         synced = manager.sync()
@@ -227,7 +244,8 @@ def main(argv=None):
                 from .calendar_client import CalendarClient
                 emit(CalendarClient(args.data_dir, store.get()).list_calendars())
         elif command == "select-calendar":
-            emit(_select_calendar(store, args.name, args.calendar_id, person=args.person, role=args.role))
+            emit(_select_calendar(store, args.name, args.calendar_id, person=args.person, role=args.role,
+                                  station_local=args.station_local))
         elif command == "sync":
             if _scoped_calendars_selected(store):
                 from .household_calendar import HouseholdCalendars
@@ -237,6 +255,24 @@ def main(argv=None):
                 snapshot = CalendarClient(args.data_dir, store.get()).sync()
             emit({"flights": len(snapshot["flights"]), "last_sync": snapshot["last_sync"], "source": snapshot["source"], "error": snapshot["error"]})
             return 1 if snapshot["error"] else 0
+        elif command == "recipe-email":
+            from .config import private_json
+            from .recipe_mail import validate_mail_settings
+            if not sys.stdin.isatty():
+                raise ValueError("Use a private interactive terminal for the recipe mail password")
+            password = getpass.getpass("Gmail app password (hidden): ").replace(" ", "")
+            settings = validate_mail_settings({"sender": args.sender, "recipient": args.recipient,
+                                               "app_password": password})
+            private_json(store.data_dir / "recipe-mail.json", settings)
+            emit({"configured": True, "note": "Future generated meal selections queue their recipe by email."})
+        elif command == "recipe-email-status":
+            from .personal import PersonalStore
+            from .recipe_mail import RecipeMail
+            def enabled():
+                config = store.get()
+                return config.get("demo") is False and config.get("personal_enabled") is True
+            mail = RecipeMail(store.data_dir, PersonalStore(store.data_dir, store.get)._locked, enabled=enabled)
+            emit(mail.status())
         elif command == "store-secret":
             prompt = "OpenAI API key (hidden): " if args.name == "openai" else "FlightAware AeroAPI key (hidden): "
             key = args.file.read_text().strip() if args.file else getpass.getpass(prompt).strip()

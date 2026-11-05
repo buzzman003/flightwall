@@ -269,8 +269,8 @@ def _metadata(value, maximum=16):
 
 def render_nearby(draw, image, state, config, now):
     from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, deck_footer_width
-    from .flight_alerts import fresh_nearby_route
-    _header(draw, state, now, "NEARBY AIRCRAFT / ADSB.LOL")
+    from .flight_alerts import fresh_nearby_route, nearby_commercial_ident
+    _header(draw, state, now, "NEARBY AIRCRAFT")
     rows, radius = _nearby_rows(state, config, now)
     draw.rectangle((14, 56, 310, 204), fill=PANEL, outline=LINE)
     draw.rectangle((318, 56, 498, 204), fill=PANEL, outline=LINE)
@@ -295,23 +295,31 @@ def render_nearby(draw, image, state, config, now):
             label_x = min(293, max(20, x + 6))
             label_y = min(189, max(72, y - 8))
             _text(draw, (label_x, label_y), str(index + 1), AMBER, 2)
+    route_shown = False
     for index, (distance, row) in enumerate(rows[:3]):
         y = 60 + index * 49
         registration = _metadata(row.get("registration"))
         callsign = _metadata(row.get("callsign")) or _metadata(row.get("flight"))
         aircraft = _metadata(row.get("aircraft_type"), 8)
-        label = callsign or registration or "ID UNAVAIL"
-        _text(draw, (326, y), str(index + 1) + " " + label, WHITE, 2, max_width=166)
+        label = nearby_commercial_ident(row) or registration or callsign or "ID UNAVAIL"
+        type_width = 6 * len(aircraft) + 5 if aircraft else 0
+        _text(draw, (326, y), str(index + 1) + " " + label, WHITE, 2, max_width=166 - type_width)
+        if aircraft:
+            _text(draw, (492, y + 4), aircraft, MUTED, align="right")
         route = fresh_nearby_route(row, now) if config.get("nearby_enrichment_enabled") is True else None
-        route_label = route["origin"] + " > " + route["destination"] if route else "ROUTE N/A / " + f"{distance:.1f} MI"
+        route_shown = route_shown or route is not None
+        route_label = f"{distance:.1f} MI"
+        if route:
+            route_label = f"{route['origin']} > {route['destination']} / {route_label}"
         _text(draw, (326, y + 18), route_label, CYAN, max_width=166)
         altitude, speed = row.get("altitude"), row.get("groundspeed")
         altitude = str(round(altitude)) + " FT" if _number(altitude) and -2000 <= altitude <= 100000 else "ALT N/A"
         speed = str(round(speed)) + " KT GS" if _number(speed) and 0 <= speed <= 2000 else "GS N/A"
         _text(draw, (326, y + 29), altitude + " / " + speed, WHITE, max_width=166)
-        heading = row.get("heading")
-        direction = f"TRK {round(heading) % 360:03d}" if _number(heading) and 0 <= heading <= 360 else "TRK N/A"
-        detail = direction + " / " + (registration or aircraft or "TAIL N/A")
+        track = row.get("track", row.get("heading"))
+        detail = f"TRK {round(track) % 360:03d}" if _number(track) and 0 <= track <= 360 else "TRK N/A"
+        if registration and registration != label:
+            detail += " / " + registration
         _text(draw, (326, y + 39), detail, MUTED, max_width=166)
     if not rows:
         _text(draw, (326, 82), "NO FRESH", AMBER, 2)
@@ -320,9 +328,7 @@ def render_nearby(draw, image, state, config, now):
         if radius is None:
             reason = "SET LOCATION/RADIUS"
         _text(draw, (326, 135), reason, MUTED, max_width=166)
-        _text(draw, (326, 154), "COVERAGE MAY VARY", MUTED, max_width=166)
-    _text(draw, (15, 214), "NEAREST 3 / ROUTES ONLY WHEN VERIFIED", MUTED)
-    _text(draw, (498, 214), str(len(rows)) + " FRESH", CYAN, align="right")
     draw.line((14, 232, 498, 232), fill=LINE)
-    _text(draw, (15, 241), "ADSB.LOL / RECEIVED POSITIONS / NOT ALL TRAFFIC", MUTED,
+    sources = "ADSB.LOL / FLIGHTAWARE" if route_shown else "ADSB.LOL"
+    _text(draw, (15, 241), f"{len(rows)} FRESH / {sources}", MUTED,
           max_width=deck_footer_width(state))

@@ -10,12 +10,14 @@ import os
 from pathlib import Path
 import re
 import threading
+import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .calendar_client import CalendarClient, CalendarError, parse_events, _event_time
 from .brief import attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes
 from .config import private_json
-from .outlook import custody_outlook
+from .mycrew import SOURCE as MYCREW_SOURCE, STATION_LOCAL, airport_zone, parse_mycrew_events
+from .outlook import calendar_fresh, custody_outlook
 
 try:
     import fcntl
@@ -24,6 +26,51 @@ except ImportError:
 
 UTC = timezone.utc
 PROFILES = ("chris", "lisa")
+_ACTIVITY_ALIASES = {
+    "Jiu-jitsu": ("jiu jitsu", "ju jitsu", "jiujitsu", "jujitsu", "bjj"),
+    "Gymnastics": ("gymnastics",),
+    "Dance": ("dance", "ballet", "tap dance"),
+}
+
+
+def _agenda_words(value):
+    text = unicodedata.normalize("NFKD", value.casefold())
+    return " ".join(re.findall(r"[^\W_]+", "".join(char for char in text if not unicodedata.combining(char))))
+
+
+def _agenda_label(value, limit):
+    if not isinstance(value, str):
+        return None
+    label = " ".join(value.split())
+    if 1 <= len(label) <= limit and label[0].isalpha() and all(
+            char.isalpha() or char in " '-\u2019" for char in label):
+        return label
+    return None
+
+
+def _agenda_preferences(path):
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(8193)
+        value = json.loads(raw) if len(raw) <= 8192 else {}
+    except (OSError, ValueError, TypeError):
+        value = {}
+    if not isinstance(value, dict) or not isinstance(value.get("children"), list):
+        return {}, {}
+    children = {}
+    for item in value["children"][:12]:
+        name = _agenda_label(item, 24)
+        if name:
+            children.setdefault(_agenda_words(name), name)
+    activities = dict(_ACTIVITY_ALIASES)
+    custom = value.get("activities")
+    if isinstance(custom, dict):
+        for item, synonyms in list(custom.items())[:12]:
+            label = _agenda_label(item, 24)
+            if label and isinstance(synonyms, list):
+                aliases = {_agenda_words(name) for name in (_agenda_label(entry, 32) for entry in synonyms[:12]) if name}
+                activities[label] = tuple(sorted(aliases | {_agenda_words(label)} | set(activities.get(label, ()))))
+    return children, activities
 
 
 def _now():
@@ -107,6 +154,40 @@ def parse_kids_events(events, default_timezone="UTC"):
                     "state": "home" if parent == "Mom" else "away"}
         intervals[(interval["start"], interval["end"], parent)] = interval
     return sorted(intervals.values(), key=lambda item: (_stamp(item["start"]), item["parent"], _stamp(item["end"])))
+
+
+def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *, event_timezone=None):
+    """Project only configured child names, recognized labels and today's timed intervals."""
+    if not children:
+        return []
+    zone = ZoneInfo(display_timezone)
+    day = now.astimezone(zone).date()
+    day_start = datetime.combine(day, time(), zone).astimezone(UTC)
+    day_end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
+    entries = set()
+    for event in _event_versions(events):
+        summary = event.get("summary")
+        if event.get("status") == "cancelled" or not isinstance(summary, str) or len(summary) > 256:
+            continue
+        words = " " + _agenda_words(summary) + " "
+        matches = [name for word, name in children.items() if f" {word} " in words]
+        labels = [label for label, aliases in activities.items() if any(f" {alias} " in words for alias in aliases)]
+        if not matches or len(labels) != 1 or any(word in words for word in (" cancelled ", " canceled ")):
+            continue
+        start_data, end_data = event.get("start"), event.get("end")
+        if not all(isinstance(item, dict) and "date" not in item for item in (start_data, end_data)):
+            continue
+        start_zone = start_data.get("timeZone") or event_timezone or display_timezone
+        start = _event_time({**start_data, "timeZone": start_zone})
+        end = _event_time({**end_data, "timeZone": end_data.get("timeZone") or start_zone})
+        if start is None or end is None:
+            continue
+        start, end = start.astimezone(UTC), end.astimezone(UTC)
+        if not (day_start < end and start < day_end and timedelta(0) < end - start <= timedelta(days=1)):
+            continue
+        for name in matches:
+            entries.add((_iso(start), _iso(end), name + " " + labels[0]))
+    return [{"title": label, "start": start, "end": end} for start, end, label in sorted(entries)[:48]]
 
 
 def kids_snapshot(intervals, last_sync, now=None, stale_after=1800, source=""):
@@ -216,6 +297,7 @@ def _merge_flights(snapshots):
             number = str(flight.get("number", "")).upper().replace(" ", "")
             match = re.fullmatch(r"(?:(?P<prefix>[A-Z]{2,3}|[A-Z][0-9]|[0-9][A-Z]))?(?P<number>\d{1,5}[A-Z]?)", number)
             duplicate = None
+            conflict = False
             for previous in flights:
                 previous_number = str(previous.get("number", "")).upper().replace(" ", "")
                 prior = re.fullmatch(r"(?:(?P<prefix>[A-Z]{2,3}|[A-Z][0-9]|[0-9][A-Z]))?(?P<number>\d{1,5}[A-Z]?)", previous_number)
@@ -224,15 +306,23 @@ def _merge_flights(snapshots):
                     same_number = match["number"] == prior["number"] and (not match["prefix"] or not prior["prefix"] or match["prefix"] == prior["prefix"])
                 if same_number and flight.get("origin") == previous.get("origin") and flight.get("destination") == previous.get("destination"):
                     try:
-                        if _stamp(flight["start"]) == _stamp(previous["start"]):
+                        start, prior_start = _stamp(flight["start"]), _stamp(previous["start"])
+                        if start == prior_start:
                             duplicate = previous
                             break
+                        if snapshot.get("source") == MYCREW_SOURCE:
+                            zone = airport_zone(flight["origin"])
+                            if zone and start.astimezone(zone).date() == prior_start.astimezone(zone).date():
+                                conflict = True  # Preserve the existing selected leg when clocks disagree.
                     except (ValueError, KeyError):
                         pass
-            if duplicate is None:
+            if duplicate is None and not conflict:
                 flights.append(copy.deepcopy(flight))
-            elif "report" not in duplicate and flight.get("report"):
-                duplicate["report"] = flight["report"]
+            elif duplicate is not None:
+                if "report" not in duplicate and flight.get("report"):
+                    duplicate["report"] = flight["report"]
+                if snapshot.get("source") == MYCREW_SOURCE and flight["deadhead"]:
+                    duplicate["deadhead"] = True
     return sorted(flights, key=lambda item: _stamp(item["start"]))
 
 
@@ -243,6 +333,7 @@ class HouseholdCalendars:
         self.data_dir = Path(data_dir)
         self.config_getter = config_getter
         self.path = self.data_dir / "household-calendars.json"
+        self.agenda_path = self.data_dir / "family-agenda.json"
         self.lock = threading.RLock()
         self._migrate_chris()
 
@@ -285,7 +376,7 @@ class HouseholdCalendars:
                 required_flight = allowed_flight - {"report"}
                 roles = {}
                 for role, cached in value["flight_roles"].items():
-                    if role not in {"primary", "secondary"} or not isinstance(cached, dict) or not isinstance(cached.get("binding"), str):
+                    if role not in {"primary", "secondary", "mycrew"} or not isinstance(cached, dict) or not isinstance(cached.get("binding"), str):
                         continue
                     snapshot = cached.get("snapshot")
                     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("flights"), list) or not isinstance(snapshot.get("source"), str):
@@ -391,8 +482,21 @@ class HouseholdCalendars:
 
     @staticmethod
     def _roles(config):
-        return [("primary", str(config.get("calendar_id") or ""), str(config.get("calendar_name") or "FC View")),
-                ("secondary", str(config.get("secondary_calendar_id") or ""), str(config.get("secondary_calendar_name") or "Buzz Flight Brief"))]
+        primary = str(config.get("calendar_id") or "")
+        secondary = str(config.get("secondary_calendar_id") or "")
+        roles = [("primary", primary, str(config.get("calendar_name") or "FC View")),
+                 ("secondary", secondary, str(config.get("secondary_calendar_name") or "Buzz Flight Brief"))]
+        selected = config.get("mycrew_calendar_id")
+        if (not config.get("demo") and config.get("mycrew_clock") == STATION_LOCAL and selected and config.get("airline")
+                and selected != config.get("family_calendar_id")):
+            roles.append(("mycrew", selected, MYCREW_SOURCE))
+        return roles
+
+    @staticmethod
+    def _flight_binding(role, calendar_id, name, config):
+        if role == "mycrew":
+            return _binding("chris", calendar_id, name, config.get("airline"))
+        return _binding("chris", calendar_id, name)
 
     @staticmethod
     def _family_binding(config):
@@ -418,7 +522,7 @@ class HouseholdCalendars:
         matching, brief_notes = [], []
         for role, calendar_id, name in self._roles(config):
             cached = state["flight_roles"].get(role, {})
-            if cached.get("binding") == _binding("chris", calendar_id, name):
+            if cached.get("binding") == self._flight_binding(role, calendar_id, name, config):
                 matching.append(cached["snapshot"])
                 if role == "secondary":
                     brief_notes.extend(cached["snapshot"].get("brief_leaves", []))
@@ -454,6 +558,27 @@ class HouseholdCalendars:
                         error=family.get("error") or "Select a family calendar and enable the kids schedule.")
         outlook = custody_outlook(family.get("intervals", []), family.get("last_sync"), config, now,
                                   failed=bool(family.get("error") or not config.get("family_calendar_id")))
+        if outlook.get("stale") is False and config.get("kids_filter_enabled") is True and not config.get("guest_mode"):
+            children, activities = _agenda_preferences(self.agenda_path)
+            activity_sync = family.get("activity_last_sync")
+            if (children and family.get("activity_scope") == _binding(children, activities)
+                    and calendar_fresh(activity_sync, now, config.get("kids_stale_minutes", 30))):
+                zone = ZoneInfo(config.get("timezone", "UTC"))
+                day = now.astimezone(zone).date()
+                allowed = {name + " " + label for name in children.values() for label in activities}
+                agenda = []
+                cached = family.get("activities")
+                for item in cached[:48] if isinstance(cached, list) else []:
+                    try:
+                        if not isinstance(item, dict) or set(item) != {"title", "start", "end"} or item["title"] not in allowed:
+                            continue
+                        start, end = _stamp(item["start"]), _stamp(item["end"])
+                        if start.astimezone(zone).date() <= day <= (end - timedelta(microseconds=1)).astimezone(zone).date() and start < end:
+                            agenda.append(item)
+                    except (TypeError, ValueError, OverflowError):
+                        continue
+                outlook["activities"] = agenda
+                outlook["activity_last_sync"] = activity_sync
         return {"flight_snapshot": flights, "kids": kids, "connected_profiles": profiles,
                 "custody_outlook": outlook}
 
@@ -469,7 +594,12 @@ class HouseholdCalendars:
                     errors[profile] = str(error)
         with self.lock:
             role_cache = self._read()["flight_roles"]
-        for role, calendar_id, source in self._roles(config):
+        roles = self._roles(config)
+        mycrew_id = next((calendar_id for role, calendar_id, _ in roles if role == "mycrew"), None)
+        if mycrew_id is None:
+            role_cache.pop("mycrew", None)
+        mycrew_result = None
+        for role, calendar_id, source in roles:
             if not calendar_id:
                 if role != "primary":
                     role_cache.pop(role, None)
@@ -481,17 +611,27 @@ class HouseholdCalendars:
                     calendar_id = matches[0]["id"]
                 except CalendarError as error:
                     errors["chris"] = str(error)
-            signature = _binding("chris", str(config.get("calendar_id") or "") if role == "primary" else calendar_id, source)
+            signature = self._flight_binding(role, str(config.get("calendar_id") or "") if role == "primary" else calendar_id,
+                                             source, config)
             previous = role_cache.get(role, {})
             snapshot = previous.get("snapshot") if previous.get("binding") == signature else None
             snapshot = copy.deepcopy(snapshot) if snapshot else _empty_flights({"calendar_name": source})
             try:
                 if "chris" in errors:
                     raise CalendarError(errors["chris"])
-                include_hotels = bool(config.get("hotel_details_enabled", False))
+                include_hotels = bool(config.get("hotel_details_enabled", False) and role != "mycrew")
                 include_leaves = bool(config.get("brief_leave_times_enabled", False) and role == "secondary")
-                result = self.client_for("chris").get_events(calendar_id, include_descriptions=include_hotels or include_leaves)
-                snapshot = {"flights": parse_events(result["items"], source), "last_sync": _iso(now),
+                include_mycrew = calendar_id == mycrew_id
+                if include_mycrew and mycrew_result is not None:
+                    result = mycrew_result
+                else:
+                    result = self.client_for("chris").get_events(
+                        calendar_id, include_descriptions=include_hotels or include_leaves or include_mycrew)
+                    if include_mycrew:
+                        mycrew_result = result
+                flights = (parse_mycrew_events(result["items"], config["airline"]) if role == "mycrew"
+                           else parse_events(result["items"], source))
+                snapshot = {"flights": flights, "last_sync": _iso(now),
                             "error": None, "source": source, "demo": False,
                             "layovers": parse_labelled_layovers(result["items"], source) if include_hotels else [],
                             "brief_leaves": parse_brief_leave_notes(result["items"], config.get("timezone")) if include_leaves else []}
@@ -510,7 +650,13 @@ class HouseholdCalendars:
                 if profile in errors:
                     raise CalendarError(errors[profile])
                 result = self.client_for(profile).get_events(config["family_calendar_id"], now - timedelta(days=2), now + timedelta(days=45))
-                family.update(intervals=parse_kids_events(result["items"], result["timezone"]), last_sync=_iso(now), error=None)
+                children, activities = _agenda_preferences(self.agenda_path)
+                display_zone = config.get("timezone", "UTC")
+                family.update(intervals=parse_kids_events(result["items"], result["timezone"]),
+                              activities=parse_kids_activities(result["items"], children, activities, now, display_zone,
+                                                               event_timezone=result["timezone"]),
+                              activity_scope=_binding(children, activities), activity_last_sync=_iso(now),
+                              last_sync=_iso(now), error=None)
             except CalendarError as error:
                 family["error"] = str(error)
             self._update("family", family)

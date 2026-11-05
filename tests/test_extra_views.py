@@ -29,7 +29,7 @@ def weather_state():
 
 
 def aircraft(ident="111111", *, east=1, north=1, age=0, **changes):
-    return {"hex": ident, "registration": "TEST01", "callsign": "DEMO101", "aircraft_type": "C172",
+    return {"hex": ident, "registration": "TEST01", "callsign": "TST101", "aircraft_type": "C172",
             "latitude": 39.75, "longitude": -97.08, "east_miles": east, "north_miles": north,
             "distance_miles": math.hypot(east, north), "altitude": 2400, "groundspeed": 110,
             "observed_at": (NOW - timedelta(seconds=age)).isoformat(), **changes}
@@ -286,18 +286,42 @@ class NearbyViewTests(unittest.TestCase):
                 aircraft("111111", east=1, north=0),
                 aircraft("444444", east=4, north=0, registration="TEST04")]
         labels, _ = capture(render_nearby, {"nearby": rows}, self.config)
-        self.assertIn("1 DEMO101", labels)
-        self.assertIn("2 DEMO101", labels)
-        self.assertIn("3 DEMO101", labels)
+        self.assertIn("1 TST101", labels)
+        self.assertIn("2 TST101", labels)
+        self.assertIn("3 TST101", labels)
         self.assertLess(labels.index("TRK N/A / TEST01"), labels.index("TRK N/A / TEST02"))
         self.assertLess(labels.index("TRK N/A / TEST02"), labels.index("TRK N/A / TEST03"))
         self.assertNotIn("TRK N/A / TEST04", labels)
-        self.assertIn("4 FRESH", labels)
-        self.assertIn("NEAREST 3 / ROUTES ONLY WHEN VERIFIED", labels)
+        self.assertIn("4 FRESH / ADSB.LOL", labels)
+        self.assertNotIn("NEAREST 3 / ROUTES ONLY WHEN VERIFIED", labels)
+        self.assertNotIn("ADSB.LOL / RECEIVED POSITIONS / NOT ALL TRAFFIC", labels)
         unknown = aircraft(registration=None, callsign=None, aircraft_type=None, altitude=None, groundspeed=None)
         labels, _ = capture(render_nearby, {"nearby": [unknown]}, self.config)
-        for value in ("1 ID UNAVAIL", "ROUTE N/A / 1.4 MI", "ALT N/A / GS N/A", "TRK N/A / TAIL N/A"):
+        for value in ("1 ID UNAVAIL", "1.4 MI", "ALT N/A / GS N/A", "TRK N/A"):
             self.assertIn(value, labels)
+
+    def test_registration_type_and_reported_track_show_for_private_aircraft(self):
+        row = aircraft(registration="N123AB", callsign="GENERAL", aircraft_type="B350", track=78)
+        labels, _ = capture(render_nearby, {"nearby": [row]}, self.config)
+        self.assertIn("1 N123AB", labels)
+        self.assertIn("B350", labels)
+        self.assertIn("TRK 078", labels)
+        self.assertNotIn("1 GENERAL", labels)
+
+    def test_only_a_fresh_verified_route_is_shown_and_attributed(self):
+        from flightwall.flight_alerts import SOURCE
+        row = aircraft()
+        row["route"] = {"origin": "ATL", "destination": "VPS", "source": SOURCE, "callsign": "TST101",
+                        "registration": "TEST01", "aircraft_hex": "111111", "provider_flight_id": "fixture",
+                        "fetched_at": NOW.isoformat(), "actual_off": (NOW - timedelta(minutes=20)).isoformat()}
+        config = self.config | {"nearby_enrichment_enabled": True}
+        labels, _ = capture(render_nearby, {"nearby": [row]}, config)
+        self.assertIn("ATL > VPS / 1.4 MI", labels)
+        self.assertIn("1 FRESH / ADSB.LOL / FLIGHTAWARE", labels)
+        row["route"]["aircraft_hex"] = "222222"
+        labels, _ = capture(render_nearby, {"nearby": [row]}, config)
+        self.assertNotIn("ATL > VPS / 1.4 MI", labels)
+        self.assertIn("1 FRESH / ADSB.LOL", labels)
 
     def test_future_missing_old_and_outside_positions_are_hidden_every_frame(self):
         rows = [aircraft("111111", age=121), aircraft("222222", age=-1),
@@ -305,16 +329,16 @@ class NearbyViewTests(unittest.TestCase):
                 aircraft("555555", east_miles=None), aircraft("666666", latitude=100)]
         labels, _ = capture(render_nearby, {"nearby": rows}, self.config)
         self.assertIn("NO FRESH", labels)
-        self.assertIn("0 FRESH", labels)
+        self.assertIn("0 FRESH / ADSB.LOL", labels)
         fresh = {"nearby": [aircraft(age=119)]}
-        self.assertIn("1 FRESH", capture(render_nearby, fresh, self.config)[0])
-        self.assertIn("0 FRESH", capture(render_nearby, fresh, self.config, NOW + timedelta(seconds=2))[0])
+        self.assertIn("1 FRESH / ADSB.LOL", capture(render_nearby, fresh, self.config)[0])
+        self.assertIn("0 FRESH / ADSB.LOL", capture(render_nearby, fresh, self.config, NOW + timedelta(seconds=2))[0])
 
     def test_actual_vector_radius_overrides_claimed_distance_and_nmi_fallback(self):
         row = aircraft(east=5.01, north=0, distance_miles=0)
-        self.assertIn("0 FRESH", capture(render_nearby, {"nearby": [row]}, self.config)[0])
+        self.assertIn("0 FRESH / ADSB.LOL", capture(render_nearby, {"nearby": [row]}, self.config)[0])
         config = self.config | {"nearby_radius_miles": None, "nearby_radius_nm": 5}
-        self.assertIn("1 FRESH", capture(render_nearby, {"nearby": [row]}, config)[0])
+        self.assertIn("1 FRESH / ADSB.LOL", capture(render_nearby, {"nearby": [row]}, config)[0])
 
     def test_map_uses_received_vector_without_extrapolation_or_private_home(self):
         row = aircraft(east=2, north=1, track=90, groundspeed=400)
@@ -334,7 +358,7 @@ class NearbyViewTests(unittest.TestCase):
         rows = [aircraft(f"{index:06x}", east=0.1 + index / 100, north=0) for index in range(60)]
         rows += [deepcopy(rows[0])]
         labels, _ = capture(render_nearby, {"nearby": rows}, self.config)
-        self.assertIn("40 FRESH", labels)
+        self.assertIn("40 FRESH / ADSB.LOL", labels)
 
     def test_rendering_never_mutates_source_and_demo_hides_live_rows(self):
         state = {"nearby": [aircraft()]}
@@ -343,7 +367,7 @@ class NearbyViewTests(unittest.TestCase):
         self.assertEqual(state, original)
         self.assertEqual(image.size, (512, 256))
         labels, _ = capture(render_nearby, state | {"demo": True}, self.config)
-        self.assertIn("0 FRESH", labels)
+        self.assertIn("0 FRESH / ADSB.LOL", labels)
         self.assertNotIn("1 TEST01", labels)
 
 

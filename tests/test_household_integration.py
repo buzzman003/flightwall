@@ -107,6 +107,19 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         self.assertNotIn("LISA-PRIVATE", json.dumps(result))
         self.mail_status.assert_called_once_with("chris")
 
+    def test_private_family_agenda_data_stays_on_the_display_route(self):
+        household = self.runtime.household.status(now=NOW)
+        household["custody_outlook"]["activities"] = [{"title": "Rory Dance", "start": iso(NOW),
+                                                        "end": iso(NOW + timedelta(hours=1))}]
+        self.flight_snapshot["flights"] = [{"id": "test", "number": "DL111", "origin": "ATL", "destination": "MEM",
+                                            "start": iso(NOW), "end": iso(NOW + timedelta(hours=1))}]
+        with patch.object(self.runtime.household, "status", return_value=household):
+            visible = self.runtime.display_status(NOW)["custody_outlook"]
+            maintenance = self.runtime.status(NOW)["custody_outlook"]
+        self.assertEqual(visible["activities"][0]["title"], "Rory Dance")
+        self.assertTrue(visible["buzz_plan"]["2026-10-22"]["away"])
+        self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync"}.isdisjoint(maintenance))
+
     def test_lisa_private_cards_require_all_three_fresh_household_conditions(self):
         result = self.runtime.display_status(NOW)
         self.assertTrue(result["household_context"]["private_lisa"])

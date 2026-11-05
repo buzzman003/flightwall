@@ -284,7 +284,26 @@ class AlexaConversationTests(unittest.TestCase):
                 response = self.call(name, {"Meal": meal})
                 self.assertFalse(self.board.calls)
                 self.assertIn("followed by just the meal", speech(response))
-                self.assertNotIn("title", response["sessionAttributes"]["pending"])
+                pending = response["sessionAttributes"]["pending"]
+                self.assertNotIn("title", pending)
+                self.assertIsNone(pending["date"])
+                followup = self.call(slots={"Meal": "Vegetable soup"}, previous=response)
+                self.assertIn("Which exact day", speech(followup))
+                self.assertFalse(self.board.calls)
+
+    def test_explicit_tomorrow_sentence_in_meal_slot_cannot_save_today(self):
+        self.config["timezone"] = "America/Chicago"
+        with patch.object(alexa, "_now", return_value=datetime(2026, 11, 1, 4, 30, tzinfo=timezone.utc)):
+            for name in ("AddDinnerIntent", "AddDinnerTodayIntent", "AddDinnerTomorrowIntent"):
+                with self.subTest(intent=name):
+                    result = self.call(name, {"Meal": "Tomorrow’s dinner card is going to be Vegetable soup and bread"},
+                                       request_id=name)
+                    self.assertEqual(self.board.calls[-1]["date"], "2026-11-01")
+                    self.assertEqual(self.board.calls[-1]["title"], "Vegetable soup and bread")
+                    self.assertIn("for dinner tomorrow", speech(result))
+            conflict = self.call(slots={"Date": "2026-10-31", "Meal": "Tomorrow's dinner is tacos"})
+        self.assertIn("conflicting dinner dates", speech(conflict))
+        self.assertEqual(len(self.board.calls), 3)
 
     def test_explicit_dinner_preserves_exact_meal_and_same_day_replacement(self):
         today = self.call("AddDinnerTodayIntent", {"Meal": "Chicken Tonight"}, request_id="today.first")
@@ -475,6 +494,7 @@ class AlexaModelTests(unittest.TestCase):
                 self.assertIn(f"dinner {day} is {{Meal}}", intent["samples"])
                 self.assertIn(f"{{Meal}} is for dinner {day}", intent["samples"])
                 self.assertIn(f"dinner {day}", intent["samples"])
+                self.assertIn(f"{day}'s dinner card is going to be {{Meal}}", intent["samples"])
                 self.assertTrue(all(day in sample for sample in intent["samples"]))
 
     def test_model_does_not_combine_searchquery_with_other_slots_in_a_sample(self):

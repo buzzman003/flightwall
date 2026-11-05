@@ -351,6 +351,37 @@ class HouseholdManagerTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(self.manager.path.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE((self.root / "accounts").stat().st_mode), 0o700)
 
+    def test_family_agenda_caches_only_named_children_and_recognized_timed_labels(self):
+        private_json(self.manager.agenda_path, {"children": ["Rory"], "activities": {"Soccer": ["futsal"]}})
+
+        def agenda_api(client, path, parameters):
+            result = self.api(client, path, parameters)
+            if "family" in path:
+                result["items"].extend([
+                    event("Rory’s Jiu-Jitsu at PRIVATE-VENUE", "2026-10-22T14:00:00", "2026-10-22T15:00:00",
+                          description="PRIVATE-DESCRIPTION", id="PRIVATE-ID"),
+                    event("Futsal for Rory", "2026-10-22T21:00:00Z", "2026-10-22T22:00:00Z"),
+                    event("Adult dance", "2026-10-22T18:00:00Z", "2026-10-22T19:00:00Z"),
+                    event("Rory appointment"), all_day("Rory Dance"),
+                    event("Rory Gymnastics", id="cancelled", updated="2026-10-21T12:00:00Z"),
+                    {"id": "cancelled", "status": "cancelled", "updated": "2026-10-21T13:00:00Z"},
+                ])
+            return result
+
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
+            outlook = self.manager.sync()["custody_outlook"]
+        self.assertEqual(outlook["activities"], [
+            {"title": "Rory Jiu-jitsu", "start": "2026-10-22T19:00:00Z", "end": "2026-10-22T20:00:00Z"},
+            {"title": "Rory Soccer", "start": "2026-10-22T21:00:00Z", "end": "2026-10-22T22:00:00Z"},
+        ])
+        self.assertNotIn("PRIVATE-", self.manager.path.read_text())
+        self.assertTrue(all("description" not in parameters.get("fields", "") for _, path, parameters in self.calls if "family" in path))
+        self.config["guest_mode"] = True
+        self.assertNotIn("activities", self.manager.status()["custody_outlook"])
+        self.config["guest_mode"] = False
+        private_json(self.manager.agenda_path, {"children": ["Nora"]})
+        self.assertNotIn("activities", self.manager.status()["custody_outlook"])
+
     def test_credentials_are_not_reported_connected_before_actual_api_success(self):
         profile = self.manager.status()["connected_profiles"]["chris"]
         self.assertTrue(profile["credentials_present"])

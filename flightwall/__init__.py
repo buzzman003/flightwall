@@ -1,3 +1,3 @@
 """Flight Wall: a private, calendar-driven departure board for Batocera."""
 
-__version__ = "0.4.9"
+__version__ = "0.4.10"

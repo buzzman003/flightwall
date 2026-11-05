@@ -114,6 +114,23 @@ class DinnerDetailTests(unittest.TestCase):
         self.assertEqual(done["sessionAttributes"], {})
         self.assertEqual(done["response"]["reprompt"]["outputSpeech"]["text"], "Anything else? Say no to finish.")
 
+    def test_control_captured_by_dinner_slot_cancels_without_reading_or_saving(self):
+        meal_question = self.call("AddDinnerIntent")
+        sides_question = self.meal()
+        ready_question = self.call("SkipDinnerDetailIntent", previous=sides_question)
+        cases = (("AddDinnerIntent", "Meal", "Cancel.", meal_question),
+                 ("SetDinnerSidesIntent", "Sides", "never mind", sides_question),
+                 ("SetDinnerReadyTimeIntent", "ReadyTime", "stop", ready_question))
+        for intent, slot, phrase, previous in cases:
+            with self.subTest(slot=slot), patch.object(alexa, "BoardClient") as client:
+                cancelled = self.call(intent, {slot: phrase}, previous)
+                self.assertIn("did not save", speech(cancelled))
+                self.assertTrue(cancelled["response"]["shouldEndSession"])
+                self.assertEqual(cancelled["sessionAttributes"], {})
+                client.assert_not_called()
+        self.assertFalse(self.board.calls)
+        self.assertFalse(self.store.list_items(NOW))
+
     def test_no_skips_optional_details_but_stop_cancels_unsaved_dinner(self):
         first = self.meal()
         second = self.call("AMAZON.NoIntent", previous=first)
