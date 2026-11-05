@@ -30,6 +30,8 @@ STATES = ("home", "away", "unknown")
 SOURCES = ("phone", "manual", "owntracks-transition", "owntracks-location")
 MAX_REQUESTS = 128
 FUTURE_SKEW_SECONDS = 120
+OWNTRACKS_HOUSEKEEPING = ("status", "waypoint", "waypoints", "lwt")
+OWNTRACKS_REPORTS = ("location", "transition") + OWNTRACKS_HOUSEKEEPING
 _STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:[Zz]|[+-]\d{2}:\d{2})$")
 
 
@@ -70,6 +72,57 @@ def _iso(value):
 
 def _number(value, minimum, maximum):
     return type(value) in (int, float) and math.isfinite(value) and minimum <= value <= maximum
+
+
+def _object_request_id(payload):
+    if not isinstance(payload, dict) or len(payload) > 40:
+        raise PresenceError("Send a JSON presence object.")
+    request_id = payload.get("request_id")
+    if request_id is not None and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 512
+                                   or any(ord(char) < 32 or ord(char) == 127 for char in request_id)):
+        raise PresenceError("request_id must be a nonempty string of at most 512 characters.")
+    return request_id
+
+
+def _housekeeping(payload, now):
+    """Validate and discard known non-presence OwnTracks housekeeping.
+
+    HTTP clients send these on the same endpoint as location fixes. Rejecting
+    them would leave them at the head of the client's outgoing queue. None is
+    a presence observation, and no payload or delivery heartbeat is retained.
+    """
+    _object_request_id(payload)
+    kind = payload.get("_type")
+    if kind not in OWNTRACKS_HOUSEKEEPING:
+        return False
+    if "observed_at" in payload and _parse_stamp(payload["observed_at"]) > now + timedelta(seconds=FUTURE_SKEW_SECONDS):
+        raise PresenceError("The observation is in the future. Check the phone's clock.")
+    if "tst" in payload:
+        if not _number(payload["tst"], 0, 253402300799):
+            raise PresenceError("OwnTracks reports need a valid tst observation timestamp.")
+        if payload["tst"] > now.timestamp() + FUTURE_SKEW_SECONDS:
+            raise PresenceError("The observation is in the future. Check the phone's clock.")
+    for name, limit in (("lat", 90), ("lon", 180)):
+        if name in payload and not _number(payload[name], -limit, limit):
+            raise PresenceError("OwnTracks coordinates must be valid numbers.")
+    if kind == "status":
+        if any(name in payload and not isinstance(payload[name], dict) for name in ("android", "iOS")):
+            raise PresenceError("OwnTracks platform status must be an object.")
+    elif kind == "waypoints":
+        rows = payload.get("waypoints")
+        if not isinstance(rows, list) or len(rows) > 128:
+            raise PresenceError("OwnTracks waypoints must be a bounded list.")
+        for row in rows:
+            if not isinstance(row, dict) or row.get("_type") != "waypoint":
+                raise PresenceError("OwnTracks waypoint entries need the waypoint type.")
+            _housekeeping(row, now)
+    elif kind == "waypoint":
+        if (not isinstance(payload.get("desc"), str) or not payload["desc"].strip()
+                or len(payload["desc"]) > 512 or "tst" not in payload):
+            raise PresenceError("OwnTracks waypoints need a region name and creation timestamp.")
+    elif "tst" not in payload:  # lwt
+        raise PresenceError("OwnTracks lwt reports need a tst timestamp.")
+    return True
 
 
 class PresenceStore:
@@ -173,12 +226,7 @@ class PresenceStore:
 
     @staticmethod
     def _normalize(payload, config, source):
-        if not isinstance(payload, dict) or len(payload) > 40:
-            raise PresenceError("Send a JSON presence object.")
-        request_id = payload.get("request_id")
-        if request_id is not None and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 512
-                                       or any(ord(char) < 32 or ord(char) == 127 for char in request_id)):
-            raise PresenceError("request_id must be a nonempty string of at most 512 characters.")
+        request_id = _object_request_id(payload)
         kind = payload.get("_type")
         if kind in ("transition", "location"):
             timestamp = payload.get("observed_at")
@@ -194,11 +242,11 @@ class PresenceStore:
                 observed = _parse_stamp(timestamp)
             if kind == "transition":
                 description = payload.get("desc", payload.get("description", ""))
-                if not isinstance(description, str) or description.strip().casefold() != "home":
-                    raise PresenceError("Only transitions for the Home region are accepted.")
+                if not isinstance(description, str) or not description.strip() or len(description) > 512:
+                    raise PresenceError("OwnTracks transition region must be nonempty text of at most 512 characters.")
                 if payload.get("event") not in ("enter", "leave"):
                     raise PresenceError("OwnTracks transition event must be enter or leave.")
-                state = "home" if payload["event"] == "enter" else "away"
+                state = ("home" if payload["event"] == "enter" else "away") if description.strip().casefold() == "home" else None
             else:
                 latitude, longitude = payload.get("lat"), payload.get("lon")
                 home_lat, home_lon = config.get("home_latitude"), config.get("home_longitude")
@@ -234,11 +282,19 @@ class PresenceStore:
         if not config.get("presence_enabled", False):
             raise PresenceDisabled("Presence is disabled. Enable it locally after each person opts in.")
         ttl = self._ttl(config)
+        if _housekeeping(payload, now):
+            return {"updated": False, "duplicate": False, "ignored": True, "person": person}
+        if payload.get("_type") == "encrypted":
+            raise PresenceError("OwnTracks payload encryption is not supported. Leave its payload encryption key empty; keep HTTPS enabled.")
         record, request_id = self._normalize(payload, config, source)
         observed = _parse_stamp(record["observed_at"])
+        owntracks = payload.get("_type") in ("location", "transition")
         if observed > now + timedelta(seconds=FUTURE_SKEW_SECONDS):
             raise PresenceError("The observation is in the future. Check the phone's clock.")
-        if observed <= now - ttl:
+        if owntracks and record["state"] is None:
+            return {"updated": False, "duplicate": False, "ignored": True, "person": person}
+        expired = observed <= now - ttl
+        if expired and not owntracks:
             raise PresenceError("The observation has expired. Send a fresh phone status.")
         fingerprint = hashlib.sha256(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         request_hash = hashlib.sha256(request_id.encode()).hexdigest() if request_id is not None else None
@@ -254,10 +310,21 @@ class PresenceStore:
             previous = stored["people"].get(person)
             if previous:
                 previous_time = _parse_stamp(previous["observed_at"])
-                if observed < previous_time or observed == previous_time and record != previous:
+                if observed == previous_time and record != previous:
+                    if (owntracks and record["state"] == previous["state"]
+                            and previous["source"] in ("owntracks-location", "owntracks-transition")):
+                        return {"updated": False, "duplicate": True, "person": person}
                     raise PresenceError("A newer or conflicting observation is already saved; send a fresh status.")
+                if observed < previous_time:
+                    if owntracks:
+                        return {"updated": False, "duplicate": False, "ignored": True, "person": person}
+                    raise PresenceError("A newer or conflicting observation is already saved; send a fresh status.")
+                if expired:
+                    return {"updated": False, "duplicate": False, "ignored": True, "person": person}
                 if record == previous:
                     return {"updated": False, "duplicate": True, "person": person}
+            elif expired:
+                return {"updated": False, "duplicate": False, "ignored": True, "person": person}
             stored["people"][person] = record
             if request_hash is not None:
                 ledger[request_hash] = {"observed_at": record["observed_at"], "fingerprint": fingerprint}

@@ -1,3 +1,19 @@
+0.4.15 OWNTRACKS QUEUE RECOVERY
+
+The owner's Android reports a delivery failure while the public HTTPS endpoint
+and paired credential pass non-location checks. The actual phone HTTP status
+is still needed before attributing its error. Source review of OwnTracks HTTP
+delivery confirms failed messages are retried ahead of later observations.
+Windows checks passed 67 related tests and 39 subtests; after the final duplicate
+refinement, all 21 presence tests and 26 subtests passed. Real HTTP tests verify
+that ignored stale/older and irrelevant authenticated messages receive the
+expected empty array without retaining coordinates, changing state, renewing
+freshness or weakening validation/authentication. Same-clock, same-state
+OwnTracks location/transition retries do not rewrite the original source.
+Conflicting states remain rejected. A fresh real phone
+report and background departure/arrival remain separate device checks.
+The display composition, timer controls and LED settings are unchanged.
+
 0.4.14 READING CONTROLS, WEATHER WINDOWS, DINNER PHOTOS AND WINDOW FOCUS
 
 Synthetic tests cover duration overrides, pause/hold clocks, high-resolution

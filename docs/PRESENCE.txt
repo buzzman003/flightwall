@@ -95,8 +95,9 @@ never publish the local unencrypted loopback service directly to the internet.
 
 For transition reporting, name the relevant region Home. Reports with
 _type:"transition", event:"enter"/"leave", desc:"Home", and a current numeric
-tst timestamp update Home/Away respectively. Transitions for other regions are
-rejected, so leaving an airport cannot accidentally mean leaving Home.
+tst timestamp update Home/Away respectively. Well-formed transitions for other
+regions are acknowledged and discarded, so leaving an airport cannot mean
+leaving Home or block the phone's next Home report.
 
 For location reports, enter the Home latitude/longitude in private local setup.
 The home_radius_m default is 200 metres and can be set from 30 to 5000 metres.
@@ -115,11 +116,20 @@ while the phone is locked. Without fresh reports, Unknown is the intended result
 
 TIME, RETRIES AND COMMON FAILURES
 
-Reports must have timezone-aware timestamps. Reports at least as old as the
-configured freshness interval are rejected, as are observations more than two
-minutes in the future. An older report cannot overwrite a newer observation.
+Reports must have timezone-aware timestamps. OwnTracks observations at least as
+old as the freshness interval, or older than the latest observation, receive an
+empty-array acknowledgement and are discarded. OwnTracks retries its queue head
+on HTTP errors; this lets a backlog drain without changing presence or its
+freshness. Non-OwnTracks state requests still reject those observations.
+Observations more than two minutes in the future remain errors.
+An older report cannot overwrite a newer observation.
 Conflicting states at exactly the same timestamp are rejected. Exact retries
 are acknowledged without advancing the observation time or renewing freshness.
+
+Supported non-presence telemetry is acknowledged and discarded without saving
+its contents. Encrypted payloads are not decoded by this receiver and remain an
+explicit error. A transport acknowledgement alone does not establish Home/Away;
+check the setup page for a fresh accepted location or Home transition.
 
 401 means the credential is missing, wrong, revoked, belongs to the other person
 or belongs to another feature. Check the endpoint/person and paired token.

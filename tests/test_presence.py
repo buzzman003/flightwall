@@ -114,9 +114,48 @@ class PresenceStoreTests(unittest.TestCase):
         self.assertEqual(self.store.snapshot(self.now)["lisa"]["state"], "home")
         self.store.update("lisa", dict(entry, event="leave", tst=self.now.timestamp() + 1), self.now)
         self.assertEqual(self.store.snapshot(self.now)["lisa"]["state"], "away")
-        with self.assertRaises(PresenceError):
-            self.store.update("lisa", dict(entry, desc="Airport", tst=self.now.timestamp() + 2), self.now)
+        ignored = self.store.update("lisa", dict(entry, desc="Airport", tst=self.now.timestamp() + 2), self.now)
+        self.assertTrue(ignored["ignored"])
+        self.assertFalse(ignored["updated"])
         self.assertEqual(self.store.snapshot(self.now)["lisa"]["state"], "away")
+
+    def test_owntracks_housekeeping_does_not_create_or_refresh_presence(self):
+        self.assertFalse(self.store.path.exists())
+        for report in ({"_type": "status", "android": {"loc": 1}},
+                       {"_type": "waypoint", "desc": "Private region", "tst": self.now.timestamp(), "lat": 33.64, "lon": -84.42},
+                       {"_type": "waypoints", "waypoints": []},
+                       {"_type": "lwt", "tst": self.now.timestamp() - 20000}):
+            with self.subTest(kind=report["_type"]):
+                result = self.store.update("chris", report, self.now)
+                self.assertTrue(result["ignored"])
+                self.assertFalse(result["updated"])
+                self.assertFalse(self.store.path.exists())
+        self.store.update("chris", self.report(), self.now)
+        before = self.store.path.read_bytes()
+        later = self.now + timedelta(minutes=90)
+        self.store.update("chris", {"_type": "status", "android": {"loc": 1}}, later)
+        self.assertEqual(self.store.path.read_bytes(), before)
+        self.assertEqual(self.store.snapshot(later)["chris"]["state"], "unknown")
+
+    def test_owntracks_expired_and_older_are_discarded_but_same_clock_conflict_is_rejected(self):
+        report = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "acc": 10, "tst": self.now.timestamp()}
+        self.store.update("chris", report, self.now)
+        before = self.store.path.read_bytes()
+        for payload, now in ((dict(report, tst=self.now.timestamp() - 1), self.now),
+                             (dict(report, tst=self.now.timestamp() - 5400), self.now),
+                             (report, self.now + timedelta(minutes=90))):
+            self.assertTrue(self.store.update("chris", payload, now)["ignored"])
+            self.assertEqual(self.store.path.read_bytes(), before)
+        for now in (self.now, self.now + timedelta(minutes=90)):
+            with self.assertRaises(PresenceError):
+                self.store.update("chris", dict(report, lat=34), now)
+        self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_expired_owntracks_does_not_create_a_saved_observation(self):
+        payload = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "tst": self.now.timestamp() - 5400}
+        self.assertTrue(self.store.update("chris", payload, self.now)["ignored"])
+        self.assertFalse(self.store.path.exists())
+        self.assertEqual(self.store.snapshot(self.now)["chris"]["state"], "unknown")
 
     def test_owntracks_location_keeps_only_state_and_handles_accuracy_overlap(self):
         report = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "acc": 10,
@@ -256,6 +295,88 @@ class PresenceHTTPTests(unittest.TestCase):
         opener = build_opener(ProxyHandler({}), HTTPBasicAuthHandler(passwords))
         with opener.open(Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}), timeout=5) as response:
             self.assertEqual(json.load(response), [])
+
+    def test_owntracks_backlog_drains_over_http_without_renewing_or_saving_discarded_reports(self):
+        now = datetime(2026, 11, 5, 18, 0, tzinfo=timezone.utc)
+        self.callbacks["update_presence"] = lambda person, payload: self.store.update(person, payload, now)
+        basic = "Basic " + base64.b64encode(("chris:" + self.chris).encode()).decode()
+        headers = {"Authorization": basic}
+        current = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "acc": 5, "tst": now.timestamp()}
+        self.assertEqual(self.request("/api/v1/presence/chris", "", current, headers=headers), (200, []))
+        before = self.store.path.read_bytes()
+        modified = self.store.path.stat().st_mtime_ns
+        waypoint = {"_type": "waypoint", "desc": "Private activity", "lat": 33.64, "lon": -84.42, "tst": now.timestamp()}
+        backlog = [{"_type": "status", "android": {"loc": 1, "bo": 0}},
+                   dict(current, tst=now.timestamp() - 5400), waypoint,
+                   {"_type": "waypoints", "waypoints": [waypoint]},
+                   {"_type": "transition", "event": "leave", "desc": "Private activity", "tst": now.timestamp()},
+                   {"_type": "lwt", "tst": now.timestamp() - 20000},
+                   dict(current, lat=34, tst=now.timestamp() - 1)]
+        for payload in backlog:
+            with self.subTest(kind=payload["_type"]):
+                self.assertEqual(self.request("/api/v1/presence/chris", "", payload, headers=headers), (200, []))
+                self.assertEqual(self.store.path.read_bytes(), before)
+                self.assertEqual(self.store.path.stat().st_mtime_ns, modified)
+        self.assertEqual(self.store.snapshot(now)["chris"]["last_seen"], "2026-11-05T18:00:00.000000Z")
+        self.assertNotIn("Private activity", self.store.path.read_text())
+        self.assertEqual(self.store.snapshot(now + timedelta(minutes=90))["chris"]["state"], "unknown")
+        fresh = dict(current, lat=34, tst=now.timestamp() + 1)
+        self.assertEqual(self.request("/api/v1/presence/chris", "", fresh, headers=headers), (200, []))
+        self.assertEqual(self.store.snapshot(now)["chris"]["state"], "away")
+
+    def test_owntracks_discard_path_still_checks_authentication_enabled_state_and_malformed_reports(self):
+        now = datetime(2026, 11, 5, 18, 0, tzinfo=timezone.utc)
+        self.callbacks["update_presence"] = lambda person, payload: self.store.update(person, payload, now)
+        telemetry = {"_type": "status", "android": {"loc": 1}}
+        before = self.store.path.read_bytes()
+        self.assertEqual(self.request("/api/v1/presence/chris", self.lisa, telemetry)[0], 401)
+        self.config["presence_enabled"] = False
+        self.assertEqual(self.request("/api/v1/presence/chris", self.chris, telemetry)[0], 503)
+        self.config["presence_enabled"] = True
+        bad = [dict(telemetry, tst=now.timestamp() + 121), dict(telemetry, android=[]),
+               {"_type": "waypoint", "desc": "Private region", "tst": "bad"},
+               {"_type": "waypoints", "waypoints": [{"_type": "cmd"}]},
+               {"_type": "lwt"}, {"_type": "lwt", "tst": True},
+               {"_type": "location", "tst": now.timestamp() - 5400},
+               {"_type": "location", "tst": now.timestamp() + 121, "lat": 33.64, "lon": -84.42},
+               {"_type": "transition", "tst": now.timestamp(), "desc": "Other region", "event": "invalid"},
+               {"_type": "transition", "tst": now.timestamp(), "desc": " ", "event": "enter"},
+               {"_type": "waypoint", "tst": now.timestamp(), "desc": " "},
+               {"_type": "transition", "tst": now.timestamp() + 121, "desc": "Other region", "event": "enter"},
+               {"_type": "unknown"}, {"_type": "cmd", "action": "reportLocation"},
+               {"_type": "configuration", "username": "private"}]
+        for payload in bad:
+            with self.subTest(payload=payload):
+                self.assertEqual(self.request("/api/v1/presence/chris", self.chris, payload)[0], 400)
+                self.assertEqual(self.store.path.read_bytes(), before)
+        code, error = self.request("/api/v1/presence/chris", self.chris, {"_type": "encrypted", "data": "private"})
+        self.assertEqual(code, 400)
+        self.assertIn("payload encryption", error["error"])
+        self.assertIn("HTTPS", error["error"])
+        self.assertNotIn("private", json.dumps(error))
+        self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_http_owntracks_same_timestamp_conflicts_and_manual_reports_remain_strict(self):
+        now = datetime(2026, 11, 5, 18, 0, tzinfo=timezone.utc)
+        clock = [now]
+        self.callbacks["update_presence"] = lambda person, payload: self.store.update(person, payload, clock[0])
+        current = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "tst": now.timestamp()}
+        self.assertEqual(self.request("/api/v1/presence/chris", self.chris, current), (200, []))
+        before = self.store.path.read_bytes()
+        transition = {"_type": "transition", "desc": "Home", "event": "enter", "tst": now.timestamp()}
+        for at in (now, now + timedelta(minutes=90)):
+            clock[0] = at
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, transition), (200, []))
+            self.assertEqual(self.store.path.read_bytes(), before)
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(current, lat=34))[0], 400)
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(transition, event="leave"))[0], 400)
+            self.assertEqual(self.store.path.read_bytes(), before)
+        self.assertEqual(self.store.snapshot(clock[0])["chris"]["state"], "unknown")
+        clock[0] = now
+        for seconds in (-1, -5400):
+            payload = {"state": "away", "observed_at": (now + timedelta(seconds=seconds)).isoformat()}
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, payload)[0], 400)
+            self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_private_display_requires_static_local_control_token_not_oauth(self):
         self.callbacks["get_display_status"] = lambda: {"private_cards": [{"body": "eligible wall-only content"}]}

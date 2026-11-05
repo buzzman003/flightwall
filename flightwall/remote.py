@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from . import __version__
 from .personal import PersonalError
 from .card_preferences import CARD_DEFAULTS
-from .presence import PresenceStore, PresenceError, PresenceDisabled
+from .presence import PresenceStore, PresenceError, PresenceDisabled, OWNTRACKS_REPORTS
 from .config import private_json
 
 MAX_BODY = 65536
@@ -573,7 +573,7 @@ class RemoteServer:
                     result = callback(person, payload)
                     # A paired phone receives an acknowledgement, never a roster,
                     # another person's presence, message summaries or coordinates.
-                    if kind == "presence" and isinstance(payload, dict) and payload.get("_type") in ("transition", "location"):
+                    if kind == "presence" and isinstance(payload, dict) and payload.get("_type") in OWNTRACKS_REPORTS:
                         return self._reply(200, [])  # OwnTracks HTTP response format.
                     ack = {"accepted": True}
                     if isinstance(result, dict):

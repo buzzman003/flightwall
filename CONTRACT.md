@@ -1,5 +1,13 @@
 # Flight Wall implementation contract
 
+0.4.15: Drain authenticated OwnTracks queue entries that cannot update presence:
+valid expired/older observations, supported irrelevant telemetry and well-formed
+non-Home region transitions. Acknowledge with the OwnTracks empty array without
+writing observations, request history or coordinates or renewing freshness.
+Retain strict authentication, malformed/future/conflicting-timestamp checks and
+disabled-presence rejection. Non-OwnTracks presence calls keep strict errors.
+Do not silently accept encrypted locations that this receiver cannot decode.
+
 0.4.14: Keep the crisp board presentation. Meal images join the same bounded
 presentation layers as maps, with brightness and timer/ticker insets applied.
 Recheck household/card visibility every frame before attaching photos. Custom

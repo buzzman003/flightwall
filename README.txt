@@ -1,3 +1,11 @@
+FLIGHT WALL 0.4.15
+
+OwnTracks can recover after an outage without an old queued report blocking
+new observations. Authenticated expired/older reports and supported non-presence
+telemetry are acknowledged and discarded. They do not change Home/Away, renew
+freshness or save coordinates. Malformed reports, future observations, wrong
+credentials and disabled presence remain errors. The crisp display is unchanged.
+
 FLIGHT WALL 0.4.14
 
 S > Timing sets individual card durations. GLOBAL uses the Display card seconds.

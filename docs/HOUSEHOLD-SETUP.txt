@@ -593,6 +593,11 @@ Phone state is Unknown:
   Confirm per-person endpoint, exact Basic username, current pairing token,
   presence enabled, current timestamps and real background reports. An initial
   pairing or home pin does not make a person Home. See PRESENCE.txt.
+  OwnTracks delivery errors need the HTTP status or adjacent endpoint error,
+  not a full log containing locations or credentials. Version 0.4.15 drains
+  authenticated stale/older reports and supported irrelevant telemetry without
+  updating presence. Wrong credentials, invalid data and future clocks still
+  need correction on the phone; a successful connection alone is not Home.
 
 Private cards are absent:
   Check all required consent/privacy signals and guest mode. Review the exact
