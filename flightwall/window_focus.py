@@ -12,6 +12,7 @@ import time
 PROC_ROOT = Path("/proc")
 WMCTRL_PATHS = ("/usr/bin/wmctrl", "/bin/wmctrl")
 XPROP_PATHS = ("/usr/bin/xprop", "/bin/xprop")
+XDOTOOL_PATHS = ("/usr/bin/xdotool", "/bin/xdotool")
 PID_PATTERN = r"[1-9][0-9]{0,9}"
 WINDOW_PATTERN = r"0x[0-9a-fA-F]{1,16}"
 MENU_EXECUTABLES = ("/usr/bin/emulationstation", "/usr/bin/emulationstation/emulationstation")
@@ -109,7 +110,8 @@ class _Desktop:
         if not _release_executable(self.executable, self.install):
             raise ValueError("Invalid active Flight Wall executable")
         self.wmctrl, self.xprop = _tool(WMCTRL_PATHS), _tool(XPROP_PATHS)
-        if not self.wmctrl or not self.xprop:
+        self.xdotool = _tool(XDOTOOL_PATHS)
+        if not self.wmctrl or not (self.xprop or self.xdotool):
             raise ValueError("X11 focus tools are unavailable")
         self.environment = dict(os.environ, DISPLAY=os.environ.get("DISPLAY") or ":0.0")
 
@@ -127,9 +129,16 @@ class _Desktop:
         return rows
 
     def active(self):
-        output = self.run(self.xprop, "-root", "_NET_ACTIVE_WINDOW") or b""
-        match = re.fullmatch(rb"_NET_ACTIVE_WINDOW\(WINDOW\): window id # (0x[0-9a-fA-F]{1,16})\s*", output)
-        return int(match[1], 16) if match else None
+        if self.xprop:
+            output = self.run(self.xprop, "-root", "_NET_ACTIVE_WINDOW") or b""
+            match = re.fullmatch(rb"_NET_ACTIVE_WINDOW\(WINDOW\): window id # (0x[0-9a-fA-F]{1,16})\s*", output)
+            if match:
+                return int(match[1], 16)
+        if self.xdotool:
+            output = (self.run(self.xdotool, "getactivewindow") or b"").strip()
+            if re.fullmatch(rb"[1-9][0-9]{0,9}", output) and int(output) <= 0xffffffff:
+                return int(output)
+        return None
 
     def gui(self, rows, owner):
         matches = []
@@ -288,8 +297,13 @@ def reopen_from_ports(install_dir, data_dir):
         # Request an ordinary window close only when the verified menu still
         # covers the same GUI after repeated activation attempts.
         rows = desktop.windows()
-        if ((install / ".install-lock").exists() or not desktop.menu(rows, desktop.active())
-                or desktop.gui(rows, owner) != target or not desktop.matches(target, owner)):
+        if ((install / ".install-lock").exists() or desktop.gui(rows, owner) != target
+                or not desktop.matches(target, owner)):
+            return "unavailable"
+        active = desktop.active()
+        if active == int(target[0], 16):
+            return "focused"
+        if not desktop.menu(rows, active):
             return "unavailable"
         if desktop.run(desktop.wmctrl, "-ic", target[0]) is None:
             return "unavailable"

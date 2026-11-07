@@ -1,4 +1,4 @@
-FLIGHT WALL 0.4.16
+FLIGHT WALL 0.4.17
 
 Ports can verify and raise an existing Flight Wall window. The running TV
 display can reclaim focus from the games menu. Escape ends the display session.

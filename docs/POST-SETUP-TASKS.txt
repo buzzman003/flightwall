@@ -3,7 +3,7 @@ Reviewed November 7, 2026 Central
 
 NEXT RELEASE PRIORITIES AFTER 0.4.15
 
-The 0.4.16 candidate implements items 1 through 6. Personal travel uses a
+The 0.4.17 candidate implements items 1 through 6. Personal travel uses a
 reviewed local import. Field checks still cover repeated cold boot, real
 overnight conditions, verified booking import and physical Echo behavior.
 

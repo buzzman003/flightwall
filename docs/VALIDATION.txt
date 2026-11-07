@@ -1,4 +1,4 @@
-0.4.16 LAUNCH, OVERNIGHT WEATHER, AND PERSONAL TRAVEL
+0.4.17 LAUNCH, OVERNIGHT WEATHER, AND PERSONAL TRAVEL
 
 Release acceptance covers signed next-launch activation and rollback against
 the actual 0.4.15 baseline, the original recovery helper, and native rendering.

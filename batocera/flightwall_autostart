@@ -13,7 +13,7 @@ ready_to_launch() {
     reason='Flight Wall Ports entry is unavailable'
     [ -x "$PORT" ] || return 1
     reason='EmulationStation X11 window is not ready'
-    menu_pids=$(pgrep -f '^(/usr/bin/)?emulationstation( |$)') || return 1
+    menu_pids=$(pgrep -f '^(/usr/bin/(emulationstation/)?)?emulationstation( |$)') || return 1
     windows=$(wmctrl -lp 2>/dev/null) || return 1
     for pid in $menu_pids; do
         printf '%s\n' "$windows" | awk -v pid="$pid" '$3 == pid { ready=1 } END { exit !ready }' && return 0

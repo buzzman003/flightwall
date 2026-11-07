@@ -1,6 +1,6 @@
 # Flight Wall implementation contract
 
-0.4.16: Fresh Chris Home and a matched scheduled VPS overnight can open the
+0.4.17: Fresh Chris Home and a matched scheduled VPS overnight can open the
 remaining-leg weather preview. Keep this gate separate from commute requests.
 Retain narrow leave window and boundary clocks only after matching the inbound,
 outbound and report. The 45-minute home arrival estimate is schedule context.

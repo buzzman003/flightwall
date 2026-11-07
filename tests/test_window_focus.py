@@ -143,6 +143,30 @@ def test_activation_requires_x11_to_confirm_the_active_window(desktop):
     assert sum(call.args[0][1] == "-ia" for call in run.call_args_list) == 4
 
 
+@pytest.mark.parametrize(("reported_window", "expected"), [
+    (b"2097153\n", True),  # 0x00200001
+    (b"3145730\n", False),  # 0x00300002
+    (b"0x00200001\n", False),
+    (b"4294967296\n", False),
+    (b"2097153\n3145730\n", False),
+])
+def test_xdotool_verifies_foreground_on_batocera_without_xprop(desktop, monkeypatch, reported_window, expected):
+    install, data, _, _, run = desktop
+    monkeypatch.setattr(window_focus.os, "access", lambda path, _mode: path in ("/usr/bin/wmctrl", "/usr/bin/xdotool"))
+
+    def run_x11(command, **_kwargs):
+        if command[1] == "-lp":
+            return CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n")
+        if command[1] == "-ia":
+            return CompletedProcess([], 0, b"")
+        assert command == ["/usr/bin/xdotool", "getactivewindow"]
+        return CompletedProcess([], 0, reported_window)
+
+    run.side_effect = run_x11
+    assert window_focus.focus_window(install, data) is expected
+    assert any(call.args[0] == ["/usr/bin/xdotool", "getactivewindow"] for call in run.call_args_list)
+
+
 @pytest.mark.parametrize("menu", [True, False])
 def test_foreground_guard_recovers_only_the_menu(desktop, monkeypatch, menu):
     install, data, proc, resolved, run = desktop
