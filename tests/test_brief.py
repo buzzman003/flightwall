@@ -61,6 +61,28 @@ def test_report_safe_soft_wrap_and_single_nonconflicting_time():
     assert "leave_conflict" not in legs[1]
 
 
+def test_operational_window_and_boundary_match_only_exact_dated_visit():
+    event = overnight(description="Wednesday Jan 13 — Leave Home: Operationally recommended: 7:05–7:15 AM Central. "
+                                  "If delayed, 7:25 AM is the absolute leave-\nhome boundary. "
+                                  "Both formula times are too late for the 9:00 AM crew report.")
+    rows = parse_brief_leave_notes([event], "America/Chicago")
+    assert rows == [{"airport": "VPS", "arrival": "2027-01-13T02:00:00+00:00", "report": "2027-01-13T15:00:00+00:00",
+                     "window_start_at": "2027-01-13T13:05:00+00:00", "window_end_at": "2027-01-13T13:15:00+00:00",
+                     "boundary_at": "2027-01-13T13:25:00+00:00", "conflict": True}]
+    legs = flights()
+    attach_brief_leaves(legs, rows)
+    assert legs[1]["leave_window_start"] == rows[0]["window_start_at"]
+    assert legs[1]["leave_window_end"] == rows[0]["window_end_at"]
+    assert legs[1]["leave_boundary_at"] == rows[0]["boundary_at"]
+    assert legs[1]["leave_conflict"] is True
+    assert "leave_at" not in legs[1]
+    wrong_report = flights(report="2027-01-13T15:01:00Z")
+    attach_brief_leaves(wrong_report, rows)
+    assert "leave_window_start" not in wrong_report[1]
+    assert not parse_brief_leave_notes([event | {"description": event["description"].replace("Wednesday", "Tuesday")}],
+                                       "America/Chicago")
+
+
 def test_partial_conflicts_multiple_values_unrelated_titles_and_bad_dates_hide():
     base = overnight()
     events = [overnight(summary="Report: 0900L"), overnight(summary="Buzz Flight Brief — VPS Home Overnight (Jan 11–13)"),

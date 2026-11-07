@@ -6,6 +6,7 @@ import json
 
 UTC = timezone.utc
 ACTIVITIES_PER_PAGE = 6
+ACTIVITY_GRACE = timedelta(minutes=30)
 
 
 def stamp(value):
@@ -47,8 +48,12 @@ def today_activities(outlook, config, now, *, backend_available=True):
             start, end = stamp(item.get("start")), stamp(item.get("end"))
         except (ValueError, TypeError, AttributeError, OverflowError):
             continue
-        if start < end and start < end_of_day and end > start_of_day:
-            rows.append((start.astimezone(zone), end.astimezone(zone), item["title"], item.get("all_day") is True))
+        all_day = item.get("all_day") is True
+        if not (start < end and start < end_of_day and end > start_of_day):
+            continue
+        if not all_day and now - end >= ACTIVITY_GRACE:
+            continue
+        rows.append((start.astimezone(zone), end.astimezone(zone), item["title"], all_day))
     return sorted(rows, key=lambda row: (row[0].astimezone(UTC), row[1].astimezone(UTC), row[2]))
 
 
@@ -135,12 +140,16 @@ def local_visits(snapshot, now, *, include_future=False):
             departure, _, outbound = legs[index + 1]
             if not outbound.get("deadhead") and outbound.get("origin") == airport and arrival < departure <= arrival + timedelta(days=4):
                 item.update(departure=departure.isoformat(), duration_minutes=int((departure - arrival).total_seconds() / 60))
-                try:
-                    leave = stamp(outbound.get("leave_at"))
-                    if max(arrival, departure - timedelta(days=1)) < leave <= departure:
-                        item["leave_at"] = leave.isoformat()
-                except (ValueError, TypeError, AttributeError, OverflowError):
-                    pass
+                estimated_home = arrival + timedelta(minutes=45)
+                if estimated_home < departure:
+                    item["estimated_home_at"] = estimated_home.isoformat()
+                for key in ("leave_at", "leave_window_start", "leave_window_end", "leave_boundary_at"):
+                    try:
+                        leave = stamp(outbound.get(key))
+                        if max(arrival, departure - timedelta(days=1)) < leave <= departure:
+                            item[key] = leave.isoformat()
+                    except (ValueError, TypeError, AttributeError, OverflowError):
+                        continue
                 if outbound.get("leave_conflict") is True:
                     item["leave_conflict"] = True
                 display_end = max(display_end, departure)
@@ -197,7 +206,7 @@ def planned_buzz_days(snapshot, config, now):
     return days
 
 
-def trip_preview(snapshot, config, now):
+def trip_preview(snapshot, config, now, *, exclude_id=None):
     """The next five calendar days with flights, starting at the next leg.
 
     A date range is deliberate: individual flight titles don't establish a
@@ -209,6 +218,8 @@ def trip_preview(snapshot, config, now):
     flights = []
     for flight in snapshot.get("flights", []):
         try:
+            if exclude_id is not None and flight.get("id") == exclude_id:
+                continue
             start, end = stamp(flight["start"]), stamp(flight["end"])
             if end > start and end > now and (config.get("show_deadheads", True) or not flight.get("deadhead")):
                 flights.append((start, end, flight))

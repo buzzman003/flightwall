@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from flightwall.trip_weather import (TripWeatherFeed, _conditions, _report_status, forecast_category,
-                                     forecast_window, parse_taf, preview_airports, trip_preview_eligible)
+                                     forecast_window, parse_taf, preview_airports, trip_preview_eligible,
+                                     trip_weather_eligible)
 from test_trip_weather import flight, metar, snapshot, taf
 from test_flight_context_views import CONFIG, airport, capture
 
@@ -45,6 +46,27 @@ def test_first_date_includes_only_explicit_timed_commute_and_endpoint_windows():
     assert len(targets[0]["windows"]) == 1
     assert targets[0]["windows"][0]["start"] == (NOW + timedelta(hours=19)).isoformat()
     assert targets[0]["windows"][0]["end"] == (NOW + timedelta(hours=21)).isoformat()
+
+
+def test_fresh_home_after_midnight_enables_only_matched_overnight_weather():
+    from flightwall.household_policy import build_rotation
+    now = datetime(2027, 1, 13, 8, tzinfo=timezone.utc)
+    inbound = flight("MEM", "VPS", start=now - timedelta(hours=5), end=now - timedelta(hours=3))
+    outbound = flight("VPS", "ATL", start=now + timedelta(hours=10), end=now + timedelta(hours=11))
+    connection = flight("ATL", "BNA", start=now + timedelta(hours=12), end=now + timedelta(hours=13))
+    unrelated = flight("ECP", "ORD", start=now + timedelta(hours=15), end=now + timedelta(hours=16))
+    schedule = snapshot(inbound, outbound, connection, unrelated) | {"last_sync": now.isoformat()}
+    state = {"snapshot": schedule, "trip_weather": {"status": "partial", "airports": [airport(now)]},
+             "presence": {"chris": {"state": "home", "stale": False, "last_seen": now.isoformat()}}}
+    assert not trip_preview_eligible(state, SETTINGS, now)
+    assert trip_weather_eligible(state, SETTINGS, now)
+    entries = [row for row in build_rotation(state, SETTINGS, now) if row["view"] == "trip_weather"]
+    assert [row["item"]["iata"] for row in entries] == ["VPS", "ATL", "BNA"]
+    assert all(row["item"]["vps_overnight"] and row["item"]["windows"] for row in entries)
+    assert not trip_weather_eligible(state | {"snapshot": schedule | {"error": "offline"}}, SETTINGS, now)
+    for not_home in ("unknown", "away"):
+        changed = state | {"presence": {"chris": state["presence"]["chris"] | {"state": not_home}}}
+        assert not trip_weather_eligible(changed, SETTINGS, now)
 
 
 def test_rotation_includes_all_preview_airports_and_pages_visits_only_while_home():

@@ -33,6 +33,7 @@ CARD_LABELS = {
     'dinner_options_card_visible': 'Dinner ideas',
     'appointment_cards_visible': 'Appointments',
     'flight_watch_cards_visible': 'Tracked flights',
+    'personal_travel_cards_visible': 'Personal Delta travel',
 }
 CARD_DEFAULTS = {key: True for key in CARD_LABELS}
 VIEW_FIELDS = {
@@ -44,6 +45,7 @@ VIEW_FIELDS = {
     'today_activities': 'custody_card_visible',
     'local_visit': 'local_visit_cards_visible', 'flight_watch': 'flight_watch_cards_visible',
     'dinner_options': 'dinner_options_card_visible',
+    'personal_travel': 'personal_travel_cards_visible',
 }
 
 

@@ -183,10 +183,9 @@ def test_operating_priority_precedes_new_household_views():
               "custody_outlook": {"days": [{"date": "2026-10-31", "state": "unknown"}]}}
     rotation = build_rotation(status, {}, now)
     assert {"local_visit", "custody_outlook"} <= {entry["view"] for entry in rotation}
-    for index, entry in enumerate(rotation):
-        if entry["view"] not in {"details", "map"}:
-            assert rotation[index - 1]["view"] in {"details", "map"}
-            assert rotation[index - 1]["duration_seconds"] == 60
+    assert [entry["view"] for entry in rotation[:2]] == ["details", "map"]
+    assert [entry["duration_seconds"] for entry in rotation[:2]] == [60, 60]
+    assert all(entry["view"] not in {"details", "map", "trip_map"} for entry in rotation[2:])
 
 
 def test_activities_rotate_separately_and_page_without_exposing_guest_details():
@@ -220,6 +219,11 @@ def test_agenda_focus_marks_concurrent_rows_and_advances_at_exact_boundaries():
     assert agenda_focus(rows, now + timedelta(minutes=30)) == ["", "", "", "", "NOW", "NOW", "NEXT"]
     assert agenda_focus(rows, now + timedelta(hours=2)) == [""] * len(rows)
     assert agenda_focus([], now) == []
+    expiry = now + timedelta(minutes=30)
+    assert "Completed" in [row[2] for row in today_activities(outlook, {}, expiry - timedelta(seconds=1))]
+    at_expiry = today_activities(outlook, {}, expiry)
+    assert "Completed" not in [row[2] for row in at_expiry]
+    assert "All day" in [row[2] for row in at_expiry]
 
 
 def test_agenda_focus_orders_repeated_wall_times_by_instant():

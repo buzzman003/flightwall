@@ -1,3 +1,19 @@
+0.4.16 LAUNCH, OVERNIGHT WEATHER, AND PERSONAL TRAVEL
+
+Release acceptance covers signed next-launch activation and rollback against
+the actual 0.4.15 baseline, the original recovery helper, and native rendering.
+Repeated cold boot and storage readiness need field checks on the TV system.
+The successful boot's storage log cannot diagnose an earlier failed boot.
+Verify foreground recovery after the menu handoff and normal Escape to games.
+
+For a real VPS overnight, check the fresh Home gate, remaining-leg forecasts,
+matched leave window, separate report boundary, and scheduled home-arrival
+estimate. Provider gate clocks establish a completed observation. A live
+airborne position requires a separate field check. Verified personal travel
+can be loaded through the reviewed local import. Actual airline email review
+and physical Echo timer and tomorrow-dinner checks are separate from source
+and native acceptance.
+
 0.4.15 OWNTRACKS QUEUE RECOVERY
 
 The owner's Android reports a delivery failure while the public HTTPS endpoint

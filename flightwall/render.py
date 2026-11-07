@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from PIL import Image, ImageDraw
 
 from .timers import COMPLETED_RETENTION
-from .time_format import format_time
+from .time_format import format_leave_clock, format_time
 
 BASE_SIZE = (512, 256)
 TIMER_STRIP_HEIGHT = 36
@@ -229,6 +229,8 @@ def _footer(draw, state, view, now, tz, personal_item=None):
         status, color = "PUBLIC REQUEST / " + str(card.get("date") or "DATE UNKNOWN")[:10], MUTED
         if card.get("status") == "stale":
             status, color = status + " / STALE", AMBER
+    elif view == "personal_travel":
+        status, color = "PERSONAL RESERVATIONS / SCHEDULED TIMES", MUTED
     elif view in {"trip_summary", "trip_map"}:
         status, color = "PLANNED TRIP / NOT LIVE TRACKING", MUTED
     elif view == "home":
@@ -879,19 +881,30 @@ def _local_visit(draw, state, config, now):
         _text(draw, (279, 146), "UNKNOWN", AMBER, 2, max_width=206)
         _text(draw, (279, 177), "NO MATCHING OUTBOUND", MUTED, max_width=206)
     minutes = card.get("duration_minutes")
-    leave = _dt(card.get("leave_at")) if config.get("brief_leave_times_enabled") is True else None
-    conflict = card.get("leave_conflict") is True and config.get("brief_leave_times_enabled") is True
+    has_stay = departure and type(minutes) is int and minutes >= 0
+    estimated_home = _dt(card.get("estimated_home_at"))
+    if estimated_home:
+        _text(draw, (26, 192), "EST. HOME / " + format_time(estimated_home.astimezone(zone), date_format="%a %m/%d"),
+              MUTED, max_width=224)
+    if has_stay:
+        _text(draw, (279, 192), f"PLANNED STAY / {minutes // 60}H {minutes % 60:02d}M", MUTED, max_width=206)
+    opted_in = config.get("brief_leave_times_enabled") is True
+    leave = (format_leave_clock(_dt(card.get("leave_at")), _dt(card.get("leave_window_start")),
+                                _dt(card.get("leave_window_end")), zone) if opted_in else None)
+    conflict = opted_in and card.get("leave_conflict") is True
     if leave:
-        if departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
-            _text(draw, (26, 192), f"STAY / {minutes // 60}H {minutes % 60:02d}M", MUTED, max_width=224)
-        _text(draw, (26, 204), "BRIEF LEAVE / " + format_time(leave.astimezone(zone), date_format="%a %d %b", include_zone=True), AMBER, max_width=354)
+        label = "LEAVE HOME BY / " + leave
+        boundary = _dt(card.get("leave_boundary_at"))
+        if boundary:
+            label += " / HARD BOUNDARY " + format_time(boundary.astimezone(zone))
+        _text(draw, (26, 204), label, AMBER, max_width=404 if conflict else 454)
         if conflict:
             _text(draw, (484, 204), "VERIFY", AMBER, align="right")
     elif conflict:
         _text(draw, (26, 204), "BRIEF CONFLICT / CHECK LEAVE TIME AND REPORT", AMBER, max_width=454)
-    elif departure and isinstance(minutes, int) and not isinstance(minutes, bool) and minutes >= 0:
-        _text(draw, (26, 204), f"PLANNED STAY / {minutes // 60}H {minutes % 60:02d}M", AMBER, max_width=454)
-    else:
+    elif has_stay and opted_in:
+        _text(draw, (26, 204), "LEAVE HOME BY / NOT IN MATCHED BRIEF", MUTED, max_width=454)
+    elif not has_stay:
         _text(draw, (26, 204), "SCHEDULE ONLY / LOCATION NOT CONFIRMED", MUTED, max_width=454)
 
 
@@ -923,6 +936,21 @@ def _flight_watch(draw, image, state, config, now, tz):
     draw.rectangle((15, 144, 496, 219), fill=PANEL)
     _text(draw, (256, 158), title, AMBER, 2, align="center", max_width=464)
     _text(draw, (256, 195), detail, MUTED, align="center", max_width=464)
+
+
+def _personal_travel(draw, state, now, rows, tz):
+    _header(draw, state, now, "PERSONAL DELTA TRAVEL")
+    for index, row in enumerate(rows):
+        y = 62 + index * 54
+        depart = _dt(row["start"]).astimezone(tz)
+        arrive = _dt(row["end"]).astimezone(tz)
+        draw.rectangle((15, y, 496, y + 47), fill=PANEL)
+        _text(draw, (24, y + 7), f"{row['number']} / {row['origin']} > {row['destination']}",
+              WHITE, 2, max_width=342)
+        _text(draw, (486, y + 9), "CONFIRMED", CYAN, align="right")
+        departure = format_time(depart, date_format="%a %d %b", include_zone=True)
+        arrival = format_time(arrive, date_format="%d %b", include_zone=True)
+        _text(draw, (24, y + 30), f"DEP {departure} / ARR {arrival}", MUTED, max_width=460)
 
 
 def _trip_legs(state, config):
@@ -1442,6 +1470,17 @@ def render_frame(state, config, size=BASE_SIZE):
         _local_visit(draw, state, config, now)
     elif view == "flight_watch":
         _flight_watch(draw, image, state, config, now, tz)
+    elif view == "personal_travel":
+        from .personal_travel import ROWS_PER_PAGE, visible_travel
+        card = _selected_card(state, view) or {}
+        rows = (visible_travel(card.get("legs"), config, now)
+                if state.get("demo") is False and state.get("backend_available", True) is True else [])
+        if rows:
+            _personal_travel(draw, state, now, rows[:ROWS_PER_PAGE], tz)
+        else:
+            view = "home"
+            state = dict(state, view="home", selected_card=None)
+            _home(draw, state, config, now)
     elif view == "trip_summary":
         _trip_summary(draw, state, config, now)
     elif view == "trip_map":

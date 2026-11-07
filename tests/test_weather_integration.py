@@ -110,8 +110,11 @@ def test_one_forecast_slot_is_independent_of_presence_and_preserves_flight_focus
     rows = build_rotation(status, config, NOW)
     positions = [i for i, row in enumerate(rows) if row["view"] == "weather"]
     assert len(positions) == 1
-    previous = rows[positions[0] - 1]
-    assert previous["view"] in {"details", "map"} and previous["duration_seconds"] == 60
+    for view in ("details", "map"):
+        focused = [(index, row) for index, row in enumerate(rows) if row["view"] == view]
+        assert len(focused) == 1
+        index, row = focused[0]
+        assert index < positions[0] and row["duration_seconds"] == 60
     for disabled in ({**config, "weather_enabled": False},):
         assert all(row["view"] != "weather" for row in build_rotation(status, disabled, NOW))
     status["snapshot"]["demo"] = True

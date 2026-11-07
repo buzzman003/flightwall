@@ -4,29 +4,51 @@ set -eu
 STATE=/run/flightwall-autostart
 DATA=/userdata/system/configs/flightwall
 PORT='/userdata/roms/ports/Flight Wall.sh'
+ready_to_launch() {
+    reason='persistent userdata mount is not ready'
+    # Batocera can mount a RAM fallback at /userdata after a failed disk mount.
+    # Starting from that fallback would hide the real storage failure.
+    awk '$2 == "/userdata" && $3 != "tmpfs" && $3 != "ramfs" && $4 ~ /(^|,)rw(,|$)/ { ready=1 }
+         END { exit !ready }' /proc/mounts || return 1
+    reason='Flight Wall Ports entry is unavailable'
+    [ -x "$PORT" ] || return 1
+    reason='EmulationStation X11 window is not ready'
+    menu_pids=$(pgrep -f '^(/usr/bin/)?emulationstation( |$)') || return 1
+    windows=$(wmctrl -lp 2>/dev/null) || return 1
+    for pid in $menu_pids; do
+        printf '%s\n' "$windows" | awk -v pid="$pid" '$3 == pid { ready=1 } END { exit !ready }' && return 0
+    done
+    return 1
+}
+
 case "${1:-}" in
 start)
-    [ -x "$PORT" ] || exit 1
     mkdir -m 700 "$STATE" 2>/dev/null || exit 0
-    mkdir -p "$DATA/logs"
-    nohup /bin/sh "$0" run </dev/null >>"$DATA/logs/autostart.log" 2>&1 &
+    nohup /bin/sh "$0" run </dev/null >>"$STATE/readiness.log" 2>&1 &
     ;;
 run)
     export DISPLAY=${DISPLAY:-:0.0}
     tries=0
-    until pgrep -f '^(/usr/bin/)?emulationstation( |$)' >/dev/null && xset q >/dev/null 2>&1; do
-        [ ! -e "$STATE/stopped" ] && [ "$tries" -lt 90 ] || exit 0
+    until ready_to_launch; do
+        [ ! -e "$STATE/stopped" ] || exit 0
+        if [ "$tries" -ge 90 ]; then
+            printf 'Flight Wall autostart timed out: %s.\n' "$reason"
+            touch "$STATE/failed"
+            exit 1
+        fi
         tries=$((tries + 1))
         sleep 1
     done
-    sleep 3
     [ ! -e "$STATE/stopped" ] || exit 0
     if pgrep -f '^(/usr/bin/python[^ ]* )?(/usr/bin/)?emulatorlauncher( |$)' >/dev/null; then
+        echo 'Flight Wall autostart skipped while a game launch was active.'
         exit 0
     fi
-    exec "$PORT"
+    mkdir -p "$DATA/logs"
+    echo 'Flight Wall autostart found persistent storage and a managed menu window.'
+    exec "$PORT" >>"$DATA/logs/autostart.log" 2>&1
     ;;
 stop) [ ! -d "$STATE" ] || touch "$STATE/stopped" ;;
-status) [ -d "$STATE" ] && [ ! -e "$STATE/stopped" ] ;;
+status) [ -d "$STATE" ] && [ ! -e "$STATE/stopped" ] && [ ! -e "$STATE/failed" ] ;;
 *) exit 2 ;;
 esac

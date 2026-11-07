@@ -17,34 +17,43 @@ export DISPLAY=${DISPLAY:-:0.0}
 SERVICE_SCRIPT=${FLIGHTWALL_SERVICE_FILE:-/userdata/system/services/flightwall}
 RESTORE_SERVICE=0
 GUI_LOCK="$DATA_DIR/gui-launch.lock"
-if ! mkdir "$GUI_LOCK" 2>/dev/null; then
-    OWNER_PID=
-    if [ -r "$GUI_LOCK/pid" ]; then IFS= read -r OWNER_PID < "$GUI_LOCK/pid"; fi
-    case "$OWNER_PID" in
-        ''|*[!0-9]*) echo 'The GUI launcher is already starting, or its lock needs local diagnosis.' >&2; exit 1;;
-    esac
-    if kill -0 "$OWNER_PID" 2>/dev/null; then
-        if [ -x "$INSTALL_DIR/current/FlightWall" ] &&
-                "$INSTALL_DIR/current/FlightWall" --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" focus >>"$DATA_DIR/logs/launcher.log" 2>&1; then
-            exit 0
-        fi
-        echo 'Flight Wall is already open.' >&2
-        exit 1
-    fi
-    rm -f "$GUI_LOCK/pid"
-    rmdir "$GUI_LOCK" 2>/dev/null || exit 1
-    mkdir "$GUI_LOCK" 2>/dev/null || exit 1
-fi
-printf '%s\n' "$$" > "$GUI_LOCK/pid"
 restore_service() {
     if [ "$RESTORE_SERVICE" -eq 1 ]; then
         "$SERVICE_SCRIPT" start >>"$DATA_DIR/logs/launcher.log" 2>&1 || true
     fi
-    rm -f "$GUI_LOCK/pid"
+    rm -f "$GUI_LOCK/pid" "$GUI_LOCK/started"
     rmdir "$GUI_LOCK" 2>/dev/null || true
 }
+if [ -d "$INSTALL_DIR/.install-lock" ]; then
+    echo 'Flight Wall installation is running. Wait for it to finish before opening the app.' >&2
+    exit 1
+fi
+if ! mkdir "$GUI_LOCK" 2>/dev/null; then
+    # A concurrent launcher may have acquired the directory moments ago.
+    for attempt in 1 2 3; do
+        [ -r "$GUI_LOCK/pid" ] && break
+        sleep 1
+    done
+    "$INSTALL_DIR/current/FlightWall" --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" focus --ports >>"$DATA_DIR/logs/launcher.log" 2>&1
+    case "$?" in
+        0) exit 0 ;;
+        10) mkdir "$GUI_LOCK" 2>/dev/null || exit 1 ;;
+        2)
+            # A rolled-back executable may only support the original focus CLI.
+            "$INSTALL_DIR/current/FlightWall" --install-dir "$INSTALL_DIR" --data-dir "$DATA_DIR" focus >>"$DATA_DIR/logs/launcher.log" 2>&1
+            exit "$?"
+            ;;
+        *) echo 'Flight Wall could not restore the existing display. Check the launcher log.' >&2; exit 1 ;;
+    esac
+fi
 trap restore_service EXIT
 trap 'exit 143' HUP INT TERM
+OWNER_STARTED=$(awk '{ sub(/^.*\) /, ""); print $20 }' "/proc/$$/stat")
+case "$OWNER_STARTED" in
+    ''|*[!0-9]*) echo 'Could not verify the GUI launcher start time.' >&2; exit 1 ;;
+esac
+printf '%s\n' "$OWNER_STARTED" > "$GUI_LOCK/started" || exit 1
+printf '%s\n' "$$" > "$GUI_LOCK/pid" || exit 1
 if [ -d "$INSTALL_DIR/.install-lock" ]; then
     echo 'Flight Wall installation is running. Wait for it to finish before opening the app.' >&2
     exit 1

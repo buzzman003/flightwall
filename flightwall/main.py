@@ -29,7 +29,8 @@ def parser():
     gui.add_argument("--windowed", action="store_true")
     gui.add_argument("--frames", type=int, help=argparse.SUPPRESS)
     commands.add_parser("service", help="Run calendar, settings and updates without opening the display")
-    commands.add_parser("focus", help="Bring the existing local Flight Wall display to the front")
+    focus = commands.add_parser("focus", help="Bring the existing local Flight Wall display to the front")
+    focus.add_argument("--ports", action="store_true", help=argparse.SUPPRESS)
     authorize = commands.add_parser("authorize", help="Authorize your own Google Calendar read-only")
     authorize.add_argument("--credentials", required=True, type=Path)
     authorize.add_argument("--no-browser", action="store_true")
@@ -54,6 +55,9 @@ def parser():
     schedules = commands.add_parser("commute-schedules", help="Read scheduled VPS/ATL clocks through the existing bounded AeroAPI budget")
     schedules.add_argument("--date", required=True, help="Central travel date, YYYY-MM-DD")
     schedules.add_argument("--idents", required=True, nargs="+", help="At most eight exact DL flight numbers")
+    travel = commands.add_parser("travel-import", help="Import privately reviewed personal Delta reservations")
+    travel.add_argument("--reservations", required=True, type=Path, help="Local JSON list of reviewed reservation records")
+    commands.add_parser("travel-list", help="Read the private personal Delta travel store locally")
     recipe = commands.add_parser("recipe-email", help="Privately configure email for future selected recipes")
     commands.add_parser("recipe-email-status", help="Check recipe email readiness without showing private data")
     recipe.add_argument("--sender", required=True)
@@ -222,6 +226,11 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         if args.command == "focus":
+            if args.ports:
+                from .window_focus import reopen_from_ports
+                outcome = reopen_from_ports(args.install_dir, args.data_dir)
+                emit({"focused": outcome == "focused", "ports": outcome})
+                return {"focused": 0, "released": 10, "unavailable": 1}[outcome]
             from .window_focus import focus_window
             focused = focus_window(args.install_dir, args.data_dir)
             emit({"focused": focused})
@@ -284,6 +293,11 @@ def main(argv=None):
             from .commute import lookup_schedules
             from .feeds import FlightFeeds
             emit(lookup_schedules(FlightFeeds(store.data_dir), store.get(), args.date, args.idents, datetime.now(timezone.utc)))
+        elif command in {"travel-import", "travel-list"}:
+            from .personal_travel import PersonalTravel
+            travel = PersonalTravel(store.data_dir, store.get)
+            emit(travel.import_file(args.reservations) if command == "travel-import"
+                 else {"reservations": travel.list_records()})
         elif command == "recipe-email":
             from .config import private_json
             from .recipe_mail import validate_mail_settings
@@ -479,11 +493,21 @@ def main(argv=None):
                         raise ValueError("The background service is running a different release. Close the display, stop the Flight Wall service, and launch from Ports again.")
                 except OSError:
                     runtime = Runtime(args.data_dir, args.install_dir).start()
+                windowed, max_frames = getattr(args, "windowed", False), getattr(args, "frames", None)
+                foreground_stopped = threading.Event()
+
+                def first_frame():
+                    mark_healthy(args.install_dir, args.data_dir, version=__version__)
+                    if not windowed and max_frames is None:
+                        from .window_focus import guard_foreground
+                        threading.Thread(target=guard_foreground, name="flightwall-foreground", daemon=True,
+                                         args=(args.install_dir, args.data_dir, foreground_stopped)).start()
+
                 try:
-                    result = run_gui(connection, windowed=getattr(args, "windowed", False), max_frames=getattr(args, "frames", None),
-                                     on_healthy=lambda: mark_healthy(args.install_dir, args.data_dir, version=__version__))
+                    result = run_gui(connection, windowed=windowed, max_frames=max_frames, on_healthy=first_frame)
                     emit(result)
                 finally:
+                    foreground_stopped.set()
                     if runtime:
                         runtime.stop()
         return 0

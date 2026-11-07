@@ -101,9 +101,10 @@ def _vps_visit(snapshot, config, flight, start, end, now):
         if report and max(arrival, departure - timedelta(days=1)) < report <= departure:
             result["scheduled_report_at"] = report.isoformat()
         if config.get("brief_leave_times_enabled") is True:
-            leave = _timestamp(row.get("leave_at"))
-            if leave and max(arrival, departure - timedelta(days=1)) < leave <= departure:
-                result["brief_leave_at"] = leave.isoformat()
+            for key in ("leave_at", "leave_window_start", "leave_window_end", "leave_boundary_at"):
+                leave = _timestamp(row.get(key))
+                if leave and max(arrival, departure - timedelta(days=1)) < leave <= (report or departure):
+                    result["brief_" + key] = leave.isoformat()
             if row.get("leave_conflict") is True:
                 result["brief_leave_conflict"] = True
         matched.append(result)

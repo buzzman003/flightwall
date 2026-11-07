@@ -232,6 +232,7 @@ class FlightFeeds:
         self._last_nearby = -math.inf
         self._nearby_query = None
         self._nearby_completed = (None, [])
+        self._nearby_receipt = (None, None, False)
         self._last_live = -math.inf
         self._live_id = None
         self._selected = None
@@ -403,6 +404,20 @@ class FlightFeeds:
                     row["route"] = route
         return result
 
+    def nearby_status_for_config(self, config, now):
+        if config.get("demo") or not config.get("nearby_enabled"):
+            return "off"
+        lat, lon = config.get("home_latitude"), config.get("home_longitude")
+        try:
+            radius, _ = _nearby_radius(config)
+        except ValueError:
+            return "unavailable"
+        query, checked, accepted = self._nearby_receipt
+        if not coordinates(lat, lon) or query != (lat, lon, radius) or checked is None:
+            return "unavailable"
+        return ("ready" if accepted and timedelta(0) <= now - checked <= timedelta(seconds=NEARBY_MAX_AGE_SECONDS)
+                else "stale")
+
     @staticmethod
     def _nearby_route_identity(row):
         return row.get("hex"), nearby_lookup_identity(row), row.get("registration") or None
@@ -468,9 +483,11 @@ class FlightFeeds:
         # The operating flight always gets the first use of the existing shared
         # paid-request budget. Public requests never replace its live position.
         self._poll_watches(config, watches or [], now)
-        if config["demo"] or not config["nearby_enabled"] or on_duty:
+        if config["demo"] or not config["nearby_enabled"]:
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_receipt = (None, None, False)
+            self._last_nearby = -math.inf
             return
         lat, lon = config["home_latitude"], config["home_longitude"]
         if not coordinates(lat, lon):
@@ -492,19 +509,25 @@ class FlightFeeds:
             self._last_nearby = -math.inf
         self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
         if time.monotonic() - self._last_nearby < 60:
-            self._poll_nearby_routes(config, now)
+            if not on_duty:
+                self._poll_nearby_routes(config, now)
             return
         self._last_nearby = time.monotonic()
         try:
             # The community ADS-B feed is optional and has no availability guarantee.
             data = request_json(f"https://api.adsb.lol/v2/point/{lat}/{lon}/{request_radius_nm}")
-            self.nearby = _nearby_aircraft(data, lat, lon, radius_miles, utcnow())
+            checked = utcnow()
+            self.nearby = _nearby_aircraft(data, lat, lon, radius_miles, checked)
             self._nearby_completed = (query, copy.deepcopy(self.nearby))
+            self._nearby_receipt = (query, checked, True)
         except (ValueError, OSError, urllib.error.URLError, TypeError, AttributeError):
             self.nearby = []
             self._nearby_completed = (None, [])
+            previous_query, checked, _ = self._nearby_receipt
+            self._nearby_receipt = (query, checked if previous_query == query else None, False)
             self.error = "Nearby traffic feed unavailable."
-        self._poll_nearby_routes(config, utcnow())
+        if not on_duty:
+            self._poll_nearby_routes(config, utcnow())
 
     @staticmethod
     def _watch_flight(data, watch):

@@ -223,7 +223,7 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(result["presence"]["chris"]["state"], "unknown")
         self.assertFalse(result["household_context"]["private_lisa"])
         slots = build_rotation(result, self.runtime.config.get(), NOW)
-        self.assertNotIn("nearby", [slot["view"] for slot in slots])
+        self.assertIn("nearby", [slot["view"] for slot in slots])
         self.assertTrue(any(slot["view"] == "details" and slot["duration_seconds"] == 60 for slot in slots))
 
     def test_exact_clock_drives_personal_expiry_and_selected_flight(self):

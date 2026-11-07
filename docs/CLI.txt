@@ -9,6 +9,52 @@ The installed wrapper supplies the installation/data directories automatically.
 For a source checkout use python -m flightwall. Global options such as --data-dir
 must appear before the command name.
 
+PERSONAL DELTA TRAVEL
+
+Review the actual Delta reservation, listing or cancellation in your own mail
+before importing. A calendar copy, listing, jumpseat request or check-in notice
+alone cannot prove a confirmed seat or actual travel. Compare with the primary
+calendar so you enter the same flight only once. Keep the import file private.
+Use a UTF-8 JSON list like this fictional example, substituting the real flight,
+scheduled clocks and the source message time. Include UTC or explicit offsets.
+
+    [
+      {
+        "number": "DL1234",
+        "origin": "ATL",
+        "destination": "MEM",
+        "start": "2026-11-20T18:00:00-05:00",
+        "end": "2026-11-20T18:25:00-06:00",
+        "status": "confirmed",
+        "source": "delta_email",
+        "updated_at": "2026-11-06T13:00:00Z"
+      }
+    ]
+
+    "$FW" travel-import --reservations /path/to/reviewed-travel.json
+    "$FW" travel-list
+
+Use listed, jumpseat_requested, confirmed, cancelled or flown. Select flown
+only when Delta documents the actual travel. Use calendar_copy for a copied
+listing or request. Never include record locators, email text, message IDs or
+other passenger details. The import takes at most 64 records and supports
+travel in the past 30 days or next year. The list command shows the private
+store in your terminal.
+
+The importer matches the Delta number, origin-local departure date and route.
+A newer Delta record supersedes an older one, and a calendar copy cannot
+overwrite a Delta record. For a schedule change on the same route and date,
+import the updated clocks with the latest Delta source time. For a new date,
+number or route, include the old segment as cancelled with its original clocks
+and the new segment as confirmed in the same file. Equal-time contradictions
+require review before any records from that import are saved.
+
+Only the next twelve confirmed legs within 14 days appear in Personal Delta
+Travel, using the board's timezone. Guest mode and an unavailable display
+service hide the card. Use S > Cards to set Personal Delta Travel to HIDE.
+This local workflow leaves Calendar and Gmail permissions alone. Travel
+records are separate from crew duty, presence and AeroAPI requests.
+
 SETUP ADDRESS AND OWNER TOKEN
 
     "$FW" setup-info

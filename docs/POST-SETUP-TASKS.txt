@@ -1,5 +1,72 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Updated November 2, 2026 UTC / November 1, 2026 Central
+Reviewed November 7, 2026 Central
+
+NEXT RELEASE PRIORITIES AFTER 0.4.15
+
+The 0.4.16 candidate implements items 1 through 6. Personal travel uses a
+reviewed local import. Field checks still cover repeated cold boot, real
+overnight conditions, verified booking import and physical Echo behavior.
+
+1. Make boot and Ports relaunch predictable. Wait for the intended userdata
+   mount and usable display session before attempting autostart. Record which
+   readiness check timed out. Distinguish a starting GUI, an existing window
+   and a stale lock. Raise a verified existing window and check that it is
+   still active after EmulationStation's launch handoff. If a verified instance
+   is unresponsive, try a bounded orderly close before relaunch. Scope any
+   foreground guard to the running Flight Wall GUI and release it on Escape
+   so the owner can play games. Exercise repeated cold starts, delayed storage,
+   repeated Ports selection, and intentional exit. Diagnose a missing-systems
+   boot separately using evidence from that boot before a restart.
+
+2. Show graphical trip weather during a matched VPS overnight when Chris is
+   freshly Home. Cover the remaining legs through the next day using the
+   existing METAR and TAF time windows. Distinguish observation, forecast and
+   missing coverage. Keep the separate day-before commute lookup gate and its
+   budget. Verify a real Home report, an active rotation, and the VPS overnight
+   window together. A GPS fix whose accuracy crosses the home boundary remains
+   Unknown.
+
+3. Give Flight Brief and Local Visit a fixed amber leave-home row sourced from
+   the exact matching Buzz Brief visit and outbound report. Accept a narrowly
+   labeled recommendation or range and retain any separate hard boundary or
+   conflict. Show the planned leave information regardless of phone presence.
+   Use an owner-approved calculation only with explicit inputs and a visible
+   basis, and flag a pushback-based time that conflicts with crew report.
+   Show estimated home arrival 45 minutes after scheduled VPS arrival,
+   including date rollover. Treat that estimate as schedule information.
+
+4. Keep the five-mile Nearby Aircraft card in the rotation during operating
+   priority and while on duty. Keep its ADS-B feed independent of optional
+   paid route enrichment. Use clear empty, stale and unavailable states.
+   Consider Always and Auto visibility choices. Show each current-leg
+   great-circle map once per rotation, preserving distinct legs and the
+   one-hour recent-leg behavior. Show the final confirmed gate arrival and
+   its timestamp after tracking ends. Check a real airborne position through
+   the existing provider budget before claiming end-to-end map validation.
+
+5. In Today's Activities, retain timed events until 30 minutes after their
+   scheduled end, then hide them from the TV on the next frame. Keep the
+   calendar event and end the NOW marker at the event's actual end. Use
+   Soccer Practice and Soccer Game where the source specifies the subtype.
+   Keep grouping and household privacy rules. Store owner-confirmed dates
+   away separately as planned absences.
+
+6. Add a separate personal Delta travel view for verified reservations.
+   Reconcile email and existing Calendar copies by flight, local date and
+   route. Distinguish a non-revenue listing, jumpseat request, confirmed
+   reservation and actual travel. Handle revisions and cancellations. Use a
+   separate private travel calendar or store and retain only the fields needed
+   on the board. Keep confirmation codes and message text private. Operating
+   calendars drive crew duty, flight priority and operating AeroAPI tracking.
+
+7. Verify the shipped tomorrow dinner dialogue and Flight Wall timers on the
+   physical Echo. The simulator verified timer start and cancellation.
+   The ordinary Echo timer bridge, Lisa's consented phone onboarding,
+   background phone checks and deferred nearby range enhancements remain
+   separate from these fixes. Shopping and SMS remain paused.
+
+Use the current crisp LED presentation, reading controls and pinned recovery
+for release acceptance. The items below are retained historical records.
 
 0.4.9 PUBLISHED, VERIFIED AND ACTIVE
 

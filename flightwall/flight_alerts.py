@@ -182,6 +182,25 @@ def fresh_status(status, now, backend_available=True):
     return result
 
 
+def confirmed_gate_arrival(status, flight, now):
+    """An exact final gate clock remains factual after live estimates age out."""
+    if (not isinstance(status, dict) or not isinstance(flight, dict)
+            or status.get("source") != SOURCE or status.get("status") not in {"fresh", "stale"}
+            or status.get("phase") != "at_gate" or status.get("cancelled") is True or status.get("diverted") is True
+            or not status.get("provider_flight_id") or not flight.get("id") or not within_tracking_window(flight, now)
+            or status.get("flight_id") != flight.get("id")
+            or any(status.get(key) != flight.get(key) for key in ("number", "origin", "destination"))):
+        return None
+    try:
+        arrival = stamp(status["times"]["actual_in"])
+        observed = stamp(status["fetched_at"])
+        if (arrival <= observed <= now and abs(arrival - stamp(flight["start"])) <= timedelta(hours=72)):
+            return arrival, observed
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    return None
+
+
 def provider_timeline(status, now):
     """Use only observed OOOI clocks, without inferring surface movement."""
     current = fresh_status(status, now)

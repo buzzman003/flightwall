@@ -3,7 +3,11 @@ from copy import deepcopy
 from datetime import datetime
 from unittest.mock import patch
 
+from PIL import Image, ImageDraw
+
 from flightwall import render
+from flightwall.flight_brief_view import render_brief
+from flightwall.flight_context import _vps_visit
 from flightwall.outlook import local_visits, trip_preview
 
 
@@ -76,9 +80,32 @@ def test_local_visit_next_day_departure_and_brief_clock_are_both_visible():
     assert "NEXT DEPARTURE" in labels
     assert "10:00 AM" in labels
     assert "WED 13 JAN / CST" in labels
-    assert "STAY / 14H 00M" in labels
-    assert "BRIEF LEAVE / WED 13 JAN 7:20 AM CST" in labels
+    assert "PLANNED STAY / 14H 00M" in labels
+    assert "EST. HOME / TUE 01/12 8:45 PM" in labels
+    assert "LEAVE HOME BY / WED 01/13 7:20 AM CST" in labels
     assert "VERIFY" in labels
+
+
+def test_operational_leave_window_remains_amber_with_separate_hard_boundary():
+    snapshot = sample(chosen=False)
+    snapshot["flights"][1].update(leave_window_start="2027-01-13T13:05:00Z",
+                                  leave_window_end="2027-01-13T13:15:00Z",
+                                  leave_boundary_at="2027-01-13T13:25:00Z")
+    state, config = state_for("local_visit", snapshot)
+    config["local_visits_enabled"] = True
+    now = stamp(state["now"])
+    inbound = snapshot["flights"][0]
+    visit = _vps_visit(snapshot, config, inbound, stamp(inbound["start"]), stamp(inbound["end"]), now)
+    state["flight_context"] = {"phase": "at_gate", "flight_number": "DL12", "origin": "ATL", "destination": "VPS",
+                               "airport_advisories": [], "vps_visit": visit}
+    with patch.object(render, "_text") as text:
+        render.render_frame(state, config)
+        render_brief(ImageDraw.Draw(Image.new("RGB", (512, 256))), state, config, now)
+    calls = {call.args[2]: call.args[3] for call in text.call_args_list if len(call.args) >= 4}
+    assert calls["LEAVE HOME BY / Wed 01/13 7:05-7:15 AM CST / HARD BOUNDARY 7:25 AM"] == render.AMBER
+    assert calls["VPS / LEAVE HOME BY"] == render.AMBER
+    assert "BUZZ BRIEF / Wed 01/13 7:05-7:15 AM CST / HARD BOUNDARY 7:25 AM CST" in calls
+    assert "VPS LEAVE-TIME CONFLICT" in calls
 
 
 def test_trip_summary_inbound_row_shows_next_day_departure_and_leave_date():

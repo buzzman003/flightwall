@@ -68,6 +68,7 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
     if not backend_available:
         result["live"], result["nearby"] = None, []
         result["operating_live"] = None
+        result["nearby_status"] = "stale" if status.get("nearby_status") in {"ready", "stale"} else "unavailable"
     from .flight_alerts import fresh_status
     result["operating_status"] = fresh_status(status.get("operating_status"), now, backend_available=backend_available)
     if not backend_available:
@@ -128,6 +129,7 @@ def entry_render_state(status, config, entry, now=None):
     context = household_context(status, config, now)
     state = {**status.get("snapshot", {}), "now": now.isoformat(), "view": view,
              "selected_flight": selected, "live": live, "nearby": status.get("nearby", []),
+             "nearby_status": status.get("nearby_status"),
              "household_context": context,
              "presence": status.get("presence", {}),
              "kids": status.get("kids", {}),
@@ -150,7 +152,7 @@ def entry_render_state(status, config, entry, now=None):
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,
-             "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch"} else None,
+             "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch", "personal_travel"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
     if view == "flight_brief":
@@ -358,7 +360,7 @@ def active_personal_items(status, config, now=None):
 
 
 def rotation_views(status, config, now=None):
-    views = ["nearby", "schedule", "map", "details"] if config.get("nearby_enabled") and not status.get("on_duty") else ["details", "map", "schedule"]
+    views = ["nearby", "schedule", "map", "details"] if config.get("nearby_enabled") and not (status.get("snapshot") or {}).get("demo") else ["details", "map", "schedule"]
     if active_personal_items(status, config, now):
         views.append("personal")
     return [view for view in views if card_enabled(view, config)]

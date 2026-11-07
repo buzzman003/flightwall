@@ -1,3 +1,24 @@
+FLIGHT WALL 0.4.16
+
+Ports can verify and raise an existing Flight Wall window. The running TV
+display can reclaim focus from the games menu. Escape ends the display session.
+Autostart waits for the userdata mount and a usable menu window before opening
+Ports. Existing installations need the verified stable launcher and autostart
+updates as well as the signed app update.
+
+Trip weather adds an at-home VPS overnight preview for the remaining legs
+through the next local day. It requires a fresh Home report. The VPS visit
+shows estimated home arrival 45 minutes after scheduled arrival, and both VPS
+cards can use a matching Buzz Brief leave window. Nearby Aircraft can stay in
+rotation during duty. A completed operating leg retains its observed gate clock,
+and each planned current-leg map appears once per rotation.
+
+Today's Activities hides a timed event 30 minutes after it ends and preserves
+explicit Soccer Game and Soccer Practice labels. Personal Delta travel uses
+reviewed records in a separate private store. Use travel-import to add or
+reconcile a reservation and travel-list to review the stored entries. See
+docs/CLI.txt for the accepted fields. The app continues to read calendars only.
+
 FLIGHT WALL 0.4.15
 
 OwnTracks can recover after an outage without an old queued report blocking

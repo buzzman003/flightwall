@@ -322,9 +322,16 @@ def render_nearby(draw, image, state, config, now):
             detail += " / " + registration
         _text(draw, (326, y + 39), detail, MUTED, max_width=166)
     if not rows:
-        _text(draw, (326, 82), "NO FRESH", AMBER, 2)
-        _text(draw, (326, 104), "AIRCRAFT", AMBER, 2)
-        reason = "FEED OFF" if config.get("nearby_enabled") is not True else "IN THIS RADIUS"
+        status = state.get("nearby_status")
+        title, subtitle, reason = {
+            "ready": ("NO AIRCRAFT", "REPORTED", "IN THIS RADIUS"),
+            "stale": ("FEED STALE", "", "WAITING FOR UPDATE"),
+            "unavailable": ("FEED", "UNAVAILABLE", "WAITING FOR UPDATE"),
+            "off": ("FEED OFF", "", ""),
+        }.get(status, ("NO FRESH", "AIRCRAFT", "IN THIS RADIUS"))
+        _text(draw, (326, 82), title, AMBER, 2, max_width=166)
+        if subtitle:
+            _text(draw, (326, 104), subtitle, AMBER, 2, max_width=166)
         if radius is None:
             reason = "SET LOCATION/RADIUS"
         _text(draw, (326, 135), reason, MUTED, max_width=166)

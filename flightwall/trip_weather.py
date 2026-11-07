@@ -167,10 +167,8 @@ def _preview_legs(snapshot, config, now):
     return [row for row in legs if row[0].astimezone(zone).date() == first_day]
 
 
-def trip_preview_eligible(status, config, now):
-    """Day-before scheduled travel, with a fresh explicit Chris Home report."""
+def _home_weather_available(status, config, now):
     from .household_policy import household_context
-    now = _now(now)
     if (config.get("demo") is not False or config.get("trip_weather_enabled") is not True
             or config.get("presence_enabled") is not True or status.get("backend_available", True) is not True):
         return False
@@ -185,22 +183,73 @@ def trip_preview_eligible(status, config, now):
         age = (now - _stamp(chris.get("last_seen") or chris.get("observed_at"))).total_seconds()
     except (ValueError, TypeError, OverflowError, OSError):
         return False
-    if not -120 <= age < ttl * 60 or not household_context(status, config, now)["chris_home"]:
+    return -120 <= age < ttl * 60 and household_context(status, config, now)["chris_home"]
+
+
+def trip_preview_eligible(status, config, now):
+    """Day-before scheduled travel, also used for the separate commute gate."""
+    now = _now(now)
+    return (_home_weather_available(status, config, now)
+            and bool(_preview_legs(status.get("snapshot", status), config, now)))
+
+
+def _overnight_legs(snapshot, config, now):
+    from .outlook import calendar_fresh, local_visits
+
+    if (not isinstance(snapshot, dict) or snapshot.get("demo") is not False
+            or not calendar_fresh(snapshot.get("last_sync"), now, config.get("kids_stale_minutes", 30),
+                                  failed=bool(snapshot.get("error")))):
+        return []
+    zone = ZoneInfo("America/Chicago")
+    visits = []
+    for visit in local_visits(snapshot, now):
+        if visit.get("airport") != "VPS" or not visit.get("departure"):
+            continue
+        arrival, departure = _stamp(visit["arrival"]), _stamp(visit["departure"])
+        if arrival <= now < departure and arrival.astimezone(zone).date() < departure.astimezone(zone).date():
+            visits.append(departure)
+    if len(visits) != 1:
+        return []
+    departure = visits[0]
+    limit = now.astimezone(zone).date() + timedelta(days=1)
+    legs = []
+    for flight in snapshot.get("flights", [])[:2000]:
+        try:
+            start, end = _stamp(flight["start"]), _stamp(flight["end"])
+        except (KeyError, TypeError, ValueError, OverflowError, OSError):
+            continue
+        if departure <= start and start.astimezone(zone).date() <= limit and timedelta(0) < end - start <= timedelta(days=1):
+            legs.append((start, end, flight))
+    legs.sort(key=lambda row: (row[0], row[1]))
+    if (not legs or legs[0][0] != departure or legs[0][2].get("origin") != "VPS"
+            or legs[0][2].get("deadhead") or len(legs) > 1 and legs[1][0] == departure):
+        return []
+    remaining = [legs[0]]
+    for leg in legs[1:]:
+        previous = remaining[-1]
+        if leg[0] < previous[1] or previous[2].get("destination") != leg[2].get("origin"):
+            break
+        remaining.append(leg)
+    return [row for row in remaining if config.get("show_deadheads", True) or not row[2].get("deadhead")]
+
+
+def trip_weather_eligible(status, config, now):
+    """An explicit fresh Home report permits day-before or VPS overnight weather."""
+    now = _now(now)
+    if not _home_weather_available(status, config, now):
         return False
     snapshot = status.get("snapshot", status)
-    return bool(_preview_legs(snapshot, config, now))
+    return bool(_overnight_legs(snapshot, config, now) or _preview_legs(snapshot, config, now))
 
 
 def preview_airports(snapshot, config, now):
-    """First scheduled travel date, including only explicit timed commute legs.
-
-    Roster rotation boundaries cannot be recovered from individual titles.
-    All clocks remain schedule context and never prove physical presence.
-    """
+    """Airport windows for a scheduled VPS overnight or day-before preview."""
     now = _now(now)
     airports, stations = _references()
     result = []
-    for start, end, leg in _preview_legs(snapshot, config, now):
+    overnight = _overnight_legs(snapshot, config, now)
+    legs = overnight or _preview_legs(snapshot, config, now)
+    for start, end, leg in legs:
         for code, kind, at in ((leg.get("origin"), "departure", start), (leg.get("destination"), "arrival", end)):
             if not isinstance(code, str) or code not in airports:
                 continue
@@ -212,6 +261,8 @@ def preview_airports(snapshot, config, now):
                 if len(result) >= 4:
                     continue
                 target = {"iata": code, "icao": station, "roles": [kind], "windows": []}
+                if overnight:
+                    target["vps_overnight"] = True
                 result.append(target)
             elif kind not in target["roles"]:
                 target["roles"].append(kind)

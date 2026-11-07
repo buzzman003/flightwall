@@ -116,8 +116,7 @@ def household_context(status, config, now=None):
     # mode. This is a display choice, never evidence of physical presence.
     result["flight_priority"] = _priority_flight(status, config, now) is not None
     result["recent_vps_arrival"] = recent_vps_arrival(status, now)
-    # Being known away is enough to suppress unrelated local traffic. A roster
-    # alone must not become a claim that Chris has physically left home.
+    # Only the phone may establish that Chris has physically left home.
     result["trip_away"] = result["chris_away"]
     return result
 
@@ -317,7 +316,7 @@ def build_rotation(status, config, now=None):
         add("setup", item=status.get("setup") if isinstance(status.get("setup"), dict) else {})
     selected = _priority_flight(status, config, now) if context["flight_priority"] else status.get("selected_flight")
     snapshot = status.get("snapshot") or {}
-    preview = trip_preview(snapshot, config, now)
+    preview = trip_preview(snapshot, config, now, exclude_id=selected.get("id") if context["flight_priority"] and selected else None)
     # Current-flight-only applies to flight views, not the family's short cards.
     # Outside current flight focus, the owner's normal preview remains useful.
     strict = config.get("flight_focus_only") is True and context["flight_priority"]
@@ -333,8 +332,7 @@ def build_rotation(status, config, now=None):
         for page in range((len(preview["flights"]) + 2) // 3):
             for view in ("trip_summary", "trip_map"):
                 add(view, f"{view}:{page}", trip_page=page, trip_preview=preview)
-    if (config.get("nearby_enabled") is True and not context["flight_priority"]
-            and (context["recent_vps_arrival"] or not context["trip_away"] and not status.get("on_duty"))):
+    if config.get("nearby_enabled") is True and snapshot.get("demo") is not True:
         add("nearby")
     if config.get("weather_enabled") is True and snapshot.get("demo") is False:
         add("weather")
@@ -356,18 +354,16 @@ def build_rotation(status, config, now=None):
         if brief_rows(status["flight_context"], config):
             add("flight_brief", "flight_brief:" + str(tracked.get("id") or "current"))
     section = status.get("trip_weather")
-    from .trip_weather import trip_preview_eligible
+    from .trip_weather import preview_airports, trip_weather_eligible
     if (config.get("trip_weather_enabled") is True and isinstance(section, dict)
-            and trip_preview_eligible(status, config, now)):
-        seen = set()
-        for airport in _cards(section.get("airports"))[:4]:
-            code = airport.get("iata")
-            if (isinstance(code, str) and len(code) == 3 and code.isascii() and code.isalpha() and code.isupper()
-                    and code not in seen):
-                pages = max(1, math.ceil(len(airport.get("windows", [])) / 2))
-                for page in range(pages):
-                    add("trip_weather", f"trip_weather:{code}:{page}", item=airport, weather_page=page)
-                seen.add(code)
+            and trip_weather_eligible(status, config, now)):
+        received = {(row.get("iata"), row.get("icao")): row for row in _cards(section.get("airports"))[:4]
+                    if isinstance(row.get("iata"), str) and isinstance(row.get("icao"), str)}
+        for target in preview_airports(snapshot, config, now):
+            code = target["iata"]
+            airport = received.get((code, target["icao"]), {}) | target
+            for page in range(max(1, math.ceil(len(airport["windows"]) / 2))):
+                add("trip_weather", f"trip_weather:{code}:{page}", item=airport, weather_page=page)
     section = status.get("airport_alerts")
     if (config.get("airport_alerts_enabled") is True and snapshot.get("demo") is False
             and isinstance(section, dict) and section.get("status") == "ready" and _cards(section.get("events"))):
@@ -390,6 +386,12 @@ def build_rotation(status, config, now=None):
                 add("local_visit", "local_visit:" + str(item.get("id")), item)
     for item in _cards(status.get("flight_watches"))[:5]:
         add("flight_watch", "flight_watch:" + str(item.get("id")), item)
+    if snapshot.get("demo") is False and status.get("backend_available", True) is True:
+        from .personal_travel import ROWS_PER_PAGE, visible_travel
+        travel = visible_travel(status.get("personal_travel"), config, now)
+        for start in range(0, len(travel), ROWS_PER_PAGE):
+            add("personal_travel", f"personal_travel:{start // ROWS_PER_PAGE}",
+                {"legs": travel[start:start + ROWS_PER_PAGE]})
     if dinner_options_visible(status, config, now):
         add("dinner_options")
     for index, item in enumerate(filter_personal_items(status.get("personal_items"), status, config, now)):
@@ -419,23 +421,4 @@ def build_rotation(status, config, now=None):
                 add("layover", "layover:" + str(item.get("id") or index), item)
     if not entries:
         add("home")
-    if context["flight_priority"]:
-        core = {"details", "map", "operating_map"}
-        flight_slots = [entry for entry in entries if entry["view"] in core]
-        other_slots = [entry for entry in entries if entry["view"] not in core]
-        if not flight_slots:
-            return other_slots
-        if len(other_slots) % 2:
-            repeated = dict(other_slots[0])
-            repeated["key"] += ":repeat"
-            other_slots.append(repeated)
-        interleaved = []
-        # A flight slot precedes every short card, irrespective of card count.
-        # Keep all eligible cards reachable rather than starving later cards
-        # behind a permanent first-six truncation.
-        for index, item in enumerate(other_slots):
-            flight = dict(flight_slots[index % len(flight_slots)])
-            flight["key"] += ":priority:" + str(index)
-            interleaved.extend((flight, item))
-        return interleaved or flight_slots
     return entries

@@ -73,8 +73,8 @@ def render_operating(draw, image, state, config, now):
     A provider tracking-ended flag never becomes an airline-cancellation claim.
     Calendar/report times remain in their existing independent schedule views.
     """
-    from .flight_alerts import fresh_status, provider_timeline
-    from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _tz
+    from .flight_alerts import confirmed_gate_arrival, fresh_status, provider_timeline
+    from .render import AMBER, CYAN, GREEN, LINE, MUTED, PANEL, WHITE, _header, _text, _tz, deck_footer_width
     _header(draw, state, now, "MY FLIGHT / PROVIDER UPDATE")
     original = state.get("operating_status")
     original = original if isinstance(original, dict) else {}
@@ -86,6 +86,19 @@ def render_operating(draw, image, state, config, now):
         status = fresh_status(original, now, backend_available=state.get("backend_available", True) is True)
     mode = status.get("status")
     fresh = mode == "fresh"
+    final = confirmed_gate_arrival(status, state.get("operating_flight"), now) if not fresh else None
+    if final:
+        arrival, observed = final
+        zone = _tz(config)
+        route = _code(status.get("origin")) + " > " + _code(status.get("destination"))
+        _text(draw, (256, 62), f"{status['number']}  {route}", CYAN, 2, align="center", max_width=464)
+        _text(draw, (256, 103), "ARRIVED / CONFIRMED GATE IN", GREEN, 2, align="center", max_width=464)
+        label = format_time(arrival.astimezone(zone), date_format="%a %m/%d", include_zone=True)
+        _text(draw, (256, 147), label, WHITE, 3, align="center", max_width=464)
+        received = format_time(observed.astimezone(zone), date_format="%m/%d", include_zone=True)
+        draw.line((14, 232, 498, 232), fill=LINE)
+        _text(draw, (15, 241), "FLIGHTAWARE / CONFIRMED " + received, MUTED, max_width=deck_footer_width(state))
+        return
     if not fresh:
         title = {"off": "FLIGHT STATUS OFF", "demo": "DEMO / NO PROVIDER REQUESTS",
                  "unconfigured": "AEROAPI KEY NOT CONFIGURED", "pending": "WAITING FOR FLIGHT STATUS",

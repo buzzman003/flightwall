@@ -85,30 +85,22 @@ class HouseholdPolicyTests(unittest.TestCase):
         self.status["snapshot"]["demo"] = True
         self.assertFalse(household_context(self.status, self.config, NOW)["flight_priority"])
 
-    def test_priority_interleaves_flights_before_every_short_card(self):
+    def test_priority_starts_with_one_copy_of_each_flight_view(self):
         self.status["snapshot"]["flights"] = [{"id": "f", "start": NOW.isoformat(), "end": (NOW + timedelta(hours=1)).isoformat()}]
         self.status["personal_items"] = [{"id": f"p{i}", "kind": "appointment", "display_start": (NOW - timedelta(hours=1)).isoformat(),
                                          "display_end": (NOW + timedelta(hours=1)).isoformat()} for i in range(20)]
         rotation = build_rotation(self.status, self.config, NOW)
-        flight_views = []
-        personal_ids = []
-        for index, entry in enumerate(rotation):
-            if index % 2 == 0:
-                self.assertIn(entry["view"], {"details", "map"})
-                self.assertEqual(entry["duration_seconds"], 60)
-                flight_views.append(entry["view"])
-            else:
-                self.assertNotIn(entry["view"], {"details", "map"})
-                self.assertEqual(entry["duration_seconds"], 15)
-                if entry["view"] == "personal":
-                    personal_ids.append(entry["item"]["id"])
+        priority = [entry for entry in rotation if entry["view"] in {"details", "map"}]
+        self.assertEqual(priority, rotation[:2])
+        self.assertEqual([entry["view"] for entry in priority], ["details", "map"])
+        self.assertEqual([entry["duration_seconds"] for entry in priority], [60, 60])
+        personal_ids = [entry["item"]["id"] for entry in rotation if entry["view"] == "personal"]
         self.assertEqual(set(personal_ids), {f"p{i}" for i in range(20)})
-        self.assertEqual(flight_views, ["details", "map"] * (len(flight_views) // 2))
         self.assertEqual(len({item["key"] for item in rotation}), len(rotation))
 
-    def test_nearby_is_suppressed_when_chris_away_even_without_calendar(self):
+    def test_nearby_stays_available_independently_of_presence(self):
         self.config["nearby_enabled"] = True
-        self.assertNotIn("nearby", [e["view"] for e in build_rotation(self.status, self.config, NOW)])
+        self.assertIn("nearby", [e["view"] for e in build_rotation(self.status, self.config, NOW)])
         self.status["presence"]["chris"] = person("home")
         self.assertIn("nearby", [e["view"] for e in build_rotation(self.status, self.config, NOW)])
 
@@ -132,7 +124,7 @@ class HouseholdPolicyTests(unittest.TestCase):
         self.assertFalse(context["private_lisa"])
         rotation = build_rotation(self.status, self.config, NOW)
         self.assertEqual(rotation[0]["duration_seconds"], 60)
-        self.assertNotIn("nearby", [slot["view"] for slot in rotation])
+        self.assertIn("nearby", [slot["view"] for slot in rotation])
 
     def test_message_categories_and_presence_are_required(self):
         self.status["messages"] = {"chris": [card_fixture(id="rental", category="rental"), card_fixture(id="inbox", category="all-inbox")],

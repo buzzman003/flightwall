@@ -1,7 +1,7 @@
 """Narrow Buzz overnight leave-time extraction; no note text is retained.
 
-The owner's supported note format names a VPS Home Overnight and separates
-the requested formula's RECOMMENDED clock from an explicit report-safe clock.
+Supported notes name a VPS Home Overnight and distinguish the recommended
+window, hard boundary, and legacy formula or report-safe clocks.
 These are planning notes, never live tracking or a recalculated report time.
 """
 from datetime import datetime, time, timedelta, timezone
@@ -14,7 +14,16 @@ from .calendar_client import _event_time
 UTC = timezone.utc
 _ZONE = ZoneInfo("America/Chicago")
 _MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+_WEEKDAYS = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
 _CLOCK = r"(\d{1,2}:[0-5]\d\s*(?:AM|PM))"
+_WINDOW = re.compile(
+    r"\b(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)\s+([A-Z]{3})\s+(\d{1,2})"
+    r"\s*[—–-]\s*LEAVE HOME:\s*OPERATIONALLY RECOMMENDED:\s*"
+    r"(\d{1,2}:[0-5]\d)\s*(AM|PM)?\s*[—–-]\s*" + _CLOCK + r"\s+(?:CENTRAL|CST|CDT)\b",
+    re.IGNORECASE,
+)
+_WINDOW_KEYS = ("window_start_at", "window_end_at")
+_MATCHED_KEYS = ("leave_at", "leave_window_start", "leave_window_end", "leave_boundary_at", "leave_conflict")
 _TITLE = re.compile(
     r"^(?:🏠\s*)?BUZZ FLIGHT BRIEF\s*[—–-]\s*VPS HOME OVERNIGHT\s*"
     r"\(([A-Z]{3})\s+(\d{1,2})\s*[—–-]\s*(?:([A-Z]{3})\s+)?(\d{1,2})\)$"
@@ -194,6 +203,35 @@ def parse_brief_leave_notes(events, timezone_name):
                 block = " ".join(lines[index:index + 3])
                 recommended.extend(re.findall(r"\bRECOMMENDED\s+" + _CLOCK + r"\b", block, re.IGNORECASE))
         compact = " ".join(note.split())
+        windows = list(_WINDOW.finditer(compact))
+        if windows:
+            if len(windows) != 1 or recommended:
+                continue
+            window = windows[0]
+            if (window[1].upper() != _WEEKDAYS[last.weekday()]
+                    or window[2].upper() != _MONTHS[last.month - 1] or int(window[3]) != last.day):
+                continue
+            start = _clock_before_report(window[4] + (window[5] or window[6][-2:]), arrival, report)
+            end = _clock_before_report(window[6], arrival, report)
+            boundaries = re.findall(_CLOCK + r"\s+is the absolute leave-\s*home boundary\b",
+                                    compact[window.end():], re.IGNORECASE)
+            if (not start or not end or not start < end
+                    or any(value.astimezone(_ZONE).date() != last for value in (start, end))
+                    or len(boundaries) > 1):
+                continue
+            row = {"airport": "VPS", "arrival": arrival.isoformat(), "report": report.isoformat(),
+                   "window_start_at": start.isoformat(), "window_end_at": end.isoformat()}
+            if boundaries:
+                boundary = _clock_before_report(boundaries[0], arrival, report)
+                if not boundary or not end <= boundary or boundary.astimezone(_ZONE).date() != last:
+                    continue
+                row["boundary_at"] = boundary.isoformat()
+            if re.search(r"\b(?:REPORT-TIME CONFLICT|(?:BOTH )?FORMULA TIMES ARE TOO LATE FOR THE\b)", compact,
+                         re.IGNORECASE):
+                row["conflict"] = True
+            if row not in rows:
+                rows.append(row)
+            continue
         report_safe = re.findall(r"\bTo meet scheduled report on time,\s*leave by\s+" + _CLOCK + r"\b", compact, re.IGNORECASE)
         # A partly recognized conflict cannot silently become an authoritative
         # single time. Competing values within one label are also unsupported.
@@ -225,19 +263,30 @@ def clean_brief_leaves(value):
     for item in value[:100]:
         if not isinstance(item, dict) or not {"airport", "arrival", "report"}.issubset(item):
             continue
-        if set(item) - {"airport", "arrival", "report", "recommended_at", "report_safe_at"} or item["airport"] != "VPS":
+        time_keys = ("recommended_at", "report_safe_at", *_WINDOW_KEYS, "boundary_at")
+        if set(item) - {"airport", "arrival", "report", "conflict", *time_keys} or item["airport"] != "VPS":
             continue
         try:
             arrival, report = _stamp(item["arrival"]), _stamp(item["report"])
             if not arrival < report <= arrival + timedelta(days=4):
                 continue
             row = {"airport": "VPS", "arrival": arrival.isoformat(), "report": report.isoformat()}
-            for key in ("recommended_at", "report_safe_at"):
+            for key in time_keys:
                 if key in item:
                     instant = _stamp(item[key])
                     if not max(arrival, report - timedelta(days=1)) < instant <= report:
                         raise ValueError("Leave time is outside its overnight interval")
                     row[key] = instant.isoformat()
+            start, end = (row.get(key) for key in _WINDOW_KEYS)
+            boundary = row.get("boundary_at")
+            if (bool(start) != bool(end) or start and (start >= end or "recommended_at" in row or "report_safe_at" in row)
+                    or boundary and (not end or boundary < end)):
+                continue
+            if start and any(_stamp(value).astimezone(_ZONE).date() != report.astimezone(_ZONE).date()
+                             for value in (start, end, boundary) if value):
+                continue
+            if start and item.get("conflict") is True:
+                row["conflict"] = True
             if len(row) > 3 and row not in rows:
                 rows.append(row)
         except (ValueError, TypeError, OverflowError):
@@ -255,8 +304,8 @@ def attach_brief_leaves(flights, notes, policy="conflict"):
         policy = "conflict"
     legs = []
     for flight in flights:
-        flight.pop("leave_at", None)
-        flight.pop("leave_conflict", None)
+        for key in _MATCHED_KEYS:
+            flight.pop(key, None)
         try:
             start, end = _stamp(flight["start"]), _stamp(flight["end"])
             if start < end:
@@ -284,6 +333,17 @@ def attach_brief_leaves(flights, notes, policy="conflict"):
     for index, records in matched.items():
         flight = legs[index][2]
         values = {row[key] for row in records for key in ("recommended_at", "report_safe_at") if key in row}
+        windows = {(row["window_start_at"], row["window_end_at"], row.get("boundary_at"))
+                   for row in records if "window_start_at" in row}
+        if windows:
+            if len(windows) > 1 or values or any(row.get("conflict") is True for row in records):
+                flight["leave_conflict"] = True
+            if len(windows) == 1 and not values:
+                start, end, boundary = next(iter(windows))
+                flight.update(leave_window_start=start, leave_window_end=end)
+                if boundary:
+                    flight["leave_boundary_at"] = boundary
+            continue
         if len(values) > 1:
             flight["leave_conflict"] = True
         selected = ({row[policy + "_at"] for row in records if policy + "_at" in row}

@@ -1,5 +1,5 @@
 """A household view of verified clocks, observed status and airport context."""
-from .time_format import format_time
+from .time_format import format_leave_clock, format_time
 
 
 PHASE_LABELS = {
@@ -31,9 +31,14 @@ def brief_rows(context, config):
     for advisory in context["airport_advisories"]:
         if advisory["kind"] == "ground_stop":
             rows.append(("", f"{advisory['airport']} GROUND STOP", "FAA AIRPORT ADVISORY / CHECK AIRLINE", True))
-    if visit.get("brief_leave_at"):
-        rows.append(("leave_time", "VPS / LEAVE HOME", "BUZZ BRIEF / " + clock(visit["brief_leave_at"]),
-                     visit.get("brief_leave_conflict") is True))
+    leave = format_leave_clock(_dt(visit.get("brief_leave_at")), _dt(visit.get("brief_leave_window_start")),
+                               _dt(visit.get("brief_leave_window_end")), _tz(config))
+    if leave:
+        detail = "BUZZ BRIEF / " + leave
+        boundary = _dt(visit.get("brief_leave_boundary_at"))
+        if boundary:
+            detail += " / HARD BOUNDARY " + format_time(boundary.astimezone(_tz(config)), include_zone=True)
+        rows.append(("leave_time", "VPS / LEAVE HOME BY", detail, True))
     if visit.get("scheduled_departure_at"):
         rows.append(("vps_departure", "VPS / NEXT DEPARTURE", "SCHEDULE / " + clock(visit["scheduled_departure_at"]), False))
     for direction in ("arrival", "departure"):
@@ -68,9 +73,15 @@ def render_brief(draw, state, config, now):
           max_width=240)
     _text(draw, (496, 51), PHASE_LABELS[context["phase"]], CYAN, align="right", max_width=220)
     preference = state.get("brief_focus")
-    rows.sort(key=lambda row: (not row[3], row[0] != preference))
-    for index, (_, title, detail, important) in enumerate(rows[:4]):
-        y = 62 + index * 42
-        draw.rectangle((15, y, 497, y + 36), fill=PANEL, outline=LINE)
-        _text(draw, (23, y + 6), title, AMBER if important else WHITE, 2, max_width=459)
-        _text(draw, (23, y + 24), detail, MUTED, max_width=459)
+    pinned = {"leave_time", "vps_departure"} if any(row[0] == "leave_time" for row in rows) else set()
+    def fixed(row):
+        return row[3] or row[0] in pinned
+
+    rows.sort(key=lambda row: (not fixed(row), row[0] != preference))
+    count = min(len(rows), max(4, min(6, sum(fixed(row) for row in rows) + 1)))
+    spacing = 168 // max(4, count)
+    for index, (_, title, detail, important) in enumerate(rows[:count]):
+        y = 62 + index * spacing
+        draw.rectangle((15, y, 497, y + spacing - 3), fill=PANEL, outline=LINE)
+        _text(draw, (23, y + 3), title, AMBER if important else WHITE, 2, max_width=459)
+        _text(draw, (23, y + 18), detail, MUTED, max_width=459)

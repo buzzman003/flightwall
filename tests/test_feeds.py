@@ -153,7 +153,7 @@ class FeedTests(unittest.TestCase):
         self.assertNotIn("private-example-key", network.call_args.args[0])
         self.assertEqual(network.call_args.args[1], {"x-apikey": "private-example-key"})
 
-    def test_nearby_runs_only_off_duty_and_filters_old_or_invalid_positions(self):
+    def test_nearby_runs_on_duty_and_filters_old_or_invalid_positions(self):
         config = self.config | {"flightaware_enabled": False, "nearby_enabled": True,
                                 "home_latitude": 33.64, "home_longitude": -84.43}
         aircraft = [{"hex": "abcdef", "lat": 34, "lon": -84, "seen_pos": 5, "flight": "DAL123 ", "alt_baro": 12000},
@@ -163,8 +163,7 @@ class FeedTests(unittest.TestCase):
                     {"hex": "abcde4", "lat": 34, "lon": -84, "seen_pos": 1}]
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot(aircraft)) as network:
             self.feed.poll(config, selected(), on_duty=True)
-            network.assert_not_called()
-            self.feed.poll(config, selected(), on_duty=False)
+            network.assert_called_once()
             self.assertIn("/v2/point/33.64/-84.43/50", network.call_args.args[0])
         self.assertEqual(len(self.feed.nearby), 2)
         by_id = {row["hex"]: row for row in self.feed.nearby}
@@ -332,20 +331,22 @@ class FeedTests(unittest.TestCase):
         self.assertAlmostEqual(self.feed.nearby_for_config(updated, NOW)[0]["north_miles"], 0.5)
         self.assertEqual(self.feed.nearby_for_config(initial, NOW), [])
 
-    def test_nearby_publication_clears_after_failure_or_on_duty(self):
+    def test_nearby_publication_clears_after_failure_but_survives_duty(self):
         config = self.nearby_config()
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
+        self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "ready")
         with patch("flightwall.feeds.time.monotonic", return_value=71), \
                 patch("flightwall.feeds.request_json", side_effect=OSError("offline")):
             self.feed.poll(config, None)
         self.assertEqual(self.feed.nearby_for_config(config, NOW), [])
+        self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "stale")
         with patch("flightwall.feeds.time.monotonic", return_value=132), \
                 patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
         self.assertEqual(len(self.feed.nearby_for_config(config, NOW)), 1)
         self.feed.poll(config, None, on_duty=True)
-        self.assertEqual(self.feed.nearby_for_config(config, NOW), [])
+        self.assertEqual(len(self.feed.nearby_for_config(config, NOW)), 1)
 
     def test_nearby_distance_wraps_dateline_and_poles(self):
         self.assertLess(nearby_distance_miles(0, 179.99, 0, -179.99), 2)

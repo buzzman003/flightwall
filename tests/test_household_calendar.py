@@ -365,6 +365,7 @@ class HouseholdManagerTests(unittest.TestCase):
                     event("Rory appointment"), all_day("Rory Dance", zone="America/New_York"),
                     all_day("Soccer Game", start="2026-10-23", end="2026-10-24", zone="America/New_York"),
                     event("Soccer Game", "2026-10-22T15:00:00Z", "2026-10-22T16:00:00Z"),
+                    event("Soccer", "2026-10-22T15:00:00Z", "2026-10-22T16:00:00Z"),
                     event("Rory's Viola Lesson", "2026-10-22T16:00:00Z", "2026-10-22T17:00:00Z"),
                     event("Violin Class", "2026-10-22T17:00:00Z", "2026-10-22T18:00:00Z"),
                     event("Violin Class with PRIVATE-ADULT", "2026-10-22T18:00:00Z", "2026-10-22T19:00:00Z"),
@@ -377,7 +378,7 @@ class HouseholdManagerTests(unittest.TestCase):
             outlook = self.manager.sync()["custody_outlook"]
         self.assertEqual(outlook["activities"], [
             {"title": "Rory Dance", "start": "2026-10-22T05:00:00Z", "end": "2026-10-23T05:00:00Z", "all_day": True},
-            {"title": "Soccer", "start": "2026-10-22T15:00:00Z", "end": "2026-10-22T16:00:00Z"},
+            {"title": "Soccer Game", "start": "2026-10-22T15:00:00Z", "end": "2026-10-22T16:00:00Z"},
             {"title": "Rory Viola", "start": "2026-10-22T16:00:00Z", "end": "2026-10-22T17:00:00Z"},
             {"title": "Violin", "start": "2026-10-22T17:00:00Z", "end": "2026-10-22T18:00:00Z"},
             {"title": "Rory Jiu-jitsu", "start": "2026-10-22T19:00:00Z", "end": "2026-10-22T20:00:00Z"},
@@ -420,7 +421,7 @@ class HouseholdManagerTests(unittest.TestCase):
         with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
             activities = self.manager.sync()["custody_outlook"]["activities"]
             self.assertEqual([row["title"] for row in activities],
-                             ["Rory Soccer", "Nora Jiu-jitsu", "Rory Jiu-jitsu", "Nora Violin", "Jules Dance"])
+                             ["Rory Soccer Practice", "Nora Jiu-jitsu", "Rory Jiu-jitsu", "Nora Violin", "Jules Dance"])
             self.assertEqual(activities[2]["start"], "2026-10-22T19:00:00Z")
             private_json(self.manager.agenda_path, {**preferences, "same_day_activity_overrides": {}})
             self.assertNotIn("activities", self.manager.status()["custody_outlook"])

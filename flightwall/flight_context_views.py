@@ -226,11 +226,11 @@ def _period_span(period, config, now):
 
 
 def _trip_weather(draw, image, state, config, now):
-    from .trip_weather import trip_preview_eligible
-    if not trip_preview_eligible(state, config, now):
+    from .trip_weather import trip_weather_eligible
+    if not trip_weather_eligible(state, config, now):
         from .render import MUTED, _header, _text
         _header(draw, state, now, "TRIP WEATHER")
-        _text(draw, (256, 113), "PREVIEW AT HOME THE DAY BEFORE TRAVEL", MUTED, align="center", max_width=470)
+        _text(draw, (256, 113), "AT HOME BEFORE TRAVEL OR DURING A VPS OVERNIGHT", MUTED, align="center", max_width=470)
         _footer(draw, state, "SCHEDULED TRAVEL / FRESH HOME REPORT REQUIRED")
         return
     from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _tz
@@ -349,7 +349,8 @@ def _preview_weather(draw, state, config, now, card):
     from .trip_weather import forecast_category, forecast_window, preview_airports
     target = next((row for row in preview_airports(state.get("snapshot", state), config, now)
                    if row["iata"] == card.get("iata") and row["icao"] == card.get("icao")), None)
-    _header(draw, state, now, "TOMORROW / " + str(card.get("iata", "---")) + " / AIRPORT WEATHER")
+    title = "VPS OVERNIGHT" if target and target.get("vps_overnight") else "TOMORROW"
+    _header(draw, state, now, title + " / " + str(card.get("iata", "---")) + " / AIRPORT WEATHER")
     if target is None:
         _text(draw, (256, 120), "SCHEDULED AIRPORT WINDOW UNAVAILABLE", MUTED, align="center")
         _footer(draw, state, "CALENDAR SCHEDULE / NO FORECAST WINDOW")

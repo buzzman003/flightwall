@@ -96,6 +96,17 @@ class OperatingStatusViewTests(unittest.TestCase):
                 self.assertNotIn("ACTUAL", labels)
         self.assertEqual(value, original)
 
+    def test_exact_final_gate_in_remains_visible_after_status_ages_out(self):
+        value = status(actual_in="2026-11-01T19:57:00Z")
+        later = NOW + timedelta(minutes=12)
+        labels, _ = capture(value, now=later, operating_flight=SELECTED)
+        self.assertIn("ARRIVED / CONFIRMED GATE IN", labels)
+        self.assertIn("Sun 11/01 1:57 PM CST", labels)
+        self.assertIn("FLIGHTAWARE / CONFIRMED 11/01 1:58 PM CST", labels)
+        self.assertNotIn("2:50 PM", labels)
+        for invalid in (value | {"diverted": True}, value | {"destination": "ATL"}):
+            self.assertIn("PROVIDER UPDATE STALE", capture(invalid, now=later, operating_flight=SELECTED)[0])
+
     def test_disabled_demo_and_pending_do_not_reveal_a_retained_provider_result(self):
         for changes, expected in (({"config": CONFIG | {"flightaware_enabled": False}}, "FLIGHT STATUS OFF"),
                                   ({"demo": True}, "DEMO / NO PROVIDER REQUESTS")):

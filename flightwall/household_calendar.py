@@ -26,11 +26,15 @@ except ImportError:
 
 UTC = timezone.utc
 PROFILES = ("chris", "lisa")
+_SOCCER_SUBTYPES = {
+    "Soccer Game": ("soccer game", "soccer games", "soccer match", "soccer matches"),
+    "Soccer Practice": ("soccer practice", "soccer practices"),
+}
 _ACTIVITY_ALIASES = {
     "Jiu-jitsu": ("jiu jitsu", "ju jitsu", "jiujitsu", "jujitsu", "bjj", "jiu jitsu class"),
     "Gymnastics": ("gymnastics",),
     "Dance": ("dance", "dance class", "dance classes", "ballet", "tap dance"),
-    "Soccer": ("soccer", "soccer game", "soccer games", "soccer match", "soccer practice"),
+    "Soccer": ("soccer",) + tuple(alias for aliases in _SOCCER_SUBTYPES.values() for alias in aliases),
     "Viola": ("viola", "viola lesson", "viola lessons", "viola class", "viola classes"),
     "Violin": ("violin", "violin lesson", "violin lessons", "violin class", "violin classes"),
 }
@@ -200,6 +204,7 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
     day_end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
     entries = set()
     explicitly_named = set()
+    display_labels = {}
     for event in _event_versions(events):
         summary = event.get("summary")
         if event.get("status") == "cancelled" or not isinstance(summary, str) or len(summary) > 256:
@@ -238,9 +243,18 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
         if not all_day and end - start > timedelta(days=1):
             continue
         label = labels[0]
+        display_label = label
+        if label == "Soccer":
+            subtypes = [name for name, aliases in _SOCCER_SUBTYPES.items()
+                        if any(f" {alias} " in words for alias in aliases)]
+            if len(subtypes) == 1:
+                display_label = subtypes[0]
         names = matches or {(activity_defaults or {}).get(label, "")}
         projected = {(start, end, name, label, all_day) for name in names}
         entries.update(projected)
+        if display_label != label:
+            for entry in projected:
+                display_labels.setdefault(entry, set()).add(display_label)
         if matches:
             explicitly_named.update(projected)
     if same_day_activity_overrides:
@@ -251,9 +265,14 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
                    or (entry[2], same_day_activity_overrides.get(entry[3])) not in scheduled}
     if activity_precedence:
         entries = _preferred_activity_entries(entries, activity_precedence)
-    return [{"title": f"{name} {label}" if name else label, "start": _iso(start), "end": _iso(end),
-             **({"all_day": True} if all_day else {})}
-            for start, end, name, label, all_day in sorted(entries)[:48]]
+    rows = []
+    for entry in sorted(entries)[:48]:
+        start, end, name, label, all_day = entry
+        subtypes = display_labels.get(entry, ())
+        display_label = next(iter(subtypes)) if len(subtypes) == 1 else label
+        rows.append({"title": f"{name} {display_label}" if name else display_label,
+                     "start": _iso(start), "end": _iso(end), **({"all_day": True} if all_day else {})})
+    return rows
 
 
 def _preferred_activity_entries(entries, precedence):
@@ -649,7 +668,10 @@ class HouseholdCalendars:
                     and calendar_fresh(activity_sync, now, config.get("kids_stale_minutes", 30))):
                 zone = ZoneInfo(display_zone)
                 day = now.astimezone(zone).date()
-                allowed = set(activities) | {name + " " + label for name in children.values() for label in activities}
+                labels = set(activities)
+                if "Soccer" in labels:
+                    labels.update(_SOCCER_SUBTYPES)
+                allowed = labels | {name + " " + label for name in children.values() for label in labels}
                 agenda = []
                 cached = family.get("activities")
                 for item in cached[:48] if isinstance(cached, list) else []:

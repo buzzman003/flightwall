@@ -29,8 +29,9 @@ from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
+from .personal_travel import PersonalTravel, visible_travel
 from .weather import WeatherFeed
-from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_preview_eligible
+from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_weather_eligible
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
 from .flight_context import build_flight_context
 from .flight_alerts import SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fresh_status, stamp as flight_stamp
@@ -85,6 +86,7 @@ class Runtime:
         self.recipe_mail = RecipeMail(data_dir, self.personal._locked, enabled=self._recipe_mail_enabled)
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
+        self.personal_travel = PersonalTravel(data_dir, self.config.get)
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
@@ -180,6 +182,7 @@ class Runtime:
             status = {"version": __version__, "snapshot": snapshot, "config": self.config.public(),
                     "selected_flight": flight, "on_duty": is_on_duty(flight, config, now),
                     "live": copy.deepcopy(live), "nearby": self.feeds.nearby_for_config(config, now),
+                    "nearby_status": self.feeds.nearby_status_for_config(config, now),
                     "updater": copy.deepcopy(self.updater_status), "last_live_error": self.feeds.error,
                     "last_error": self.last_error,
                     "personal_items": personal_items, "personal_error": personal_error}
@@ -230,7 +233,7 @@ class Runtime:
         except (KeyError, TypeError, ValueError, OSError, OverflowError):
             airports = set()
         weather_airports = set(airports)
-        if trip_preview_eligible(status, config, now):
+        if trip_weather_eligible(status, config, now):
             weather_airports.update(row["iata"] for row in preview_airports(snapshot, config, now))
         trip_weather = status["trip_weather"]
         trip_weather["airports"] = [row for row in trip_weather.get("airports", [])
@@ -273,6 +276,13 @@ class Runtime:
             status["shopping_list"] = {"items": [], "enabled": False, "visible": False}
         context = household_context(status, config, now)
         status["household_context"] = context
+        status["personal_travel"] = []
+        if (snapshot.get("demo") is False and config.get("guest_mode") is False
+                and config.get("personal_travel_cards_visible") is True):
+            try:
+                status["personal_travel"] = visible_travel(self.personal_travel.list_records(), config, now)
+            except ValueError:
+                pass
         status["personal_items"] = filter_personal_items(personal_items, status, config, now)
         for item in status["personal_items"]:
             if item.get("kind") == "dinner":
@@ -306,8 +316,6 @@ class Runtime:
                 if data:
                     item["image_data"] = data
         status["layovers"] = self.content.layovers(snapshot, now) if context["chris_away"] else []
-        if context["chris_away"] and not context["recent_vps_arrival"]:
-            status["nearby"] = []
         setup_url = (config["public_url"] or f"http://127.0.0.1:{config['control_port']}") + "/setup"
         status["setup_required"] = not (self.data_dir / "setup-complete.json").exists()
         setup_body = ("Open the setup page on your phone or laptop to connect calendars and household cards."
@@ -368,6 +376,7 @@ class Runtime:
     def status(self, now=None):
         """Maintenance/MCP never receives Lisa's private cards or mailbox data."""
         status = self.display_status(now)
+        status.pop("personal_travel", None)
         status["messages"]["lisa"] = []
         status["health"] = []
         for item in status["personal_items"]:
@@ -639,7 +648,7 @@ class Runtime:
                 self.commute.poll(snapshot, config, self.feeds, now, presence=presence)
                 snapshot = attach_commute_plan(snapshot, self.data_dir, config, now)
                 context = {"snapshot": snapshot, "presence": presence}
-                self.trip_weather.poll(snapshot, now, preview=trip_preview_eligible(context, self.config.get(), now))
+                self.trip_weather.poll(snapshot, now, preview=trip_weather_eligible(context, self.config.get(), now))
             except Exception:
                 pass
             self.stop_event.wait(2)

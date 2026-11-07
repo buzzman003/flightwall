@@ -20,6 +20,8 @@ def desktop(tmp_path, monkeypatch):
     executable = install / "releases" / "0.4.14" / "FlightWall"
     executable.parent.mkdir(parents=True)
     executable.write_bytes(b"synthetic frozen executable")
+    launcher = install / "launch.sh"
+    launcher.write_text("#!/bin/sh\n")
     lock = data / "gui-launch.lock"
     lock.mkdir(parents=True)
     (lock / "pid").write_text("100")
@@ -29,6 +31,7 @@ def desktop(tmp_path, monkeypatch):
         (directory / "stat").write_text(process_stat(pid, parent, 1234))
     command = [str(executable), "--install-dir", str(install), "--data-dir", str(data), "gui"]
     (proc / "101" / "cmdline").write_bytes("\0".join(command).encode() + b"\0")
+    (proc / "100" / "cmdline").write_bytes("\0".join(["sh", str(launcher)]).encode() + b"\0")
     # Represent Linux /proc/exe and current symlinks on hosts without symlink rights.
     resolved = {install / "current" / "FlightWall": executable, proc / "101" / "exe": executable}
     original_resolve = Path.resolve
@@ -38,9 +41,13 @@ def desktop(tmp_path, monkeypatch):
     monkeypatch.setattr(window_focus, "PROC_ROOT", proc)
     monkeypatch.setattr(window_focus.sys, "platform", "linux")
     monkeypatch.setenv("DISPLAY", ":0.0")
-    monkeypatch.setattr(window_focus.os, "access", lambda path, mode: path == "/usr/bin/wmctrl")
-    run = Mock(side_effect=[CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n"),
-                            CompletedProcess([], 0, b"")])
+    monkeypatch.setattr(window_focus.os, "access", lambda path, mode: path in ("/usr/bin/wmctrl", "/usr/bin/xprop"))
+    monkeypatch.setattr(window_focus.time, "sleep", lambda *_: None)
+    run = Mock(side_effect=[
+        CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n"),
+        CompletedProcess([], 0, b""),
+        CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x200001\n"),
+    ])
     monkeypatch.setattr(window_focus.subprocess, "run", run)
     return install, data, proc, resolved, run
 
@@ -49,7 +56,8 @@ def test_focus_activates_only_the_verified_gui_without_creating_settings(desktop
     install, data, _, _, run = desktop
     assert window_focus.focus_window(install, data) is True
     assert [call.args[0] for call in run.call_args_list] == [
-        ["/usr/bin/wmctrl", "-lp"], ["/usr/bin/wmctrl", "-ia", "0x00200001"]]
+        ["/usr/bin/wmctrl", "-lp"], ["/usr/bin/wmctrl", "-ia", "0x00200001"],
+        ["/usr/bin/xprop", "-root", "_NET_ACTIVE_WINDOW"]]
     for call in run.call_args_list:
         assert call.kwargs["capture_output"] is True and call.kwargs["timeout"] == 2
         assert call.kwargs["check"] is False and call.kwargs["env"]["DISPLAY"] == ":0.0"
@@ -81,14 +89,16 @@ def test_an_exited_unrelated_window_does_not_mask_the_verified_gui(desktop):
     install, data, _, _, run = desktop
     run.side_effect = [CompletedProcess([], 0, b"0x00300002 0 202 host Flight Wall\n"
                                              b"0x00200001 0 101 host Flight Wall\n"),
-                       CompletedProcess([], 0, b"")]
+                       CompletedProcess([], 0, b""),
+                       CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x200001\n")]
     assert window_focus.focus_window(install, data) is True
-    assert run.call_args.args[0][-1] == "0x00200001"
+    assert run.call_args_list[1].args[0][-1] == "0x00200001"
 
 
 def test_changed_pid_identity_is_not_activated(desktop):
     install, data, _, _, run = desktop
-    with patch.object(window_focus, "_gui_identity", side_effect=[((101, 1234),), ((101, 5678),)]):
+    with patch.object(window_focus, "_gui_identity", side_effect=[((101, 1234), (100, 1234)),
+                                                                  ((101, 5678), (100, 1234))]):
         assert window_focus.focus_window(install, data) is False
     run.assert_called_once()
 
@@ -119,6 +129,76 @@ def test_missing_desktop_or_failed_activation_returns_failure(desktop, monkeypat
         run.side_effect = [CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n"
                                                  b"0x00200002 0 101 host Flight Wall\n")]
     assert window_focus.focus_window(install, data) is False
+
+
+def test_activation_requires_x11_to_confirm_the_active_window(desktop):
+    install, data, _, _, run = desktop
+    # wmctrl successfully submitted each request, but the menu retained focus.
+    run.side_effect = [
+        CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n"),
+        *([CompletedProcess([], 0, b""),
+           CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x300002\n")] * 4),
+    ]
+    assert window_focus.focus_window(install, data) is False
+    assert sum(call.args[0][1] == "-ia" for call in run.call_args_list) == 4
+
+
+@pytest.mark.parametrize("menu", [True, False])
+def test_foreground_guard_recovers_only_the_menu(desktop, monkeypatch, menu):
+    install, data, proc, resolved, run = desktop
+    resolved[proc / "202" / "exe"] = Path("/usr/bin/emulationstation" if menu else "/usr/bin/emulator")
+    monkeypatch.setattr(window_focus.os, "getpid", lambda: 101)
+    stop = Mock()
+    stop.wait.side_effect = [False, True]
+    stop.is_set.return_value = False
+    run.side_effect = [
+        CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x300002\n"),
+        CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n0x00300002 0 202 host Foreground\n"),
+        CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x300002\n"),
+        CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n0x00300002 0 202 host Foreground\n"),
+        CompletedProcess([], 0, b""),
+        CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x200001\n"),
+    ]
+    window_focus.guard_foreground(install, data, stop)
+    assert any(call.args[0][1] == "-ia" for call in run.call_args_list) is menu
+    assert not any(call.args[0][1] == "-ic" for call in run.call_args_list)
+
+
+def test_reused_owner_pid_is_reclaimed_only_when_no_matching_gui_survives(desktop):
+    install, data, proc, _, run = desktop
+    lock = data / "gui-launch.lock"
+    (lock / "started").write_text("1233")
+    assert window_focus.reopen_from_ports(install, data) == "unavailable"
+    assert (lock / "pid").exists()
+    (proc / "101" / "cmdline").unlink()
+    assert window_focus.reopen_from_ports(install, data) == "released"
+    assert not lock.exists()
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize("menu", [True, False])
+def test_ports_requests_ordinary_close_only_under_a_verified_menu(desktop, menu):
+    install, data, proc, resolved, run = desktop
+    resolved[proc / "202" / "exe"] = Path("/usr/bin/emulationstation" if menu else "/usr/bin/emulator")
+    listing = CompletedProcess([], 0, b"0x00200001 0 101 host Flight Wall\n0x00300002 0 202 host Foreground\n")
+    foreground = CompletedProcess([], 0, b"_NET_ACTIVE_WINDOW(WINDOW): window id # 0x300002\n")
+    lock = data / "gui-launch.lock"
+
+    def run_x11(command, **_kwargs):
+        if command[1] == "-lp":
+            return listing
+        if command[1] == "-root":
+            return foreground
+        if command[1] == "-ic":
+            assert menu and command[2] == "0x00200001"
+            (lock / "pid").unlink()
+            lock.rmdir()
+        return CompletedProcess([], 0, b"")
+
+    run.side_effect = run_x11
+    assert window_focus.reopen_from_ports(install, data) == ("released" if menu else "unavailable")
+    assert lock.exists() is not menu
+    assert any(call.args[0][1] == "-ia" for call in run.call_args_list) is menu
 
 
 @pytest.mark.parametrize("focused", [False, True])

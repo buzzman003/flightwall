@@ -1,5 +1,24 @@
 # Flight Wall implementation contract
 
+0.4.16: Fresh Chris Home and a matched scheduled VPS overnight can open the
+remaining-leg weather preview. Keep this gate separate from commute requests.
+Retain narrow leave window and boundary clocks only after matching the inbound,
+outbound and report. The 45-minute home arrival estimate is schedule context.
+Keep nearby ADS-B receipt independent of operating priority and preserve the
+paid request budget. Use one current-leg planned map per rotation and label
+the last confirmed gate arrival as a completed observation.
+
+Timed activity visibility ends 30 minutes after the event. Preserve the Soccer
+group for existing priorities and display the validated game or practice
+subtype. Keep personal Delta reservations local, separate from crew duty, and
+subject to guest and freshness gates. Calendar copies cannot establish
+confirmation, cancellation or actual travel.
+
+Verify the existing GUI identity and foreground state before reporting focus
+success. Limit launch recovery to a verified Flight Wall session. Stop its
+foreground guard when the display closes. Validate storage and desktop
+readiness before autostart and preserve the original pinned recovery helper.
+
 0.4.15: Drain authenticated OwnTracks queue entries that cannot update presence:
 valid expired/older observations, supported irrelevant telemetry and well-formed
 non-Home region transitions. Acknowledge with the OwnTracks empty array without
