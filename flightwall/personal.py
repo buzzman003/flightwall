@@ -137,6 +137,18 @@ def dinner_meal_date(item, config=None):
         return None
 
 
+def dinner_daily_window(config, now, *, fallback_timezone="UTC"):
+    """Today's configured dinner interval in the household time zone."""
+    try:
+        zone = ZoneInfo(config.get("timezone") or fallback_timezone)
+        today = _aware_now(now).astimezone(zone).date()
+        first = _local(today, _clock(config.get("dinner_start", "14:30")), zone)
+        last = _local(today, _clock(config.get("dinner_end", "19:00")), zone)
+        return (first.astimezone(zone), last.astimezone(zone)) if first < last else None
+    except (ValueError, TypeError, OverflowError, ZoneInfoNotFoundError):
+        return None
+
+
 def dinner_display_window(item, config, now):
     """Project tomorrow's menu into today's configured household window.
 
@@ -153,16 +165,17 @@ def dinner_display_window(item, config, now):
             return None
         if config is None or not isinstance(item.get("timezone"), str):
             return start, end
-        zone = ZoneInfo(config.get("timezone") or item["timezone"])
-        today = now.astimezone(zone).date()
+        daily = dinner_daily_window(config, now, fallback_timezone=item["timezone"])
+        if daily is None:
+            return None
+        first, last = daily
+        today = first.date()
         meal_day = dinner_meal_date(item, config)
-        first = _local(today, _clock(config.get("dinner_start", "14:30")), zone)
-        last = _local(today, _clock(config.get("dinner_end", "19:00")), zone)
         if meal_day == today:
             first, last = max(first, start), min(last, end)
         elif meal_day != today + timedelta(days=1):
             return None
-        return (first, last) if first < last else None
+        return (first.astimezone(UTC), last.astimezone(UTC)) if first < last else None
     except (ValueError, TypeError, KeyError, OverflowError, ZoneInfoNotFoundError):
         return None
 

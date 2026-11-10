@@ -112,6 +112,14 @@ behavior. Successful legacy reauthorization also refreshes the migrated Chris
 credentials, so an old saved scoped token does not keep replacing the new login.
 No command writes to Google Calendar.
 
+Today's Activities can assign a recognized sport or lesson to one child in the
+private family-agenda.json in the app data directory. Add an activity_assignments
+mapping such as {"Gymnastics": "Rory"} and include that name in children. An
+assignment labels every recognized entry for the activity with that child, even
+when the source title names someone else. Use activity_defaults for activities
+that only need a name when the title leaves it out. Both preserve the scheduled
+times and take effect after the next calendar refresh.
+
 PHONE PRESENCE PAIRING
 
 Only run pairing with the selected person's approval:

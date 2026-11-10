@@ -430,6 +430,31 @@ class HouseholdManagerTests(unittest.TestCase):
                 "title": "Rory Jiu-jitsu", "start": "2026-10-22T17:00:00Z", "end": "2026-10-22T18:00:00Z",
             })
 
+    def test_family_agenda_assignment_replaces_a_conflicting_child_and_preserves_times(self):
+        preferences = {"children": ["Rory", "Nora"], "child_aliases": {"N": "Nora"}}
+        private_json(self.manager.agenda_path, preferences)
+
+        def agenda_api(client, path, parameters):
+            result = self.api(client, path, parameters)
+            if "family" in path:
+                result["items"].extend([
+                    event("Gymnastics", "2026-10-22T20:00:00Z", "2026-10-22T21:00:00Z"),
+                    event("N Gymnastics", "2026-10-22T20:00:00Z", "2026-10-22T21:00:00Z"),
+                    event("Nora Dance", "2026-10-22T21:00:00Z", "2026-10-22T22:00:00Z"),
+                    event("Adult gymnastics", "2026-10-22T22:00:00Z", "2026-10-22T23:00:00Z"),
+                ])
+            return result
+
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
+            self.assertIn("Nora Gymnastics", [row["title"] for row in self.manager.sync()["custody_outlook"]["activities"]])
+            private_json(self.manager.agenda_path, {**preferences, "activity_assignments": {"Gymnastics": "Rory"}})
+            self.assertNotIn("activities", self.manager.status()["custody_outlook"])
+            activities = self.manager.sync()["custody_outlook"]["activities"]
+        self.assertEqual(activities, [
+            {"title": "Rory Gymnastics", "start": "2026-10-22T20:00:00Z", "end": "2026-10-22T21:00:00Z"},
+            {"title": "Nora Dance", "start": "2026-10-22T21:00:00Z", "end": "2026-10-22T22:00:00Z"},
+        ])
+
     def test_credentials_are_not_reported_connected_before_actual_api_success(self):
         profile = self.manager.status()["connected_profiles"]["chris"]
         self.assertTrue(profile["credentials_present"])

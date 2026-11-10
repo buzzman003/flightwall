@@ -1,3 +1,11 @@
+FLIGHT WALL 0.4.18
+
+The snack card joins the rotation whenever the calendar currently says Kids
+Home. It shows SNACKS OK before 5 p.m. and NO MORE SNACKS from 5 p.m. in the
+board's timezone. During the dinner window it can also show tonight's meal or
+say that dinner has not been set. Activity assignments in the private family
+agenda can attribute an activity to one child while keeping the calendar time.
+
 FLIGHT WALL 0.4.17
 
 Ports can verify and raise an existing Flight Wall window. The running TV

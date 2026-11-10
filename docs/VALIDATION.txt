@@ -1,3 +1,11 @@
+0.4.18 KIDS HOME SNACK STATUS AND ACTIVITY ASSIGNMENT
+
+Check a fresh Kids Home interval with and without a saved dinner. The snack
+card should cross the local 17:00 cutoff even while paused. Check calendar
+freshness at the end of an interval and verify the existing dinner window.
+Verify private activity assignments against a recognized timed event, including
+a conflicting source participant, without editing the upstream calendar.
+
 0.4.17 LAUNCH, OVERNIGHT WEATHER, AND PERSONAL TRAVEL
 
 Release acceptance covers signed next-launch activation and rollback against

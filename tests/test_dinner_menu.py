@@ -8,6 +8,7 @@ import pytest
 
 from flightwall import render
 from flightwall.card_preferences import CARD_DEFAULTS
+from flightwall.display import entry_render_state
 from flightwall.household_policy import build_rotation, filter_personal_items
 from flightwall.personal import PersonalError, PersonalStore, dinner_meal_date, personal_card_visible
 
@@ -172,6 +173,61 @@ def test_kids_home_requirement_remains_fresh_and_does_not_infer_from_phones(hous
     assert filter_personal_items(items, stale, config, NOW) == []
     assert filter_personal_items(items, status(items), config, NOW) == items
     assert filter_personal_items(items, status(items, "unknown"), config | {"kids_filter_enabled": False}, NOW) == items
+
+
+def test_pending_menu_keeps_the_snack_notice_at_exact_local_cutoffs(household):
+    _, config, _ = household
+    data = status([])
+    for stamp, expected, heading in (("14:29:59", "SNACKS OK", "SNACKS"),
+                                    ("14:30:00", "SNACKS OK", "TONIGHT'S DINNER"),
+                                    ("16:59:59", "SNACKS OK", "TONIGHT'S DINNER"),
+                                    ("17:00:00", "NO MORE SNACKS", "TONIGHT'S DINNER"),
+                                    ("18:59:59", "NO MORE SNACKS", "TONIGHT'S DINNER"),
+                                    ("19:00:00", "NO MORE SNACKS", "SNACKS")):
+        instant = datetime.fromisoformat(f"2026-11-01T{stamp}-06:00")
+        data["kids"].update(last_sync=instant.isoformat(), until=(instant + timedelta(hours=1)).isoformat())
+        row, = [row for row in build_rotation(data, config, instant) if row["view"] == "personal"]
+        state = entry_render_state(data, config, row, instant)
+        labels, image = labels_for(row["item"], config, instant, kids=state["kids"],
+                                  backend_available=state["backend_available"], personal_items=state["personal_items"])
+        assert heading in labels and expected in labels and image.size == (512, 256)
+        assert ("MENU TO BE DECIDED" in labels) is (heading == "TONIGHT'S DINNER")
+
+
+def test_tonights_menu_replaces_pending_menu_and_preserves_tomorrow(household):
+    store, config, _ = household
+    tomorrow = meal(store, date="2026-11-02")
+    data = status([tomorrow])
+    data["kids"].update(last_sync=NOW.isoformat(), until=(NOW + timedelta(hours=2)).isoformat())
+    def dinners():
+        return [row["item"] for row in build_rotation(data, config, NOW) if row["view"] == "personal"]
+    pending, preview = dinners()
+    assert pending["dinner_pending"] is True and preview == tomorrow
+    today = meal(store)
+    data["personal_items"].insert(0, today)
+    assert dinners() == [today, tomorrow]
+    labels, _ = labels_for(pending, config, kids=data["kids"], personal_items=data["personal_items"])
+    assert "MENU TO BE DECIDED" not in labels
+
+
+def test_pending_menu_fails_closed_for_cached_slots(household):
+    _, config, _ = household
+    data = status([])
+    data["kids"].update(last_sync=NOW.isoformat(), until=(NOW + timedelta(minutes=5)).isoformat())
+    pending = next(row["item"] for row in build_rotation(data, config, NOW) if row["view"] == "personal")
+    for instant, kids, available, cfg in (
+            (NOW, dict(data["kids"], state="away"), True, config),
+            (NOW, dict(data["kids"], state="unknown"), True, config),
+            (NOW, data["kids"], False, config),
+            (NOW, data["kids"], True, config | {"dinner_cards_visible": False}),
+            (NOW, data["kids"], True, config | {"personal_enabled": False}),
+            (NOW, data["kids"], True, config | {"demo": True}),
+            (NOW + timedelta(minutes=5), data["kids"], True, config),
+            (NOW + timedelta(minutes=31), dict(data["kids"], until=(NOW + timedelta(hours=2)).isoformat()), True, config)):
+        current = dict(data, kids=kids, backend_available=available)
+        assert not any(row["view"] == "personal" for row in build_rotation(current, cfg, instant))
+        labels, _ = labels_for(pending, cfg, instant, kids=kids, backend_available=available)
+        assert not {"MENU TO BE DECIDED", "SNACKS OK", "NO MORE SNACKS"}.intersection(labels)
 
 
 def test_voice_context_exposes_policy_only_and_never_current_kids_or_calendar_data(household):

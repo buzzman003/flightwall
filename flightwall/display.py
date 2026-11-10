@@ -681,7 +681,8 @@ def attach_dinner_photos(frame, state, config, screen_size, now, timer_progress=
             photos.append(((22 + index * 124, 113, 100, 61), decode_artwork(option.get("image_data"))))
     elif view == "personal" and card_enabled(view, config, state.get("selected_personal_item")):
         item = _selected_personal(state, now, config)
-        if item and item.get("kind") == "dinner" and _dinner_kids_allowed(state, config, now):
+        if (item and item.get("kind") == "dinner" and item.get("dinner_pending") is not True
+                and _dinner_kids_allowed(state, config, now)):
             photos.append(((400, 81, 88, 88), state.get("dinner_image")))
     if not photos:
         return frame

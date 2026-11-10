@@ -245,6 +245,9 @@ def _footer(draw, state, view, now, tz, personal_item=None):
     elif view == "personal":
         if state.get("demo"):
             status, color = "SAMPLE CARD / FICTIONAL EXAMPLE", AMBER
+        elif personal_item and personal_item.get("dinner_pending") is True:
+            status = "PERSONAL BOARD / SNACKS" if personal_item.get("snack_only") else "PERSONAL BOARD / DINNER"
+            color = MUTED
         elif personal_item:
             status, color = "PERSONAL BOARD / " + str(personal_item.get("source") or "MANUAL"), MUTED
         else:
@@ -541,6 +544,9 @@ def _visible_personal(items, now, config=None):
 def _selected_personal(state, now, config=None):
     selected = state.get("selected_personal_item")
     if isinstance(selected, dict):
+        if selected.get("dinner_pending") is True:
+            from .household_policy import pending_dinner
+            return pending_dinner(state, config or {}, now)
         return next(iter(_visible_personal([selected], now, config)), None)
     items = _visible_personal(state.get("personal_items"), now, config)
     if isinstance(selected, str):
@@ -580,6 +586,16 @@ def _draw_title(draw, title, xy, width, height, scales=(4, 3, 2), color=WHITE):
         _text(draw, (x, y + index * line_height), line, color, scale, max_width=width)
 
 
+def _snack_notice(draw, local_now, top):
+    # Recheck the household-local cutoff on every frame, including while paused.
+    snacks_closed = local_now.hour >= 17
+    color = (244, 92, 92) if snacks_closed else GREEN
+    fill = (43, 11, 16) if snacks_closed else (8, 28, 21)
+    draw.rectangle((25, top, 486, top + 25), fill=fill, outline=color, width=2)
+    _text(draw, (256, top + 6), "NO MORE SNACKS" if snacks_closed else "SNACKS OK",
+          color, 2, align="center", max_width=440)
+
+
 def _personal(draw, state, config, now, item, image=None):
     if item is None:
         _header(draw, state, now, "PERSONAL BOARD")
@@ -588,6 +604,12 @@ def _personal(draw, state, config, now, item, image=None):
         return
     tz = _tz({"timezone": config.get("timezone") or item.get("timezone") or "UTC"})
     local_now = now.astimezone(tz)
+    if item.get("snack_only") is True:
+        _header(draw, state, now, "HOME BOARD")
+        _text(draw, (25, 67), "SNACKS", CYAN, 2)
+        _snack_notice(draw, local_now, 113)
+        _text(draw, (256, 151), "SNACKS END AT 5:00 PM", MUTED, align="center")
+        return
     start, end = _dt(item.get("start")), _dt(item.get("end"))
     dinner = item["kind"] == "dinner"
     shown_date = start.astimezone(tz) if start else local_now
@@ -613,7 +635,8 @@ def _personal(draw, state, config, now, item, image=None):
         sides = item.get("sides") if isinstance(item.get("sides"), str) else None
         ready, ready_until = _dt(item.get("ready_at")), _dt(item.get("ready_until"))
         photo = state.get("dinner_image")
-        photo_present = image is not None and isinstance(photo, Image.Image)
+        photo_present = (item.get("dinner_pending") is not True and image is not None
+                         and isinstance(photo, Image.Image))
         width = 358 if photo_present else 464
         if photo_present:
             image.paste(photo.resize((88, 88), Image.Resampling.LANCZOS), (400, 81))
@@ -630,14 +653,7 @@ def _personal(draw, state, config, now, item, image=None):
                 _text(draw, (25, 158), "EXPECTED READY / " + clock, CYAN, max_width=width)
         else:
             _draw_title(draw, item["title"], (25, 96), width, 62)
-        # Compute on every frame, even when the backend card is cached/paused.
-        # The TV's household zone governs the rule, not a stored card's zone.
-        snacks_closed = local_now.hour >= 17
-        snack_color = (244, 92, 92) if snacks_closed else GREEN
-        snack_fill = (43, 11, 16) if snacks_closed else (8, 28, 21)
-        draw.rectangle((25, 171, 486, 196), fill=snack_fill, outline=snack_color, width=2)
-        _text(draw, (256, 177), "NO MORE SNACKS" if snacks_closed else "SNACKS OK",
-              snack_color, 2, align="center", max_width=440)
+        _snack_notice(draw, local_now, 171)
         from .personal import dinner_display_window
         current_window = dinner_display_window(item, config, now)
         until = current_window[1] if current_window else _dt(item.get("display_end")) or end
@@ -661,8 +677,9 @@ def _personal(draw, state, config, now, item, image=None):
         else:
             status = "PERSONAL APPOINTMENT"
         _text(draw, (16, 209), status, WHITE, max_width=300)
-    source = _clean(item.get("source") or "MANUAL")
-    _text(draw, (496, 209), "VIA " + source, MUTED, align="right", max_width=165)
+    if item.get("dinner_pending") is not True:
+        source = _clean(item.get("source") or "MANUAL")
+        _text(draw, (496, 209), "VIA " + source, MUTED, align="right", max_width=165)
 
 
 def _dinner_options(draw, image, state, config, now):
@@ -1448,7 +1465,7 @@ def render_frame(state, config, size=BASE_SIZE):
         from .flight_context_views import render_context
         render_context(draw, image, state, config, now)
     elif view == "personal":
-        personal_item = _selected_personal(state, now, config)
+        personal_item = selected_item
         if personal_item and personal_item.get("kind") == "dinner" and not _dinner_kids_allowed(state, config, now):
             personal_item = None
         _personal(draw, state, config, now, personal_item, image)

@@ -1,5 +1,12 @@
 # Flight Wall implementation contract
 
+0.4.18: Keep a snack card in rotation during fresh Kids Home intervals, using
+the same per-frame 17:00 cutoff as the saved dinner card. During the configured
+dinner window, show an empty dinner state if tonight's meal has not been saved.
+Keep tomorrow's dinner preview and saved meal visibility tied to their windows.
+Private activity assignments can attribute a recognized activity to one child
+without changing the source event or its time.
+
 0.4.17: Fresh Chris Home and a matched scheduled VPS overnight can open the
 remaining-leg weather preview. Keep this gate separate from commute requests.
 Retain narrow leave window and boundary clocks only after matching the inbound,

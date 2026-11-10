@@ -84,13 +84,14 @@ def _agenda_preferences(path):
             if label and isinstance(synonyms, list):
                 aliases = {_agenda_words(name) for name in (_agenda_label(entry, 32) for entry in synonyms[:12]) if name}
                 activities[label] = tuple(sorted(aliases | {_agenda_words(label)} | set(activities.get(label, ()))))
-    defaults = {}
-    activity_defaults = value.get("activity_defaults")
-    if isinstance(activity_defaults, dict):
-        for label, target in list(activity_defaults.items())[:12]:
-            name = _agenda_label(target, 24)
-            if label in activities and name and (name := names.get(_agenda_words(name))):
-                defaults[label] = name
+    defaults, assignments = {}, {}
+    for key, mapping in (("activity_defaults", defaults), ("activity_assignments", assignments)):
+        configured = value.get(key)
+        if isinstance(configured, dict):
+            for label, target in list(configured.items())[:12]:
+                name = _agenda_label(target, 24)
+                if label in activities and name and (name := names.get(_agenda_words(name))):
+                    mapping[label] = name
     precedence = value.get("activity_precedence")
     if isinstance(precedence, list):
         precedence = list(dict.fromkeys(label for label in precedence[:12]
@@ -105,8 +106,11 @@ def _agenda_preferences(path):
             if (label in defaults and label in ranks and isinstance(preferred, str)
                     and preferred in ranks and ranks[preferred] < ranks[label]):
                 overrides[label] = preferred
-    return children, activities, {"activity_defaults": defaults, "activity_precedence": precedence,
-                                  "same_day_activity_overrides": overrides}
+    policy = {"activity_defaults": defaults, "activity_precedence": precedence,
+              "same_day_activity_overrides": overrides}
+    if assignments:
+        policy["activity_assignments"] = assignments
+    return children, activities, policy
 
 
 def _now():
@@ -194,7 +198,7 @@ def parse_kids_events(events, default_timezone="UTC"):
 
 def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *,
                           event_timezone=None, activity_defaults=None, activity_precedence=(),
-                          same_day_activity_overrides=None):
+                          same_day_activity_overrides=None, activity_assignments=None):
     """Project today's approved activity labels, optional child names and times."""
     if not children:
         return []
@@ -249,13 +253,14 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
                         if any(f" {alias} " in words for alias in aliases)]
             if len(subtypes) == 1:
                 display_label = subtypes[0]
-        names = matches or {(activity_defaults or {}).get(label, "")}
+        assigned = (activity_assignments or {}).get(label)
+        names = {assigned} if assigned else matches or {(activity_defaults or {}).get(label, "")}
         projected = {(start, end, name, label, all_day) for name in names}
         entries.update(projected)
         if display_label != label:
             for entry in projected:
                 display_labels.setdefault(entry, set()).add(display_label)
-        if matches:
+        if matches or assigned:
             explicitly_named.update(projected)
     if same_day_activity_overrides:
         # The selected date already limits entries to today's local day.

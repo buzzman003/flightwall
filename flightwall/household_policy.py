@@ -10,7 +10,7 @@ import math
 import re
 from urllib.parse import urlsplit
 from .outlook import ACTIVITIES_PER_PAGE, today_activities, trip_preview
-from .personal import personal_card_visible
+from .personal import dinner_daily_window, dinner_meal_date, personal_card_visible
 from .card_preferences import card_enabled
 
 
@@ -151,6 +151,25 @@ def kids_home_current(status, config, now=None):
     age = config.get("kids_stale_minutes", 30)
     age = age if type(age) in (int, float) and math.isfinite(age) and 1 <= age <= 1440 else 30
     return bool(observed and until and timedelta(minutes=-5) <= now - observed <= timedelta(minutes=age) and now < until)
+
+
+def pending_dinner(status, config, now=None):
+    """Keep snack hours in the deck whenever the children are known Home."""
+    now = _now(now)
+    if (config.get("personal_enabled", True) is not True or config.get("dinner_cards_visible", True) is not True
+            or config.get("demo") is True or status.get("demo") is True
+            or (status.get("snapshot") or {}).get("demo") is True
+            or status.get("backend_available", True) is not True or not kids_home_current(status, config, now)):
+        return None
+    window = dinner_daily_window(config, now)
+    if window is None or not window[0] <= now < window[1]:
+        return {"kind": "dinner", "dinner_pending": True, "snack_only": True}
+    first, last = window
+    if any(dinner_meal_date(item, config) == first.date() and personal_card_visible(item, config, now)
+           for item in status.get("personal_items") or []):
+        return None
+    return {"kind": "dinner", "dinner_pending": True, "title": "MENU TO BE DECIDED",
+            "timezone": first.tzinfo.key, "start": first.isoformat(), "end": last.isoformat()}
 
 
 def dinner_options_visible(status, config, now=None):
@@ -394,6 +413,9 @@ def build_rotation(status, config, now=None):
                 {"legs": travel[start:start + ROWS_PER_PAGE]})
     if dinner_options_visible(status, config, now):
         add("dinner_options")
+    pending = pending_dinner(status, config, now)
+    if pending is not None:
+        add("personal", "personal:dinner-pending", pending)
     for index, item in enumerate(filter_personal_items(status.get("personal_items"), status, config, now)):
         add("personal", "personal:" + str(item.get("id") or index), item)
     messages = status.get("messages") or {}
