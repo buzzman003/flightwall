@@ -30,8 +30,8 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 BASELINE_VERSION = "0.3.0"
 BASELINE_SHA256 = "086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08"
-CURRENT_BASELINE_VERSION = "0.4.17"
-CURRENT_BASELINE_SHA256 = "58b912ede0844854a06c37f7626022293c7f220cc38963fd30d927b7bbad9c10"
+CURRENT_BASELINE_VERSION = "0.4.18"
+CURRENT_BASELINE_SHA256 = "cecb738e7fc13e8bb98549e759c9d0ee2d6f9189639a62a7b5b3885e7c2fccd4"
 MAX_GLIBC = (2, 36)
 
 
@@ -66,7 +66,7 @@ def verify_baseline(path):
 
 def verify_current_baseline(path):
     require(digest(path) == CURRENT_BASELINE_SHA256,
-            "Published 0.4.17 installer SHA-256 does not match the current baseline")
+            "Published 0.4.18 installer SHA-256 does not match the current baseline")
 
 
 def extract_installer(path, destination, version):
@@ -398,15 +398,15 @@ def upgrade_install(old_package, package, root, version, *, rollback=False, curr
         case.wait_health(BASELINE_VERSION)
         previous = BASELINE_VERSION
         if current_package is not None:
-            # Reproduce the actual installed history instead of making 0.4.17
-            # the recovery helper: original 0.3.0 -> healthy 0.4.17 -> candidate.
+            # Reproduce the actual installed history instead of making 0.4.18
+            # the recovery helper: original 0.3.0 -> healthy 0.4.18 -> candidate.
             case.install_package(current_package)
             require(case.selected() == BASELINE_VERSION, "Current baseline activated before a safe launch")
             case.wait_health(BASELINE_VERSION)
             case.launch(opengl=True)
             previous = CURRENT_BASELINE_VERSION
             require(case.selected() == previous and case.app("--version").stdout.strip() == previous,
-                    "Current baseline is not the real published 0.4.17 executable")
+                    "Current baseline is not the real published 0.4.18 executable")
             case.wait_health(previous)
             require(case.state().get("awaiting_health") is False, "Current baseline did not pass startup health")
             assert_preserved(case, fixtures, recovery_hash)
@@ -475,7 +475,7 @@ def main():
     parser.add_argument("--installer", type=Path)
     parser.add_argument("--baseline", type=Path)
     parser.add_argument("--current-baseline", type=Path,
-                        help="Separately test published 0.4.17 -> candidate with the original 0.3.0 recovery helper")
+                        help="Separately test published 0.4.18 -> candidate with the original 0.3.0 recovery helper")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-report", type=Path)
     parser.add_argument("--verify-current-report", type=Path)
@@ -497,7 +497,7 @@ def main():
     verify_baseline(args.baseline)
     if args.current_baseline:
         require(tuple(map(int, version.split("."))) > tuple(map(int, CURRENT_BASELINE_VERSION.split("."))),
-                "Candidate must be newer than the current 0.4.17 baseline")
+                "Candidate must be newer than the current 0.4.18 baseline")
         verify_current_baseline(args.current_baseline)
     report = {"version": version, "baseline_sha256": BASELINE_SHA256, "bundle_files": inventory(args.release)}
     print("Auditing frozen source, assets, architecture and glibc requirements.", flush=True)
@@ -512,7 +512,7 @@ def main():
         if args.current_baseline:
             current = extract_installer(args.current_baseline, root / "current-baseline", CURRENT_BASELINE_VERSION)
             report["current_baseline_sha256"] = CURRENT_BASELINE_SHA256
-            print("Checking genuine 0.4.17 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
+            print("Checking genuine 0.4.18 executable upgrade with original 0.3.0 recovery and private data.", flush=True)
         else:
             print("Checking fresh frozen installation, graphics and local setup.", flush=True)
             report["fresh_install"] = fresh_install(package, root / "fresh", args.source, version)

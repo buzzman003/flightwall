@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from . import __version__
 from .personal import PersonalError
+from .timers import TimerError
 from .card_preferences import CARD_DEFAULTS
 from .presence import PresenceStore, PresenceError, PresenceDisabled, OWNTRACKS_REPORTS
 from .config import private_json
@@ -500,6 +501,7 @@ class RemoteServer:
                         return self._device_action(device[1], device[2])
                     if path.startswith("/oauth/"):
                         if not owner.public_url:
+                            self.close_connection = True
                             return self._reply(503, {"error": "Configure public_url locally before using OAuth"})
                         if path == "/oauth/register":
                             return self._register(self._body())
@@ -530,6 +532,7 @@ class RemoteServer:
                         if path == "/mcp":
                             return self._mcp(body)
                         return self._action(routes[path], {"settings": body} if routes[path] == "update_settings" else body)
+                    self.close_connection = True
                     self._reply(404, {"error": "Not found"})
                 except (ValueError, UnicodeError, TypeError):
                     self.close_connection = True
@@ -567,6 +570,7 @@ class RemoteServer:
                     return self._reply(503, {"error": "Presence is disabled; enable it locally after opting in"})
                 callback = owner.callbacks.get("update_presence" if kind == "presence" else "receive_notification")
                 if callback is None:
+                    self.close_connection = True
                     return self._reply(503, {"error": "This device feature is not available"})
                 try:
                     payload = self._body()
@@ -586,12 +590,13 @@ class RemoteServer:
                 except PresenceError as exc:
                     return self._reply(400, {"error": owner._redact(str(exc))[:500]})
                 except (ValueError, TypeError):
+                    self.close_connection = True
                     return self._reply(400, {"error": "Device report rejected; check its fields and observation time"})
 
             def _personal_action(self, name, payload=None):
                 try:
                     self._reply(200, owner._invoke_personal(name, payload))
-                except PersonalError as exc:
+                except (PersonalError, TimerError) as exc:
                     self._reply(400, {"error": owner._redact(str(exc))[:1000]})
                 except (ValueError, TypeError):
                     self._reply(400, {"error": "Personal-item data rejected; check the title, dates and identifier"})

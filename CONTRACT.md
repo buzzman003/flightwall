@@ -1,5 +1,10 @@
 # Flight Wall implementation contract
 
+0.4.19: Preserve sanitized TimerError messages on the voice HTTP routes,
+including timer capacity and disabled TV timers. Keep unrelated validation
+failures generic. Explicitly close rejected POST requests whose bodies may
+remain unread, so their connection cannot parse leftover data as a new request.
+
 0.4.18: Keep a snack card in rotation during fresh Kids Home intervals, using
 the same per-frame 17:00 cutoff as the saved dinner card. During the configured
 dinner window, show an empty dinner state if tonight's meal has not been saved.

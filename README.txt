@@ -1,3 +1,10 @@
+FLIGHT WALL 0.4.19
+
+Alexa can report the five-running-timer limit and disabled TV timers with
+specific messages. Rejected HTTP requests close their connection cleanly so
+later requests can reconnect. The existing Alexa Lambda already handles these
+responses. The native update supplies the corrected timer responses.
+
 FLIGHT WALL 0.4.18
 
 The snack card joins the rotation whenever the calendar currently says Kids

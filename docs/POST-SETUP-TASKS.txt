@@ -1,9 +1,21 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Reviewed November 7, 2026 Central
+Reviewed November 12, 2026 Central
+
+0.4.19 MAINTENANCE ACCEPTANCE
+
+The maintenance update preserves timer-limit and disabled-timer messages over
+the actual Alexa HTTP bridge, and closes rejected POST connections before they
+can be reused with an unread body. The existing Lambda already supports these
+safe error messages. Skill invocation, account access and Alexa+ routing require
+device/cloud evidence. Keep native release results separate from those checks.
+The 0.4.18 Kids Home snack availability and private activity assignment changes
+are published and active. Lisa onboarding and real airborne validation remain
+field work. Previously deferred aircraft expansion and paused shopping/SMS
+remain separate tasks.
 
 NEXT RELEASE PRIORITIES AFTER 0.4.15
 
-The 0.4.17 candidate implements items 1 through 6. Personal travel uses a
+The published 0.4.17 implements items 1 through 6. Personal travel uses a
 reviewed local import. Field checks still cover repeated cold boot, real
 overnight conditions, verified booking import and physical Echo behavior.
 

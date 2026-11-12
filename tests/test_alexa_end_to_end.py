@@ -90,6 +90,22 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                     alexa.lambda_handler(event("CancelTimerIntent", "timer-cancel", {"TimerNumber": "1"}), None)
                     self.assertEqual(runtime.timers.list_timers(NOW), [])
 
+                    for index in range(5):
+                        started = alexa.lambda_handler(event("StartTimerIntent", "limit-start-" + str(index),
+                            {"TimerLabel": "Tea", "TimerDuration": "PT5M"}), None)
+                        self.assertIn("Started", started["response"]["outputSpeech"]["text"])
+                    limited = alexa.lambda_handler(event("StartTimerIntent", "limit-rejected",
+                        {"TimerLabel": "Pasta", "TimerDuration": "PT5M"}), None)
+                    self.assertIn("Five timers are already running", limited["response"]["outputSpeech"]["text"])
+                    self.assertTrue(limited["response"]["shouldEndSession"])
+                    self.assertEqual(len(runtime.timers.list_timers(NOW)), 5)
+                    runtime.config.update({"timers_enabled": False})
+                    disabled = alexa.lambda_handler(event("StartTimerIntent", "disabled-rejected",
+                        {"TimerLabel": "Pasta", "TimerDuration": "PT5M"}), None)
+                    self.assertIn("TV timers are disabled", disabled["response"]["outputSpeech"]["text"])
+                    self.assertTrue(disabled["response"]["shouldEndSession"])
+                    self.assertEqual(len(runtime.timers.list_timers(NOW)), 5)
+
                     add = event("AddShoppingItemIntent", "shopping-add", {"Item": "synthetic olives"})
                     response = alexa.lambda_handler(add, None)
                     self.assertIn("Added", response["response"]["outputSpeech"]["text"])

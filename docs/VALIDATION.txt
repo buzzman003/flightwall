@@ -1,3 +1,11 @@
+0.4.19 ALEXA TIMER RESPONSES AND REJECTED REQUESTS
+
+Real loopback tests cover the deployed bridge's handling of the sixth timer,
+disabled TV timers, and an existing client's next request after a rejected
+POST. The native release requires full Linux tests and frozen upgrade and
+rollback against the published 0.4.18 installer. Spoken skill discovery and
+Amazon account or Alexa+ routing need the owner's device and cloud evidence.
+
 0.4.18 KIDS HOME SNACK STATUS AND ACTIVITY ASSIGNMENT
 
 Check a fresh Kids Home interval with and without a saved dinner. The snack

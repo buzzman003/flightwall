@@ -102,6 +102,46 @@ class RemoteIntegrationTests(unittest.TestCase):
         self.assertEqual(self.request("/health")[2], {"ok": True, "service": "flightwall", "version": __version__})
         self.assertNotIn(self.key, json.dumps(body))
 
+    def test_rejected_post_closes_before_a_pooled_client_sends_its_next_request(self):
+        phone = self.server.presence.rotate("chris")
+        self.config["presence_enabled"] = True
+        public_url = self.server.public_url
+        cases = (("unknown route", "/unknown", "application/json", 404),
+                 ("disabled OAuth", "/oauth/token", "application/json", 503),
+                 ("unavailable device", "/api/v1/presence/chris", "application/json", 503),
+                 ("invalid device body", "/api/v1/presence/chris", "text/plain", 400))
+        for name, path, content_type, expected_status in cases:
+            with self.subTest(name=name):
+                self.server.public_url = "" if name == "disabled OAuth" else public_url
+                if name == "invalid device body":
+                    self.callbacks["update_presence"] = lambda _person, _payload: {"updated": True}
+                connection = http.client.HTTPConnection(*self.server.address, timeout=5)
+                try:
+                    connection.request("POST", path, '{"state":"home"}',
+                                       {"Authorization": "Bearer " + phone, "Content-Type": content_type})
+                    rejected = connection.getresponse()
+                    self.assertEqual(rejected.status, expected_status)
+                    self.assertEqual(rejected.getheader("Connection"), "close")
+                    rejected.read()
+                    connection.request("GET", "/health")
+                    healthy = connection.getresponse()
+                    self.assertEqual(healthy.status, 200)
+                    self.assertTrue(json.loads(healthy.read())["ok"])
+                finally:
+                    connection.close()
+
+    def test_unrelated_voice_validation_errors_remain_generic(self):
+        self.config["alexa_enabled"] = True
+        voice_token = self.server.alexa_token_path.read_text().strip()
+
+        def reject(_payload):
+            raise ValueError("Private callback details")
+
+        self.callbacks["start_timer"] = reject
+        status, _, body = self.request("/api/v1/timers", "POST", {"label": "Tea"}, voice_token)
+        self.assertEqual(status, 400)
+        self.assertEqual(body, {"error": "Personal-item data rejected; check the title, dates and identifier"})
+
     def test_initialize_tools_notifications_and_no_shell(self):
         status, headers, body = self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "1"}})
         self.assertEqual(status, 200)

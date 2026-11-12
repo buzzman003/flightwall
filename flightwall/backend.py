@@ -440,7 +440,7 @@ class Runtime:
 
     def start_timer(self, payload):
         if not self.config.get()["timers_enabled"]:
-            raise ValueError("TV timers are disabled")
+            raise TimerError("TV timers are disabled")
         return self.timers.start(payload)
 
     def cancel_timer(self, payload):
