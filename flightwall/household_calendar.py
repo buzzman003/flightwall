@@ -14,7 +14,8 @@ import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .calendar_client import CalendarClient, CalendarError, parse_events, _event_time
-from .brief import attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes
+from .brief import (attach_brief_leaves, clean_brief_leaves, clean_brief_leave_warnings, parse_brief_leave_notes,
+                    strictly_matched_brief_leaves, unmatched_brief_leave_warnings)
 from .config import private_json
 from .mycrew import SOURCE as MYCREW_SOURCE, STATION_LOCAL, airport_zone, clean_trip_days, parse_mycrew_events, parse_mycrew_trip_days
 from .outlook import calendar_fresh, custody_outlook
@@ -198,12 +199,13 @@ def parse_kids_events(events, default_timezone="UTC"):
 
 def parse_kids_activities(events, children, activities, now, display_timezone="UTC", *,
                           event_timezone=None, activity_defaults=None, activity_precedence=(),
-                          same_day_activity_overrides=None, activity_assignments=None):
-    """Project today's approved activity labels, optional child names and times."""
+                          same_day_activity_overrides=None, activity_assignments=None, day_offset=0,
+                          _row_limit=48):
+    """Project one local day's approved activity labels, child names and times."""
     if not children:
         return []
     zone = ZoneInfo(display_timezone)
-    day = now.astimezone(zone).date()
+    day = now.astimezone(zone).date() + timedelta(days=day_offset)
     day_start = datetime.combine(day, time(), zone).astimezone(UTC)
     day_end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
     entries = set()
@@ -263,7 +265,7 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
         if matches or assigned:
             explicitly_named.update(projected)
     if same_day_activity_overrides:
-        # The selected date already limits entries to today's local day.
+        # The selected date already limits entries to one local day.
         # A defaulted row may be skipped, but an explicitly named row stays.
         scheduled = {(name, label) for _, _, name, label, _ in explicitly_named}
         entries = {entry for entry in entries if entry in explicitly_named
@@ -271,7 +273,8 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
     if activity_precedence:
         entries = _preferred_activity_entries(entries, activity_precedence)
     rows = []
-    for entry in sorted(entries)[:48]:
+    # Sync may request one extra row to detect truncation without caching it.
+    for entry in sorted(entries)[:49 if _row_limit == 49 else 48]:
         start, end, name, label, all_day = entry
         subtypes = display_labels.get(entry, ())
         display_label = next(iter(subtypes)) if len(subtypes) == 1 else label
@@ -511,6 +514,8 @@ class HouseholdCalendars:
                         clean_layovers.append(item)
                     snapshot["layovers"] = clean_layovers
                     snapshot["brief_leaves"] = clean_brief_leaves(snapshot.get("brief_leaves")) if role == "secondary" else []
+                    snapshot["brief_leave_warnings"] = clean_brief_leave_warnings(
+                        snapshot.get("brief_leave_warnings")) if role == "secondary" else []
                     snapshot["trip_days"] = clean_trip_days(snapshot.get("trip_days")) if role == "mycrew" else []
                     if valid:
                         roles[role] = cached
@@ -625,13 +630,14 @@ class HouseholdCalendars:
                 verified = False
             profiles[profile] = {"credentials_present": authorized, "authorized": bool(verified), "connected": bool(verified), "verified": bool(verified),
                                  "verified_at": record.get("verified_at"), "error": record.get("error")}
-        matching, brief_notes = [], []
+        matching, brief_notes, brief_warnings = [], [], []
         for role, calendar_id, name in self._roles(config):
             cached = state["flight_roles"].get(role, {})
             if cached.get("binding") == self._flight_binding(role, calendar_id, name, config):
                 matching.append(cached["snapshot"])
                 if role == "secondary":
                     brief_notes.extend(cached["snapshot"].get("brief_leaves", []))
+                    brief_warnings.extend(cached["snapshot"].get("brief_leave_warnings", []))
         if matching:
             dates = [item.get("last_sync") for item in matching if item.get("last_sync")]
             errors = list(dict.fromkeys(item["error"] for item in matching if item.get("error")))
@@ -645,6 +651,17 @@ class HouseholdCalendars:
         attach_brief_leaves(flights.get("flights", []),
                             brief_notes if config.get("brief_leave_times_enabled", False) else [],
                             config.get("brief_leave_policy", "conflict"))
+        valid_warning_ids = set()
+        for flight in flights.get("flights", []):
+            try:
+                if (flight.get("origin") == "VPS" and not flight.get("deadhead") and now < _stamp(flight["start"])
+                        and not any(key in flight for key in ("leave_at", "leave_window_start", "leave_conflict"))):
+                    valid_warning_ids.add(flight.get("id"))
+            except (ValueError, TypeError, KeyError, OverflowError):
+                continue
+        warnings = clean_brief_leave_warnings(brief_warnings + unmatched_brief_leave_warnings(
+            flights.get("flights", []), brief_notes, now)) if config.get("brief_leave_times_enabled", False) else []
+        flights["brief_leave_warnings"] = [row for row in warnings if row["flight_id"] in valid_warning_ids]
         flights["layovers"] = []
         if config.get("hotel_details_enabled", False):
             seen_layovers = set()
@@ -679,18 +696,23 @@ class HouseholdCalendars:
                 allowed = labels | {name + " " + label for name in children.values() for label in labels}
                 agenda = []
                 cached = family.get("activities")
-                for item in cached[:48] if isinstance(cached, list) else []:
+                for item in cached[:96] if isinstance(cached, list) else []:
                     try:
                         if (not isinstance(item, dict) or set(item) not in ({"title", "start", "end"}, {"title", "start", "end", "all_day"})
                                 or ("all_day" in item and item["all_day"] is not True) or item["title"] not in allowed):
                             continue
                         start, end = _stamp(item["start"]), _stamp(item["end"])
-                        if start.astimezone(zone).date() <= day <= (end - timedelta(microseconds=1)).astimezone(zone).date() and start < end:
+                        if (start < end and start.astimezone(zone).date() <= day + timedelta(days=1)
+                                and (end - timedelta(microseconds=1)).astimezone(zone).date() >= day):
                             agenda.append(item)
                     except (TypeError, ValueError, OverflowError):
                         continue
                 outlook["activities"] = agenda
                 outlook["activity_last_sync"] = activity_sync
+                coverage = family.get("activity_dates")
+                if isinstance(coverage, list):
+                    outlook["activity_dates"] = [target.isoformat() for target in (day, day + timedelta(days=1))
+                                                 if target.isoformat() in coverage[:2]]
         return {"flight_snapshot": flights, "kids": kids, "connected_profiles": profiles,
                 "custody_outlook": outlook}
 
@@ -751,6 +773,17 @@ class HouseholdCalendars:
             except CalendarError as error:
                 snapshot["error"] = str(error)
             role_cache[role] = {"binding": signature, "snapshot": snapshot}
+        # Source notes are transient until all selected flight roles can be
+        # joined. Never persist unmatched leave clocks, even in a private cache.
+        merged_for_leaves = _merge_flights([cached["snapshot"] for cached in role_cache.values()])
+        secondary = role_cache.get("secondary", {}).get("snapshot")
+        if secondary is not None:
+            notes = secondary.get("brief_leaves", []) if config.get("brief_leave_times_enabled", False) else []
+            attach_brief_leaves(merged_for_leaves, notes, config.get("brief_leave_policy", "conflict"))
+            previous_warnings = secondary.get("brief_leave_warnings", []) if secondary.get("error") else []
+            secondary["brief_leave_warnings"] = clean_brief_leave_warnings(
+                previous_warnings + unmatched_brief_leave_warnings(merged_for_leaves, notes, now))
+            secondary["brief_leaves"] = strictly_matched_brief_leaves(merged_for_leaves, notes)
         self._update("flight_roles", role_cache)
         if config.get("family_calendar_id") and config.get("kids_filter_enabled", False):
             signature = self._family_binding(config)
@@ -765,9 +798,18 @@ class HouseholdCalendars:
                 result = self.client_for(profile).get_events(config["family_calendar_id"], now - timedelta(days=2), now + timedelta(days=45))
                 children, activities, agenda_policy = _agenda_preferences(self.agenda_path)
                 display_zone = config.get("timezone", "UTC")
+                day = now.astimezone(ZoneInfo(display_zone)).date()
+                agenda, complete_dates = [], []
+                for offset in (0, 1):
+                    projected = parse_kids_activities(result["items"], children, activities, now, display_zone,
+                                                     event_timezone=result["timezone"], day_offset=offset,
+                                                     _row_limit=49, **agenda_policy)
+                    agenda.extend(projected[:48])
+                    if len(projected) <= 48:
+                        complete_dates.append((day + timedelta(days=offset)).isoformat())
                 family.update(intervals=parse_kids_events(result["items"], result["timezone"]),
-                              activities=parse_kids_activities(result["items"], children, activities, now, display_zone,
-                                                               event_timezone=result["timezone"], **agenda_policy),
+                              activities=list({(row["title"], row["start"], row["end"]): row for row in agenda}.values()),
+                              activity_dates=complete_dates,
                               activity_scope=_binding(children, activities, display_zone, agenda_policy),
                               activity_last_sync=_iso(now),
                               last_sync=_iso(now), error=None)

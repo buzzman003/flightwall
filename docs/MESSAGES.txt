@@ -1,3 +1,10 @@
+DELTA BOOKING EMAILS (OPTIONAL IN 0.4.21)
+
+The separate Delta travel feature reads only selected, supported Delta listing
+messages after Chris authorizes Gmail and explicitly enables that feature.
+Its transient MIME parsing is separate from the snippet-only message previews
+below. It stores narrowed flight records, not email bodies. See DELTA-TRAVEL.txt.
+
 SELECTED EMAIL SUMMARIES AND PHONE NOTIFICATIONS
 Flight Wall 0.3.0
 

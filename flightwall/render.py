@@ -196,7 +196,7 @@ def _clock(draw, state, now):
         _text(draw, (353, 12), "DEMO", AMBER)
 
 
-def _header(draw, state, now, page, *, page_scale=1, page_tracking=0):
+def _header(draw, state, now, page, *, page_scale=1, page_tracking=0, page_color=CYAN):
     for row in range(3):
         for col in range(3):
             draw.rectangle((15 + col * 4, 10 + row * 4, 16 + col * 4, 11 + row * 4), fill=AMBER if row + col == 2 else CYAN)
@@ -207,7 +207,7 @@ def _header(draw, state, now, page, *, page_scale=1, page_tracking=0):
     elif type(state.get("rotation_hold_seconds")) is int and state["rotation_hold_seconds"] > 0:
         _text(draw, (250, 13), f"DELAY {state['rotation_hold_seconds']}S", CYAN, align="center", max_width=130)
     draw.line((14, 31, 497, 31), fill=LINE)
-    _text(draw, (15, 40), page, CYAN, page_scale, tracking=page_tracking)
+    _text(draw, (15, 40), page, page_color, page_scale, tracking=page_tracking)
 
 
 def deck_footer_width(state):
@@ -869,6 +869,7 @@ def _setup(draw, state, config, now):
 
 
 def _local_visit(draw, state, config, now):
+    from .vps_leave_plan import format_owner_plan, owner_leave_plan
     _header(draw, state, now, "MY LOCAL VISIT / SCHEDULE")
     card = _selected_card(state, "local_visit") or {}
     start, end = _dt(card.get("display_start")), _dt(card.get("display_end"))
@@ -909,17 +910,24 @@ def _local_visit(draw, state, config, now):
     leave = (format_leave_clock(_dt(card.get("leave_at")), _dt(card.get("leave_window_start")),
                                 _dt(card.get("leave_window_end")), zone) if opted_in else None)
     conflict = opted_in and card.get("leave_conflict") is True
+    outbound = [row for row in state.get("flights", []) if isinstance(row, dict)
+                and row.get("origin") == "VPS" and _dt(row.get("start")) == departure] if airport == "VPS" and departure else []
+    plan = owner_leave_plan(outbound[0], config, now) if len(outbound) == 1 else None
+    plan_clock = format_owner_plan(plan, zone)
+    if plan_clock:
+        _text(draw, (26, 204), "LEAVE HOME / OWNER PLAN / " + plan_clock, AMBER, max_width=454)
+    leave_y = 216 if plan_clock else 204
     if leave:
-        label = "LEAVE HOME BY / " + leave
+        label = ("BUZZ BRIEF / " if plan_clock else "LEAVE HOME BY / ") + leave
         boundary = _dt(card.get("leave_boundary_at"))
         if boundary:
             label += " / HARD BOUNDARY " + format_time(boundary.astimezone(zone))
-        _text(draw, (26, 204), label, AMBER, max_width=404 if conflict else 454)
+        _text(draw, (26, leave_y), label, AMBER, max_width=404 if conflict else 454)
         if conflict:
-            _text(draw, (484, 204), "VERIFY", AMBER, align="right")
+            _text(draw, (484, leave_y), "VERIFY", AMBER, align="right")
     elif conflict:
-        _text(draw, (26, 204), "BRIEF CONFLICT / CHECK LEAVE TIME AND REPORT", AMBER, max_width=454)
-    elif has_stay and opted_in:
+        _text(draw, (26, leave_y), "BRIEF CONFLICT / CHECK LEAVE TIME AND REPORT", AMBER, max_width=454)
+    elif has_stay and opted_in and not plan_clock:
         _text(draw, (26, 204), "LEAVE HOME BY / NOT IN MATCHED BRIEF", MUTED, max_width=454)
     elif not has_stay:
         _text(draw, (26, 204), "SCHEDULE ONLY / LOCATION NOT CONFIRMED", MUTED, max_width=454)
@@ -964,7 +972,9 @@ def _personal_travel(draw, state, now, rows, tz):
         draw.rectangle((15, y, 496, y + 47), fill=PANEL)
         _text(draw, (24, y + 7), f"{row['number']} / {row['origin']} > {row['destination']}",
               WHITE, 2, max_width=342)
-        _text(draw, (486, y + 9), "CONFIRMED", CYAN, align="right")
+        label = {"listed": "LISTED", "jumpseat_requested": "JUMPSEAT REQUESTED", "confirmed": "CONFIRMED"}.get(row.get("status"), "UNVERIFIED")
+        label = ("LISA" if row.get("traveler") == "lisa" else "CHRIS") + " / " + label
+        _text(draw, (486, y + 9), label, CYAN if row.get("status") == "confirmed" else AMBER, align="right")
         departure = format_time(depart, date_format="%a %d %b", include_zone=True)
         arrival = format_time(arrive, date_format="%d %b", include_zone=True)
         _text(draw, (24, y + 30), f"DEP {departure} / ARR {arrival}", MUTED, max_width=460)
@@ -1032,6 +1042,7 @@ def _flight_designator(leg, config):
 
 
 def _trip_summary(draw, state, config, now):
+    from .vps_leave_plan import format_owner_plan, owner_leave_plan
     preview, legs, zone = _trip_legs(state, config)
     page, pages = _trip_page(state, len(legs))
     _header(draw, state, now, "UPCOMING TRIP / SCHEDULE")
@@ -1084,9 +1095,30 @@ def _trip_summary(draw, state, config, now):
                 if conflict:
                     draw.rectangle((331, y + 35, 492, y + 42), fill=PANEL)
                     _text(draw, (333, y + 36), "BRIEF / VERIFY REPORT", AMBER, max_width=154)
+        plan = owner_leave_plan(leg, config, now)
+        plan_clock = format_owner_plan(plan, zone, short=True)
+        if plan_clock:
+            draw.rectangle((55, y + 24, 130, y + 39), fill=PANEL)
+            _text(draw, (56, y + 26), "OWNER PLAN", AMBER, max_width=70)
+            report = _dt(plan.get("report_at"))
+            if report:
+                report_label = format_time(report.astimezone(zone),
+                    date_format="%m/%d" if report.astimezone(zone).date() != start.astimezone(zone).date() else None)
+                draw.rectangle((137, y + 22, 328, y + 42), fill=PANEL)
+                _text(draw, (139, y + 28), _flight_designator(leg, config) + " / RPT " + report_label, MUTED, max_width=180)
+            draw.rectangle((331, y + 22, 492, y + 42), fill=PANEL)
+            _text(draw, (333, y + 23), "LEAVE HOME", AMBER, max_width=154)
+            _text(draw, (333, y + 34), plan_clock, AMBER, max_width=154)
     _text(draw, (16, 211), _trip_range(preview), CYAN)
     first, last = page * TRIP_PAGE_SIZE + 1, min((page + 1) * TRIP_PAGE_SIZE, len(legs))
     _text(draw, (497, 211), f"LEGS {first}-{last} OF {len(legs)}", MUTED, align="right")
+    if config.get("brief_leave_times_enabled") is True:
+        visible_ids = {leg.get("id") for leg in legs[page * TRIP_PAGE_SIZE:(page + 1) * TRIP_PAGE_SIZE]}
+        warnings = state.get("brief_leave_warnings")
+        warnings = warnings if isinstance(warnings, list) else []
+        if any(isinstance(row, dict) and row.get("reason") == "visit_not_matched"
+               and row.get("flight_id") in visible_ids for row in warnings):
+            _text(draw, (16, 222), "VPS LEAVE NOTE / VISIT NOT MATCHED / CHECK BUZZ BRIEF", AMBER, max_width=481)
 
 
 def _trip_map(draw, image, state, config, now):
@@ -1244,15 +1276,18 @@ def _custody_outlook(draw, state, config, now):
 
 
 def _today_activities(draw, state, config, now):
-    from .outlook import ACTIVITIES_PER_PAGE, agenda_focus, today_activities
+    from .outlook import ACTIVITIES_PER_PAGE, activity_agenda, agenda_focus
 
     outlook = state.get("custody_outlook") or {}
     zone = _tz({"timezone": config.get("timezone") or outlook.get("timezone") or "UTC"})
-    day = now.astimezone(zone).date()
-    _header(draw, state, now, "TODAY'S ACTIVITIES", page_scale=2)
-    date_label = day.strftime("%a %m/%d")
     available = state.get("backend_available", True) and not state.get("demo")
-    rows = today_activities(outlook, config, now, backend_available=available)
+    agenda = activity_agenda(outlook, config, now, backend_available=available)
+    tomorrow = agenda is not None and agenda["tomorrow"]
+    day = agenda["date"] if agenda is not None else now.astimezone(zone).date()
+    _header(draw, state, now, "TOMORROW'S ACTIVITIES" if tomorrow else "TODAY'S ACTIVITIES",
+            page_scale=2, page_color=AMBER if tomorrow else CYAN)
+    date_label = day.strftime("%a %m/%d")
+    rows = agenda["rows"] if agenda is not None else None
     if not rows:
         _text(draw, (497, 44), date_label, MUTED, align="right")
         label = "NO ACTIVITIES SCHEDULED" if rows == [] else "ACTIVITIES UNAVAILABLE"

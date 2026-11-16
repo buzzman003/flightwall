@@ -41,6 +41,9 @@ other passenger details. The import takes at most 64 records and supports
 travel in the past 30 days or next year. The list command shows the private
 store in your terminal.
 
+An optional traveler field accepts chris or lisa. Omit it for the legacy Chris
+default. Use that short label rather than storing a full passenger name.
+
 The importer matches the Delta number, origin-local departure date and route.
 A newer Delta record supersedes an older one, and a calendar copy cannot
 overwrite a Delta record. For a schedule change on the same route and date,
@@ -49,10 +52,12 @@ number or route, include the old segment as cancelled with its original clocks
 and the new segment as confirmed in the same file. Equal-time contradictions
 require review before any records from that import are saved.
 
-Only the next twelve confirmed legs within 14 days appear in Personal Delta
-Travel, using the board's timezone. Guest mode and an unavailable display
+Only the next twelve confirmed, listed or jumpseat-requested legs within 14
+days appear in Personal Delta Travel, using the board's timezone and each
+record's actual status. Guest mode and an unavailable display
 service hide the card. Use S > Cards to set Personal Delta Travel to HIDE.
-This local workflow leaves Calendar and Gmail permissions alone. Travel
+The manual import leaves Calendar and Gmail permissions alone. Optional
+automatic Delta imports are described in DELTA-TRAVEL.txt. Travel
 records are separate from crew duty, presence and AeroAPI requests.
 
 SETUP ADDRESS AND OWNER TOKEN

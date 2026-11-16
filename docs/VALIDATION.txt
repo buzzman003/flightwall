@@ -1,3 +1,22 @@
+0.4.21 NEXT-DAY ACTIVITIES AND DELTA EMAIL IMPORT
+
+Synthetic tests cover activity coverage, final-event grace, later same-day
+events, local midnight/DST, stale/guest/offline privacy during paused frames.
+The LED composition is unchanged; only the tomorrow heading uses amber.
+
+The owner-authorized inbox review verified the Non Revenue Listing template
+from the exact Delta sender. These are listings, not proof of confirmed seats
+or actual travel. App Gmail consent is separate from this chat's connector.
+Real Gmail authorization and future booking arrival require on-device checks;
+past messages must not be redated or made to look like upcoming flights.
+Native acceptance includes the real published 0.4.20 upgrade and rollback.
+
+The owner clarified his VPS planning allowances separately from the inconsistent
+Buzz note. Check the opt-in owner plan against a known outbound schedule, local
+DST, midnight and disabled settings. Preserve the labeled report clock and the
+strict matched-note policy. Do not claim the plan establishes crew regulations,
+actual ground travel time or a corrected arrival record.
+
 0.4.20 OWNTRACKS ACCURACY AND ROSTER TITLE COMPATIBILITY
 
 The real phone received HTTP 400 because a queued location report had valid

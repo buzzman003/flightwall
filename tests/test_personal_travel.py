@@ -48,7 +48,8 @@ def test_cli_reservation_joins_tv_rotation_without_becoming_operating_or_mainten
     runtime.config.update({"demo": False})
     config = runtime.config.get()
     status = runtime.display_status(now)
-    assert status["personal_travel"] == [confirmed]
+    assert {row["status"] for row in status["personal_travel"]} == {"confirmed", "listed", "jumpseat_requested"}
+    assert len(status["personal_travel"]) == 3
     assert status["snapshot"]["flights"] == []
     assert status["operating_flight"] is None
     assert status["on_duty"] is False
@@ -58,7 +59,7 @@ def test_cli_reservation_joins_tv_rotation_without_becoming_operating_or_mainten
     state = entry_render_state(status, config, slot, now)
     with patch("flightwall.render._text") as text:
         render_frame(state, config)
-    assert {"PERSONAL DELTA TRAVEL", "DL1234 / ATL > MEM", "CONFIRMED"}.issubset(
+    assert {"PERSONAL DELTA TRAVEL", "DL1234 / ATL > MEM", "CHRIS / CONFIRMED", "CHRIS / LISTED", "CHRIS / JUMPSEAT REQUESTED"}.issubset(
         {call.args[2] for call in text.call_args_list})
     for context, settings in ((status, config | {"guest_mode": True}),
                               (status | {"backend_available": False}, config)):
@@ -102,3 +103,70 @@ def test_import_rejects_sensitive_fields_and_calendar_as_confirmation(tmp_path):
         with pytest.raises(ValueError):
             store.import_file(save(tmp_path / "reviewed.json", [record(now), invalid]), now)
         assert store.list_records() == []
+
+
+def test_atomic_booking_revision_cancels_only_missing_future_segments_and_rejects_stale_replay(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    store = PersonalTravel(tmp_path, lambda: {})
+    first = record(now, status="listed", updated_at=(now - timedelta(hours=2)).isoformat())
+    other = record(now, number="DL1235", status="listed", updated_at=first["updated_at"])
+    key = "a" * 64
+    assert store.import_listing(key, [first, other], now)["changed"]
+    revision = dict(first, number="DL4321", updated_at=(now - timedelta(hours=1)).isoformat())
+    assert store.import_listing(key, [revision], now)["changed"]
+    by_number = {row["number"]: row for row in store.list_records()}
+    assert by_number["DL1234"]["status"] == by_number["DL1235"]["status"] == "cancelled"
+    assert by_number["DL4321"]["status"] == "listed"
+    previous = store.storage.path.read_bytes()
+    assert not store.import_listing(key, [first, other], now)["changed"]
+    assert store.storage.path.read_bytes() == previous
+    assert json.loads(previous)["bookings"][key]["identities"] == ["chris|DL4321|2026-11-07|ATL|MEM"]
+
+
+def test_listing_cannot_erase_newer_confirmed_evidence_or_another_booking(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    store = PersonalTravel(tmp_path, lambda: {})
+    listed = record(now, status="listed", updated_at=(now - timedelta(hours=3)).isoformat())
+    assert store.import_listing("a" * 64, [listed], now)["changed"]
+    assert store.import_listing("b" * 64, [listed], now)["changed"]
+    confirmed = dict(listed, status="confirmed", updated_at=now.isoformat())
+    store.import_records([confirmed], now)
+    replacement = record(now, number="DL4321", status="listed", updated_at=(now - timedelta(hours=1)).isoformat())
+    store.import_listing("a" * 64, [replacement], now)
+    assert {row["number"]: row["status"] for row in store.list_records()} == {"DL1234": "confirmed", "DL4321": "listed"}
+    assert "b" * 64 in json.loads(store.storage.path.read_text())["bookings"]
+
+
+def test_equal_clock_listing_conflict_preserves_entire_previous_transaction(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    store = PersonalTravel(tmp_path, lambda: {})
+    first = record(now, status="listed")
+    store.import_listing("a" * 64, [first], now)
+    previous = store.storage.path.read_bytes()
+    with pytest.raises(ValueError, match="Conflicting"):
+        store.import_listing("a" * 64, [dict(first, number="DL4321")], now)
+    assert store.storage.path.read_bytes() == previous
+
+
+def test_newer_listing_does_not_downgrade_or_cancel_confirmed_records(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    store = PersonalTravel(tmp_path, lambda: {})
+    first = record(now, status="listed", updated_at=(now - timedelta(hours=3)).isoformat())
+    store.import_listing("a" * 64, [first], now)
+    confirmed = dict(first, status="confirmed", updated_at=(now - timedelta(hours=2)).isoformat())
+    store.import_records([confirmed], now)
+    newer = dict(first, updated_at=(now - timedelta(hours=1)).isoformat())
+    store.import_listing("a" * 64, [newer], now)
+    assert store.list_records() == [confirmed]
+    store.import_listing("a" * 64, [dict(newer, number="DL4321", updated_at=now.isoformat())], now)
+    assert next(row for row in store.list_records() if row["number"] == confirmed["number"]) == confirmed
+
+
+def test_two_travelers_on_the_same_flight_have_separate_status_and_identity(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    store = PersonalTravel(tmp_path, lambda: {})
+    chris = record(now, status="listed", traveler="chris")
+    lisa = record(now, status="listed", traveler="lisa")
+    assert store.import_records([chris, lisa], now)["stored"] == 2
+    store.import_records([dict(lisa, status="cancelled", updated_at=now.isoformat())], now)
+    assert {row["traveler"]: row["status"] for row in store.list_records()} == {"chris": "listed", "lisa": "cancelled"}

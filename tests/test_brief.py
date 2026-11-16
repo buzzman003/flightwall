@@ -3,7 +3,8 @@ from copy import deepcopy
 from datetime import datetime
 import json
 
-from flightwall.brief import attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes
+from flightwall.brief import (attach_brief_leaves, clean_brief_leaves, parse_brief_leave_notes,
+                              unmatched_brief_leave_warnings)
 
 
 def overnight(**extra):
@@ -45,6 +46,48 @@ def test_conflict_default_never_selects_a_clock_and_explicit_policy_keeps_warnin
         assert legs[1].get("leave_at") == expected
         assert legs[1]["leave_conflict"] is True
         assert "leave_at" not in legs[0]
+
+
+def test_changed_rotation_24_hour_targets_remain_separate_and_do_not_become_a_window():
+    event = overnight(summary="Buzz Flight Brief — VPS Home Overnight (Jan 12–13, changed rotation)",
+                      description="RECOMMENDED LEAVE HOME = 07:35 CST; latest = 07:45 CST. "
+                                  "LEAVE HOME TARGET = 07:20 CST; limited-buffer latest ~07:25. "
+                                  "Crew: PRIVATE-CREW; Hotel: PRIVATE-HOTEL")
+    original = deepcopy(event)
+    rows = parse_brief_leave_notes([event], "America/Chicago")
+    assert rows == parse_brief_leave_notes([overnight()], "America/Chicago")
+    assert event == original and "PRIVATE" not in json.dumps(rows)
+    assert not any("window" in key for key in rows[0])
+    legs = flights()
+    attach_brief_leaves(legs, rows, "report_safe")
+    assert legs[1]["leave_at"] == rows[0]["report_safe_at"]
+    assert legs[1]["leave_conflict"] is True
+    for changed in (
+        {"summary": event["summary"].replace("changed rotation", "unverified revision")},
+        {"description": event["description"].replace("07:20 CST", "07:20 CDT")},
+        {"description": event["description"].replace("07:20 CST", "09:20 CST")},
+        {"description": event["description"].replace("07:20 CST", "25:20 CST")},
+        {"description": "RECOMMENDED LEAVE HOME = 07:35 CST"},
+        {"description": event["description"] + " RECOMMENDED LEAVE HOME = 07:30 CST"},
+    ):
+        assert parse_brief_leave_notes([event | changed], "America/Chicago") == []
+
+
+def test_unmatched_visit_warning_never_attaches_leave_clocks_or_invents_arrival():
+    notes = parse_brief_leave_notes([overnight()], "America/Chicago")
+    outbound = flights()[1:]
+    before = deepcopy(outbound)
+    now = datetime.fromisoformat("2027-01-13T12:00:00+00:00")
+    assert unmatched_brief_leave_warnings(outbound, notes, now) == [
+        {"flight_id": "out", "reason": "visit_not_matched"}]
+    assert outbound == before
+    assert unmatched_brief_leave_warnings(outbound, notes, datetime.fromisoformat("2027-01-12T12:00:00+00:00")) == []
+    assert unmatched_brief_leave_warnings(outbound, notes, datetime.fromisoformat("2027-01-13T16:00:00+00:00")) == []
+    assert unmatched_brief_leave_warnings(outbound * 2, notes, now) == []
+    assert unmatched_brief_leave_warnings(flights(report="2027-01-13T15:01:00Z"), notes, now) == []
+    complete = flights()
+    attach_brief_leaves(complete, notes)
+    assert unmatched_brief_leave_warnings(complete, notes, now) == []
 
 
 def test_report_safe_soft_wrap_and_single_nonconflicting_time():

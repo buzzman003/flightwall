@@ -1,0 +1,60 @@
+PERSONAL DELTA LISTINGS
+Flight Wall 0.4.21
+
+Automatic imports are optional and start off. Chris connects read-only Gmail
+separately from Google Calendar. ChatGPT's Gmail connection does not authorize
+the Batocera app. Inbox previews and Lisa's Gmail are separate choices.
+
+In household setup, open Your Google accounts. Connect Chris's read-only Gmail,
+then enter the exact full passenger-name spellings used in his listings and
+enable My Delta booking emails. Lisa's optional exact-name filters can also
+include her bookings from Chris's mailbox; the card identifies each traveler.
+The app checks about every five minutes while
+the display or background service runs. It can read past listings received in
+the last 30 days; past travel does not become an upcoming card.
+
+The supported template is Non Revenue Listing from exactly no-reply@delta.com.
+The app validates the message headers, passenger section and complete flight
+table. It converts the printed airport-local clocks using each airport's time
+zone, including DST. Unsupported dates, formats, cancellations or ambiguous
+content require review instead of a guessed itinerary.
+
+Only flight number, route, scheduled clocks, source date and listing status
+are retained for display. The parser discards email bodies, employee numbers,
+record locators and passenger lists. Owner-entered name filters and an opaque
+salted booking association remain in private settings/storage outside releases.
+No email is sent, marked read, moved or deleted by this feature.
+
+A non-revenue listing appears as LISTED; it does not prove a confirmed seat or
+actual travel. Listed, requested and confirmed personal trips keep their own
+labels. They do not change the operating roster, duty, household presence or
+paid flight tracking. Guest mode hides personal travel. S > Cards can hide it.
+
+DESKTOP CLIENT SIGN-IN
+
+If the existing Google client is a Desktop client, keep that client intact and
+use the separate Gmail command. On Windows, keep this strict SSH tunnel open:
+
+    ssh -N -L 127.0.0.1:8766:127.0.0.1:8766 -o StrictHostKeyChecking=yes root@192.168.1.173
+
+Then, in a second SSH terminal on Batocera, run:
+
+    /userdata/roms/ports/.data/flightwall/flightwall gmail-authorize --credentials /userdata/system/configs/flightwall/accounts/chris/google-client.json --no-browser
+
+Open the printed Google link in the Windows browser. Select Chris's account,
+review Gmail read-only permission and approve it yourself. Keep the link,
+authorization codes and tokens out of chat. The loopback callback uses port
+8766. The command stores a separate private Gmail client/token pair and leaves
+Calendar authorization and settings unchanged. It does not enable email imports
+until Chris saves the separate Delta choice and passenger-name filter.
+
+The Google project must have Gmail API enabled. Google's read-only Gmail scope
+covers mailbox read access; Flight Wall applies its narrower filters locally.
+For a household-only app, Google may show an unverified-app warning. Review
+your own app/account before approving. Do not change the scope to Gmail modify
+or full-mail access. No password or API key is needed in chat.
+
+Sources:
+https://developers.google.com/workspace/gmail/api/auth/scopes
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get
+https://support.google.com/cloud/answer/13464323

@@ -187,6 +187,27 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertIn("1:30 AM CDT", before)
         self.assertIn("1:30 AM CST", after)
 
+    def test_completed_agenda_changes_heading_color_and_date_on_a_held_frame(self):
+        now = datetime(2026, 11, 1, 2, 29, 59, tzinfo=timezone.utc)
+        outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+                   "activity_dates": ["2026-10-31", "2026-11-01"], "activities": [
+                       {"title": "Rory Soccer", "start": "2026-11-01T01:00:00Z", "end": "2026-11-01T02:00:00Z"},
+                       {"title": "Nora Dance", "start": "2026-11-01T20:00:00Z", "end": "2026-11-01T21:00:00Z"}]}
+        state = {"view": "today_activities", "custody_outlook": outlook, "rotation_paused": True}
+        for instant, title, color, activity, date in (
+                (now, "TODAY'S ACTIVITIES", render.CYAN, "Rory Soccer", "Sat 10/31"),
+                (now + timedelta(seconds=1), "TOMORROW'S ACTIVITIES", render.AMBER, "Nora Dance", "Sun 11/01")):
+            with patch.object(render, "_text", wraps=render._text) as draw_text:
+                image = render.render_frame(state | {"now": instant.isoformat()}, {"timezone": "America/Chicago"})
+            heading, = [call for call in draw_text.call_args_list if call.args[2] == title]
+            self.assertEqual(heading.args[3], color)
+            self.assertIn(activity, [call.args[2] for call in draw_text.call_args_list])
+            self.assertIn(date, [call.args[2] for call in draw_text.call_args_list])
+            self.assertEqual(image.size, (512, 256))
+        labels, _ = labels_for(state | {"now": (now + timedelta(seconds=1)).isoformat()}, guest_mode=True)
+        self.assertNotIn("Nora Dance", labels)
+        self.assertNotIn("TOMORROW'S ACTIVITIES", labels)
+
     def test_display_rechecks_outlook_freshness_and_carries_timers(self):
         status = {"snapshot": {}, "custody_outlook": self.outlook,
                   "timers": [{"id": "tea", "label": "TEA", "ends_at": (NOW + timedelta(minutes=2)).isoformat()}]}

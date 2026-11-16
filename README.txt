@@ -1,3 +1,18 @@
+FLIGHT WALL 0.4.21
+
+The activity card advances to Tomorrow's Activities in amber after today's
+last kids activity and its 30-minute grace period. It keeps today's heading
+while later activities remain and requires fresh, date-covered calendar data.
+
+Optional Delta email imports from Chris's mailbox use a separate read-only Gmail
+connection and explicit passenger-name matches. Supported non-revenue listings
+appear as LISTED on the personal travel card, never as confirmed crew duty.
+The board, ticker and timers keep the existing crisp LED presentation.
+
+An optional owner-configured VPS planning window uses the scheduled outbound
+flight and your drive/walk/security allowances. It is labeled separately from
+the calendar report clock and any conflicting Buzz leave-home notes.
+
 FLIGHT WALL 0.4.20
 
 OwnTracks accepts large finite nonnegative GPS uncertainty and drains expired

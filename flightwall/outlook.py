@@ -23,8 +23,8 @@ def calendar_fresh(last_sync, now, minutes, *, failed=False):
         return False
 
 
-def today_activities(outlook, config, now, *, backend_available=True):
-    """Return today's private agenda, or None when it cannot be shown."""
+def today_activities(outlook, config, now, *, backend_available=True, day_offset=0):
+    """Return one covered local day's agenda, or None when it cannot be shown."""
     if (not backend_available or config.get("guest_mode") or config.get("demo")
             or config.get("kids_filter_enabled", True) is not True
             or not isinstance(outlook, dict) or outlook.get("stale") is not False):
@@ -37,11 +37,14 @@ def today_activities(outlook, config, now, *, backend_available=True):
     if not isinstance(source, list):
         return None
     zone = ZoneInfo(config.get("timezone") or outlook.get("timezone") or "UTC")
-    day = now.astimezone(zone).date()
+    day = now.astimezone(zone).date() + timedelta(days=day_offset)
+    coverage = outlook.get("activity_dates")
+    if day_offset and (not isinstance(coverage, list) or day.isoformat() not in coverage[:2]):
+        return None
     start_of_day = datetime.combine(day, time(), zone).astimezone(UTC)
     end_of_day = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
     rows = []
-    for item in source[:48]:
+    for item in source[:96]:
         if not isinstance(item, dict) or not isinstance(item.get("title"), str) or not item["title"].strip():
             continue
         try:
@@ -55,6 +58,21 @@ def today_activities(outlook, config, now, *, backend_available=True):
             continue
         rows.append((start.astimezone(zone), end.astimezone(zone), item["title"], all_day))
     return sorted(rows, key=lambda row: (row[0].astimezone(UTC), row[1].astimezone(UTC), row[2]))
+
+
+def activity_agenda(outlook, config, now, *, backend_available=True):
+    """Switch to tomorrow only after every remaining activity and grace end."""
+    rows = today_activities(outlook, config, now, backend_available=backend_available)
+    if rows is None:
+        return None
+    zone = ZoneInfo(config.get("timezone") or outlook.get("timezone") or "UTC")
+    day = now.astimezone(zone).date()
+    coverage = outlook.get("activity_dates")
+    if not rows and isinstance(coverage, list) and day.isoformat() in coverage[:2]:
+        tomorrow = today_activities(outlook, config, now, backend_available=backend_available, day_offset=1)
+        if tomorrow is not None:
+            return {"date": day + timedelta(days=1), "tomorrow": True, "rows": tomorrow}
+    return {"date": day, "tomorrow": False, "rows": rows}
 
 
 def agenda_focus(rows, now):

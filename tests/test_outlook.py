@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from flightwall.config import ConfigStore, PUBLIC_FIELDS, REMOTE_SETTINGS, validate
-from flightwall.outlook import agenda_focus, custody_outlook, local_visits, planned_buzz_days, today_activities, trip_preview
+from flightwall.outlook import activity_agenda, agenda_focus, custody_outlook, local_visits, planned_buzz_days, today_activities, trip_preview
 from flightwall.household_policy import build_rotation
 
 
@@ -235,3 +235,61 @@ def test_agenda_focus_orders_repeated_wall_times_by_instant():
     assert rows[0][0].strftime("%H:%M") == rows[1][0].strftime("%H:%M")
     assert agenda_focus(rows, rows[0][0] + timedelta(minutes=10)) == ["NOW", "NEXT"]
     assert agenda_focus(rows, now + timedelta(hours=1)) == ["", "NOW"]
+
+
+def test_agenda_switches_only_when_last_activity_and_its_grace_are_over():
+    config = {"timezone": "America/Chicago"}
+    source = [
+        {"title": "Rory Soccer Practice", "start": "2026-10-31T21:00:00Z", "end": "2026-10-31T22:00:00Z"},
+        {"title": "Nora Dance", "start": "2026-11-01T01:00:00Z", "end": "2026-11-01T02:00:00Z"},
+        {"title": "Violin", "start": "2026-11-01T20:00:00Z", "end": "2026-11-01T21:00:00Z"},
+    ]
+
+    def at(clock):
+        now = dt(clock)
+        outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+                   "activity_dates": ["2026-10-31", "2026-11-01"], "activities": source}
+        return activity_agenda(outlook, config, now), outlook, now
+
+    for clock in ("2026-10-31T23:00:00Z", "2026-11-01T02:29:59Z"):
+        agenda, _, _ = at(clock)
+        assert agenda["date"].isoformat() == "2026-10-31"
+        assert agenda["tomorrow"] is False
+        assert [row[2] for row in agenda["rows"]] == ["Nora Dance"]
+    agenda, outlook, now = at("2026-11-01T02:30:00Z")
+    assert agenda["date"].isoformat() == "2026-11-01"
+    assert agenda["tomorrow"] is True
+    assert [row[2] for row in agenda["rows"]] == ["Violin"]
+    assert len([row for row in build_rotation({"snapshot": {"demo": False}, "custody_outlook": outlook}, config, now)
+                if row["view"] == "today_activities"]) == 1
+
+
+def test_tomorrow_agenda_requires_explicit_coverage_and_preserves_privacy_gates():
+    now = dt("2026-11-01T02:30:00Z")
+    config = {"timezone": "America/Chicago"}
+    outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+               "activities": [{"title": "Violin", "start": "2026-11-01T20:00:00Z", "end": "2026-11-01T21:00:00Z"}]}
+    assert activity_agenda(outlook, config, now)["tomorrow"] is False
+    for coverage in (None, [], ["2026-10-31"], ["2026-11-01"]):
+        assert activity_agenda(outlook | {"activity_dates": coverage}, config, now)["tomorrow"] is False
+    outlook["activity_dates"] = ["2026-10-31", "2026-11-01"]
+    assert activity_agenda(outlook, config, now)["tomorrow"] is True
+    for change in ({"guest_mode": True}, {"demo": True}, {"kids_filter_enabled": False}):
+        assert activity_agenda(outlook, config | change, now) is None
+    assert activity_agenda(outlook, config, now, backend_available=False) is None
+    assert activity_agenda(outlook | {"stale": True}, config, now) is None
+    assert activity_agenda(outlook, config, now + timedelta(minutes=31)) is None
+
+
+def test_tomorrow_agenda_uses_local_dates_through_dst_and_becomes_today_at_midnight():
+    config = {"timezone": "America/Chicago"}
+    source = [{"title": "Nora Dance", "start": "2026-11-01T20:00:00Z", "end": "2026-11-01T21:00:00Z"}]
+    for clock, tomorrow in (("2026-11-01T04:59:59Z", True), ("2026-11-01T05:00:00Z", False),
+                            ("2026-11-01T07:30:00Z", False)):
+        now = dt(clock)
+        outlook = {"stale": False, "last_sync": now.isoformat(), "activity_last_sync": now.isoformat(),
+                   "activity_dates": ["2026-10-31", "2026-11-01"], "activities": source}
+        agenda = activity_agenda(outlook, config, now)
+        assert agenda["date"].isoformat() == "2026-11-01"
+        assert agenda["tomorrow"] is tomorrow
+        assert [row[2] for row in agenda["rows"]] == ["Nora Dance"]

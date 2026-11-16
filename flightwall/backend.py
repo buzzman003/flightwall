@@ -30,6 +30,7 @@ from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .personal_travel import PersonalTravel, visible_travel
+from .delta_travel import DeltaTravel
 from .weather import WeatherFeed
 from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_weather_eligible
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
@@ -87,6 +88,7 @@ class Runtime:
         self.timers = TimerStore(data_dir, self.config.get)
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
         self.personal_travel = PersonalTravel(data_dir, self.config.get)
+        self.delta_travel = DeltaTravel(data_dir, self.config.get)
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
@@ -407,6 +409,7 @@ class Runtime:
         household = self.household.status()
         content = self.content.status()
         return {"version": __version__, "profiles": household["connected_profiles"],
+                "delta_travel": self.delta_travel.status(),
                 "kids": household["kids"], "presence": self.presence.snapshot(),
                 "messages": {person: {key: value for key, value in self.messages.status(person).items() if key != "items"}
                              for person in ("chris", "lisa")},
@@ -618,6 +621,11 @@ class Runtime:
             return
         try:
             config = self.config.get()
+            if not self.stop_event.is_set() and config.get("delta_travel_enabled"):
+                try:
+                    self.delta_travel.sync()
+                except Exception:
+                    pass  # Never let an optional booking import interrupt other feeds.
             if config["messages_enabled"]:
                 for person in ("chris", "lisa"):
                     if not self.stop_event.is_set() and config[f"{person}_gmail_enabled"]:

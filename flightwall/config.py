@@ -45,6 +45,7 @@ DEFAULTS = {
     "flight_focus_only": False,
     "lisa_private_enabled": False, "guest_mode": False,
     "messages_enabled": False, "chris_gmail_enabled": False, "lisa_gmail_enabled": False,
+    "delta_travel_enabled": False, "delta_travel_owner_names": "[]", "delta_travel_lisa_names": "[]",
     "chris_lawyer_senders": "[]", "chris_lawyer_domains": "[]",
     "lisa_mail_senders": "[]", "lisa_mail_domains": "[]", "message_preview_chars": 180,
     "chris_notifications_enabled": False, "lisa_notifications_enabled": False,
@@ -55,6 +56,9 @@ DEFAULTS = {
     "brief_focus_enabled": False, "card_seconds": "{}", "commute_schedule_idents": "[]",
     "hotel_details_enabled": False,
     "brief_leave_times_enabled": False, "brief_leave_policy": "conflict",
+    "vps_leave_plan_enabled": False, "vps_leave_drive_minutes": 25, "vps_leave_parking_minutes": 6,
+    "vps_leave_security_minutes": 5, "vps_leave_gate_minutes": 2,
+    "vps_leave_target_early_minutes": 60, "vps_leave_target_late_minutes": 50,
     "display_scale_mode": "fit", "timers_enabled": True,
     "custody_outlook_enabled": True, "custody_outlook_days": 10, "flight_preview_days": 5,
     "planned_trip_days": "[]",
@@ -83,6 +87,9 @@ PUBLIC_FIELDS = (REMOTE_SETTINGS - {"home_latitude", "home_longitude"}) | {
     "brief_leave_times_enabled",
     "trip_weather_enabled", "national_radar_enabled", "airport_alerts_enabled", "nearby_enrichment_enabled",
     "dinner_options_enabled",
+    "vps_leave_plan_enabled", "vps_leave_drive_minutes", "vps_leave_parking_minutes",
+    "vps_leave_security_minutes", "vps_leave_gate_minutes",
+    "vps_leave_target_early_minutes", "vps_leave_target_late_minutes",
 }
 JSON_LIST_FIELDS = frozenset({"chris_lawyer_senders", "chris_lawyer_domains", "lisa_mail_senders", "lisa_mail_domains",
                               "chris_notification_apps", "lisa_notification_apps", "inspiration_sources"})
@@ -111,6 +118,18 @@ def validate(key, value):
     if key not in DEFAULTS:
         raise ValueError(f"Unknown setting: {key}")
     original = DEFAULTS[key]
+    if key in {"delta_travel_owner_names", "delta_travel_lisa_names"}:
+        try:
+            names = json.loads(value) if isinstance(value, str) and len(value) <= 2048 else None
+        except (ValueError, RecursionError):
+            names = None
+        if (not isinstance(names, list) or len(names) > 6
+                or any(not isinstance(name, str) or not 3 <= len(name.strip()) <= 100
+                       or len(name.split()) < 2
+                       or any(not (char.isalpha() or char in " .'-") for char in name)
+                       for name in names)):
+            raise ValueError("Use a JSON list of up to six full passenger-name spellings")
+        return json.dumps(list(dict.fromkeys(" ".join(name.split()).upper() for name in names)))
     if key == "commute_schedule_idents":
         from .commute import schedule_idents
         return json.dumps(schedule_idents(value), separators=(",", ":"))
@@ -187,6 +206,9 @@ def validate(key, value):
             "dinner_options_monthly_limit_usd": (0, 3), "dinner_options_servings": (1, 20),
             "dinner_options_max_minutes": (45, 60),
             "custody_outlook_days": (10, 10), "flight_preview_days": (1, 14),
+            "vps_leave_drive_minutes": (0, 180), "vps_leave_parking_minutes": (0, 60),
+            "vps_leave_security_minutes": (0, 120), "vps_leave_gate_minutes": (0, 60),
+            "vps_leave_target_early_minutes": (30, 180), "vps_leave_target_late_minutes": (30, 180),
         }
         low, high = limits[key]
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not low <= value <= high:
@@ -303,6 +325,12 @@ class ConfigStore:
         checked = {key: validate(key, value) for key, value in settings.items()}
         with self.lock:
             candidate = self.get() | checked
+            if candidate["delta_travel_enabled"] and not json.loads(candidate["delta_travel_owner_names"]):
+                raise ValueError("Enter your full passenger-name spelling before enabling Delta email imports")
+            if set(json.loads(candidate["delta_travel_owner_names"])) & set(json.loads(candidate["delta_travel_lisa_names"])):
+                raise ValueError("Chris and Lisa need distinct passenger-name spellings")
+            if candidate["vps_leave_target_early_minutes"] <= candidate["vps_leave_target_late_minutes"]:
+                raise ValueError("The early aircraft-arrival target must provide more time than the late target")
             if candidate["dinner_start"] >= candidate["dinner_end"]:
                 raise ValueError("Dinner's end time must be after its start time on the same day")
             if candidate["updates_enabled"] and not (candidate["update_manifest_url"] and candidate["update_public_key"]):

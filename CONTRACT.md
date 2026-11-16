@@ -1,3 +1,26 @@
+0.4.21 ACTIVITIES AND PERSONAL DELTA LISTINGS
+
+Today's Activities advances only after every supported current-day activity's
+end plus 30 minutes. Tomorrow's Activities has its own heading, date and color.
+Fresh source coverage and household display gates apply on every frame.
+
+Delta email imports have a separate Chris-only opt-in and Gmail consent.
+Read only bounded selected Delta messages; parse supported tables transiently.
+Store no full bodies, parsed passenger lists, employee numbers or record locators.
+Owner-entered name filters stay in private settings.
+Private salted booking associations support narrowly verified replacements.
+Listings remain labeled LISTED and cannot alter the operating roster, presence
+or paid tracking. Unsupported formats need review rather than guessed travel.
+Gmail message previews remain a separate choice.
+
+An explicitly enabled owner VPS leave plan is calculated from an exact outbound
+VPS schedule and owner-entered ground time and aircraft-arrival targets. Label
+it OWNER PLAN; do not present it as a matched Buzz timestamp or a live traffic,
+security, regulatory or arrival estimate. Keep report clocks and Buzz conflicts
+separate. This calculation does not need or invent an inbound flight, nor does
+it establish phone presence. The strict Buzz arrival/report/outbound matcher
+continues to govern retained leave-home timestamps from calendar notes.
+
 # Flight Wall implementation contract
 
 0.4.20: Treat finite nonnegative OwnTracks accuracy as uncertainty, including

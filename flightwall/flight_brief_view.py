@@ -1,5 +1,6 @@
 """A household view of verified clocks, observed status and airport context."""
 from .time_format import format_leave_clock, format_time
+from .vps_leave_plan import format_owner_plan
 
 
 PHASE_LABELS = {
@@ -31,6 +32,12 @@ def brief_rows(context, config):
     for advisory in context["airport_advisories"]:
         if advisory["kind"] == "ground_stop":
             rows.append(("", f"{advisory['airport']} GROUND STOP", "FAA AIRPORT ADVISORY / CHECK AIRLINE", True))
+    plan = context.get("owner_leave_plan")
+    plan_clock = format_owner_plan(plan, _tz(config))
+    if plan_clock:
+        rows.append(("owner_leave_time", "VPS / LEAVE HOME", "OWNER PLAN / " + plan_clock, True))
+        if plan.get("report_at"):
+            rows.append(("owner_report", "VPS / ROSTER REPORT", "SCHEDULE / " + clock(plan["report_at"]), True))
     leave = format_leave_clock(_dt(visit.get("brief_leave_at")), _dt(visit.get("brief_leave_window_start")),
                                _dt(visit.get("brief_leave_window_end")), _tz(config))
     if leave:
@@ -73,7 +80,7 @@ def render_brief(draw, state, config, now):
           max_width=240)
     _text(draw, (496, 51), PHASE_LABELS[context["phase"]], CYAN, align="right", max_width=220)
     preference = state.get("brief_focus")
-    pinned = {"leave_time", "vps_departure"} if any(row[0] == "leave_time" for row in rows) else set()
+    pinned = {"leave_time", "vps_departure"} if any(row[0] in {"leave_time", "owner_leave_time"} for row in rows) else set()
     def fixed(row):
         return row[3] or row[0] in pinned
 

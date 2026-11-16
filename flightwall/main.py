@@ -36,6 +36,10 @@ def parser():
     authorize.add_argument("--no-browser", action="store_true")
     authorize.add_argument("--callback-port", type=int, default=8766)
     authorize.add_argument("--person", choices=["chris", "lisa"], help="Use this person's separate account; omitted keeps the legacy Chris setup")
+    gmail = commands.add_parser("gmail-authorize", help="Connect Chris's separate read-only Gmail for Delta listings")
+    gmail.add_argument("--credentials", required=True, type=Path)
+    gmail.add_argument("--no-browser", action="store_true")
+    gmail.add_argument("--callback-port", type=int, default=8766)
     calendars = commands.add_parser("calendars", help="List actual calendars visible to the selected Google account")
     calendars.add_argument("--person", choices=["chris", "lisa"], help="Select a separate household account")
     select = commands.add_parser("select-calendar", help="Assign a flight, MiCrew rotation or family calendar role")
@@ -257,6 +261,10 @@ def main(argv=None):
                 except CalendarError as exc:
                     print(str(exc), file=sys.stderr)
                     print("Authorization is saved. Choose the calendar using select-calendar.", file=sys.stderr)
+        elif command == "gmail-authorize":
+            from .gmail_oauth import authorize_gmail
+            emit(authorize_gmail(args.data_dir, args.credentials, open_browser=not args.no_browser,
+                                 callback_port=args.callback_port))
         elif command == "calendars":
             if args.person:
                 from .household_calendar import HouseholdCalendars

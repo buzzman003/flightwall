@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from flightwall.calendar_client import CalendarClient, CalendarError, SCOPES
 from flightwall.config import private_json
-from flightwall.household_calendar import HouseholdCalendars, kids_snapshot, parse_kids_events, parse_labelled_layovers
+from flightwall.household_calendar import HouseholdCalendars, kids_snapshot, parse_kids_activities, parse_kids_events, parse_labelled_layovers
 
 
 UTC = timezone.utc
@@ -37,6 +37,14 @@ def all_day(summary="Mom", start="2026-10-22", end="2026-10-23", zone=None, **ex
 
 
 class KidsParserTests(unittest.TestCase):
+    def test_tomorrow_activity_projection_uses_civil_date_across_dst(self):
+        now = dt("2026-11-01T05:30:00Z")  # 00:30 before the 25-hour local day.
+        rows = parse_kids_activities([
+            event("Rory Dance", "2026-11-01T20:00:00Z", "2026-11-01T21:00:00Z"),
+            event("Rory Dance", "2026-11-02T20:00:00Z", "2026-11-02T21:00:00Z"),
+        ], {"rory": "Rory"}, {"Dance": ("dance",)}, now, "America/Chicago", day_offset=1)
+        self.assertEqual(rows, [{"title": "Rory Dance", "start": "2026-11-02T20:00:00Z", "end": "2026-11-02T21:00:00Z"}])
+
     def test_only_exact_parent_summaries_supply_the_configured_meaning(self):
         ignored = ["Mom and Dad", "Mom: pickup", "Appointment w/Mom", "Dad's birthday",
                    "Dinner", "Mom\u200b", None, 23, ["Mom"]]
@@ -351,7 +359,7 @@ class HouseholdManagerTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(self.manager.path.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE((self.root / "accounts").stat().st_mode), 0o700)
 
-    def test_family_agenda_caches_only_approved_todays_activities(self):
+    def test_family_agenda_caches_only_approved_today_and_tomorrow_activities(self):
         private_json(self.manager.agenda_path, {"children": ["Rory"], "activities": {"Soccer": ["futsal"]}})
 
         def agenda_api(client, path, parameters):
@@ -383,7 +391,9 @@ class HouseholdManagerTests(unittest.TestCase):
             {"title": "Violin", "start": "2026-10-22T17:00:00Z", "end": "2026-10-22T18:00:00Z"},
             {"title": "Rory Jiu-jitsu", "start": "2026-10-22T19:00:00Z", "end": "2026-10-22T20:00:00Z"},
             {"title": "Rory Soccer", "start": "2026-10-22T21:00:00Z", "end": "2026-10-22T22:00:00Z"},
+            {"title": "Soccer Game", "start": "2026-10-23T05:00:00Z", "end": "2026-10-24T05:00:00Z", "all_day": True},
         ])
+        self.assertEqual(outlook["activity_dates"], ["2026-10-22", "2026-10-23"])
         self.assertNotIn("PRIVATE-", self.manager.path.read_text())
         self.assertTrue(all("description" not in parameters.get("fields", "") for _, path, parameters in self.calls if "family" in path))
         self.config["guest_mode"] = True
@@ -391,6 +401,30 @@ class HouseholdManagerTests(unittest.TestCase):
         self.config["guest_mode"] = False
         private_json(self.manager.agenda_path, {"children": ["Nora"]})
         self.assertNotIn("activities", self.manager.status()["custody_outlook"])
+
+    def test_activity_overflow_cannot_mark_today_complete_and_advance_early(self):
+        from flightwall.outlook import activity_agenda
+
+        private_json(self.manager.agenda_path, {"children": ["Rory"]})
+        first = NOW.replace(hour=11)
+        early = [event("Rory Dance", (first + timedelta(minutes=index)).isoformat(),
+                       (first + timedelta(minutes=index + 1)).isoformat()) for index in range(48)]
+        late = event("Rory Dance", "2026-10-22T22:00:00Z", "2026-10-22T23:00:00Z")
+        tomorrow = event("Rory Dance", "2026-10-23T18:00:00Z", "2026-10-23T19:00:00Z")
+
+        def agenda_api(client, path, parameters):
+            result = self.api(client, path, parameters)
+            if "family" in path:
+                result["items"].extend([*early, late, tomorrow])
+            return result
+
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=agenda_api):
+            outlook = self.manager.sync()["custody_outlook"]
+        self.assertEqual(len(outlook["activities"]), 49)  # 48 today plus one tomorrow.
+        self.assertEqual(outlook["activity_dates"], ["2026-10-23"])
+        agenda = activity_agenda(outlook, self.config, NOW)
+        self.assertEqual(agenda["date"].isoformat(), "2026-10-22")
+        self.assertFalse(agenda["tomorrow"])
 
     def test_family_agenda_resolves_private_initials_and_configured_activity_conflicts(self):
         preferences = {
@@ -611,6 +645,43 @@ class HouseholdManagerTests(unittest.TestCase):
         self.config["brief_leave_times_enabled"] = True
         self.config["secondary_calendar_id"] = "different-secondary"
         self.assertNotIn("leave_at", self.manager.status()["flight_snapshot"]["flights"][1])
+
+    def test_resolved_exact_visit_hides_an_older_cached_unmatched_warning(self):
+        self.config["brief_leave_times_enabled"] = True
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=self.brief_api):
+            self.manager.sync()
+        cached = json.loads(self.manager.path.read_text())
+        identifier = self.manager.status()["flight_snapshot"]["flights"][1]["id"]
+        cached["flight_roles"]["secondary"]["snapshot"]["brief_leave_warnings"] = [
+            {"flight_id": identifier, "reason": "visit_not_matched"}]
+        private_json(self.manager.path, cached)
+        result = self.manager.status(dt("2026-10-23T12:00:00Z"))["flight_snapshot"]
+        self.assertTrue(result["flights"][1]["leave_conflict"])
+        self.assertEqual(result["brief_leave_warnings"], [])
+
+    def test_unmatched_leave_note_clocks_are_discarded_before_cache_write(self):
+        self.config["brief_leave_times_enabled"] = True
+        self.config["brief_leave_policy"] = "report_safe"
+        def missing_arrival(client, path, parameters):
+            result = self.brief_api(client, path, parameters)
+            if "flight-main" in path:
+                result["items"] = [item for item in result["items"] if not item.get("summary", "").startswith("DL18:")]
+            return result
+        now = dt("2026-10-23T12:00:00Z")
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=missing_arrival), \
+                patch("flightwall.household_calendar._now", return_value=now):
+            result = self.manager.sync()
+        snapshot = result["flight_snapshot"]
+        flight = snapshot["flights"][0]
+        self.assertNotIn("leave_at", flight)
+        self.assertEqual(snapshot["brief_leave_warnings"], [{"flight_id": flight["id"], "reason": "visit_not_matched"}])
+        cached = json.loads(self.manager.path.read_text())["flight_roles"]["secondary"]["snapshot"]
+        self.assertEqual(cached["brief_leaves"], [])
+        self.assertEqual(cached["brief_leave_warnings"], snapshot["brief_leave_warnings"])
+        self.assertNotIn("recommended_at", self.manager.path.read_text())
+        self.assertNotIn("report_safe_at", self.manager.path.read_text())
+        self.config["brief_leave_times_enabled"] = False
+        self.assertEqual(self.manager.status(now)["flight_snapshot"]["brief_leave_warnings"], [])
 
     def test_invalid_leave_cache_field_does_not_discard_the_flight_schedule(self):
         self.config["brief_leave_times_enabled"] = True

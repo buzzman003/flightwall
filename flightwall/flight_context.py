@@ -6,6 +6,7 @@ from .flight_alerts import operating_ident, provider_timeline, stamp, within_tra
 from .flight_environment import FETCH_MAX_AGE, SOURCE_MAX_AGE
 from .outlook import local_visits
 from .trip_weather import CACHE_MAX_AGE, METAR_MAX_AGE
+from .vps_leave_plan import owner_leave_plan
 
 
 def _timestamp(value):
@@ -150,9 +151,19 @@ def build_flight_context(status, config, now):
             if comparison:
                 provider[key] = comparison
 
-    return {"flight_number": number, "origin": origin, "destination": destination, "phase": phase,
+    visit = _vps_visit(snapshot, config, flight, start, end, now)
+    planned_flight = flight
+    if flight.get("destination") == "VPS" and visit:
+        following = [row for row in flights if isinstance(row, dict) and row.get("origin") == "VPS"
+                     and _timestamp(row.get("start")) == _timestamp(visit.get("scheduled_departure_at"))]
+        planned_flight = following[0] if len(following) == 1 else None
+    plan = owner_leave_plan(planned_flight, config, now)
+    result = {"flight_number": number, "origin": origin, "destination": destination, "phase": phase,
             "schedule": schedule, "provider": provider,
             "airport_advisories": _airport_advisories(status, origin, destination, phase, now, end)
             if config.get("airport_alerts_enabled") is True else [],
             "weather": _airport_weather(status, origin, destination, now) if config.get("trip_weather_enabled") is True else [],
-            "vps_visit": _vps_visit(snapshot, config, flight, start, end, now)}
+            "vps_visit": visit}
+    if plan:
+        result["owner_leave_plan"] = plan
+    return result

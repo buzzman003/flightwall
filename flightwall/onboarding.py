@@ -28,6 +28,10 @@ WIZARD_SETTINGS = frozenset({
     "kids_filter_enabled", "kids_stale_minutes", "presence_enabled", "presence_ttl_minutes",
     "home_radius_m", "home_latitude", "home_longitude", "chris_phone_type", "lisa_phone_type",
     "messages_enabled", "chris_gmail_enabled", "lisa_gmail_enabled", "chris_lawyer_senders",
+    "delta_travel_enabled", "delta_travel_owner_names", "delta_travel_lisa_names",
+    "vps_leave_plan_enabled", "vps_leave_drive_minutes", "vps_leave_parking_minutes",
+    "vps_leave_security_minutes", "vps_leave_gate_minutes",
+    "vps_leave_target_early_minutes", "vps_leave_target_late_minutes",
     "chris_lawyer_domains", "lisa_mail_senders", "lisa_mail_domains", "chris_notifications_enabled",
     "lisa_notifications_enabled", "chris_notification_apps", "lisa_notification_apps",
     "lisa_private_enabled", "health_enabled", "health_query", "inspiration_enabled",
@@ -261,6 +265,11 @@ class OnboardingRouter:
         if not isinstance(patch, dict) or not patch or set(patch) - WIZARD_SETTINGS:
             raise SetupError("Choose supported setup settings to save.")
         patch = dict(patch)
+        if patch.get("delta_travel_enabled") is True or {"delta_travel_owner_names", "delta_travel_lisa_names"} & set(patch):
+            self._consent(body, "chris")
+            if patch.get("delta_travel_enabled") is True and not self._saved_authorization("chris", "gmail"):
+                raise SetupError("Connect Chris's read-only Gmail before enabling Delta booking imports.")
+            self._record_consent("chris", "delta-travel")
         if patch.get("dinner_options_enabled") is True or "dinner_options_preferences" in patch:
             self._consent(body, "chris")
             self._record_consent("chris", "dinner-options")
@@ -346,7 +355,17 @@ class OnboardingRouter:
             staging_path = client_path.with_name(client_path.stem.replace("-client", "-web-client") + ".json")
             client = json.loads(staging_path.read_text())
         except (OSError, ValueError):
-            raise SetupError("Upload the Google Web application client JSON for this account first.") from None
+            if service != "gmail":
+                raise SetupError("Upload the Google Web application client JSON for this account first.") from None
+            try:
+                calendar_path, _ = self._account(person, "calendar")
+                staging_path = calendar_path.with_name("google-web-client.json")
+                client = json.loads(staging_path.read_text())
+                if (not isinstance(client, dict) or set(client) != {"client_id", "client_secret"}
+                        or not all(isinstance(value, str) and value for value in client.values())):
+                    raise ValueError()
+            except (OSError, ValueError):
+                raise SetupError("Upload the Google Web application client JSON for this account first.") from None
         state, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(64)
         redirect = public + "/setup/oauth/callback"
         with self.lock:

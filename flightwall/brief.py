@@ -26,8 +26,12 @@ _WINDOW_KEYS = ("window_start_at", "window_end_at")
 _MATCHED_KEYS = ("leave_at", "leave_window_start", "leave_window_end", "leave_boundary_at", "leave_conflict")
 _TITLE = re.compile(
     r"^(?:🏠\s*)?BUZZ FLIGHT BRIEF\s*[—–-]\s*VPS HOME OVERNIGHT\s*"
-    r"\(([A-Z]{3})\s+(\d{1,2})\s*[—–-]\s*(?:([A-Z]{3})\s+)?(\d{1,2})\)$"
+    r"\(([A-Z]{3})\s+(\d{1,2})\s*[—–-]\s*(?:([A-Z]{3})\s+)?(\d{1,2})"
+    r"(?:,\s*CHANGED ROTATION)?\)$"
 )
+_LABELED_CLOCK = r"((?:[01]\d|2[0-3]):[0-5]\d)\s+(CST|CDT)\b"
+_RECOMMENDED_24 = re.compile(r"\bRECOMMENDED LEAVE HOME\s*=\s*" + _LABELED_CLOCK, re.IGNORECASE)
+_REPORT_SAFE_24 = re.compile(r"\bLEAVE HOME TARGET\s*=\s*" + _LABELED_CLOCK, re.IGNORECASE)
 
 
 class _NoteText(HTMLParser):
@@ -151,6 +155,16 @@ def _clock_before_report(value, arrival, report):
     return next(iter(candidates)) if len(candidates) == 1 else None
 
 
+def _labeled_clock_before_report(clock, abbreviation, arrival, report):
+    """Resolve a labeled station clock without accepting a wrong DST label."""
+    hour, minute = map(int, clock.split(":"))
+    value = f"{hour % 12 or 12}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
+    instant = _clock_before_report(value, arrival, report)
+    if instant and instant.astimezone(_ZONE).tzname() == abbreviation.upper():
+        return instant
+    return None
+
+
 def _latest(events):
     unique, anonymous = {}, []
     def updated(event):
@@ -204,6 +218,27 @@ def parse_brief_leave_notes(events, timezone_name):
                 recommended.extend(re.findall(r"\bRECOMMENDED\s+" + _CLOCK + r"\b", block, re.IGNORECASE))
         compact = " ".join(note.split())
         windows = list(_WINDOW.finditer(compact))
+        labeled_recommended = set(_RECOMMENDED_24.findall(compact))
+        labeled_report_safe = set(_REPORT_SAFE_24.findall(compact))
+        if labeled_recommended or labeled_report_safe:
+            # This verified revision names formula and report-protective
+            # targets separately. They are not endpoints of one leave window.
+            if (not re.search(r",\s*CHANGED ROTATION\)$", title.strip().upper())
+                    or recommended or windows or len(labeled_recommended) != 1 or len(labeled_report_safe) != 1
+                    or re.search(r"\bTo meet scheduled report on time,\s*leave by\s+" + _CLOCK,
+                                 compact, re.IGNORECASE)):
+                continue
+            row = {"airport": "VPS", "arrival": arrival.isoformat(), "report": report.isoformat()}
+            for key, values in (("recommended_at", labeled_recommended), ("report_safe_at", labeled_report_safe)):
+                clock, abbreviation = next(iter(values))
+                instant = _labeled_clock_before_report(clock, abbreviation, arrival, report)
+                if instant is None:
+                    break
+                row[key] = instant.isoformat()
+            else:
+                if row not in rows:
+                    rows.append(row)
+            continue
         if windows:
             if len(windows) != 1 or recommended:
                 continue
@@ -292,6 +327,64 @@ def clean_brief_leaves(value):
         except (ValueError, TypeError, OverflowError):
             continue
     return rows
+
+
+def unmatched_brief_leave_warnings(flights, notes, now):
+    """Explain an unmatched visit without granting its clocks to a flight.
+
+    An exact, unique VPS outbound report limits which schedule page gets the
+    warning. It is deliberately insufficient to attach any leave timestamp.
+    """
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        return []
+    warnings = {}
+    for note in clean_brief_leaves(notes):
+        arrival, report = _stamp(note["arrival"]), _stamp(note["report"])
+        if now < arrival:
+            continue
+        candidates = []
+        for flight in flights:
+            if not isinstance(flight, dict) or flight.get("origin") != "VPS" or flight.get("deadhead"):
+                continue
+            try:
+                departure = _stamp(flight.get("start"))
+                if (_stamp(flight.get("report")) == report and now < departure
+                        and report <= departure <= report + timedelta(days=1)):
+                    candidates.append(flight)
+            except (ValueError, TypeError, OverflowError):
+                continue
+        if len(candidates) != 1 or any(key in candidates[0] for key in _MATCHED_KEYS):
+            continue
+        flight = candidates[0]
+        identifier = flight.get("id")
+        if not isinstance(identifier, str) or not identifier:
+            continue
+        warnings[identifier] = {"flight_id": identifier, "reason": "visit_not_matched"}
+    return list(warnings.values())
+
+
+def clean_brief_leave_warnings(value):
+    """Unmatched notes retain only an identifier/reason, never source clocks."""
+    if not isinstance(value, list):
+        return []
+    found = {}
+    for row in value[:100]:
+        if (isinstance(row, dict) and set(row) == {"flight_id", "reason"}
+                and isinstance(row.get("flight_id"), str) and 0 < len(row["flight_id"]) <= 512
+                and row.get("reason") == "visit_not_matched"):
+            found[row["flight_id"]] = dict(row)
+    return list(found.values())
+
+
+def strictly_matched_brief_leaves(flights, notes):
+    """Keep cache timestamps only after the unchanged exact visit matcher."""
+    retained = []
+    for note in clean_brief_leaves(notes):
+        copied = [dict(flight) for flight in flights if isinstance(flight, dict)]
+        attach_brief_leaves(copied, [note])
+        if any(any(key in flight for key in _MATCHED_KEYS) for flight in copied):
+            retained.append(note)
+    return retained
 
 
 def attach_brief_leaves(flights, notes, policy="conflict"):
