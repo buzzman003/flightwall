@@ -1,3 +1,18 @@
+0.4.20 OWNTRACKS ACCURACY AND ROSTER TITLE COMPATIBILITY
+
+The real phone received HTTP 400 because a queued location report had valid
+580164-metre uncertainty, above the receiver's former limit. The fix was more
+than a day old. The updated receiver keeps uncertainty conservative and drops
+valid expired reports without renewing presence or writing location history.
+Verify the actual phone queue drains and a new current report is accepted.
+Known Home still requires a sufficiently accurate fresh phone observation.
+
+Read-only verification of selected calendar entries found supported flight
+rows under the verified NNNN-N rotation title. The corrected parser recovers
+five upcoming legs. One past event's inconsistent report/departure dates stay
+rejected. Public tests use fictional roster notes; private descriptions are
+never retained. Signed native acceptance includes the real 0.4.19 upgrade.
+
 0.4.19 ALEXA TIMER RESPONSES AND REJECTED REQUESTS
 
 Real loopback tests cover the deployed bridge's handling of the sixth timer,

@@ -1,5 +1,12 @@
 # Flight Wall implementation contract
 
+0.4.20: Treat finite nonnegative OwnTracks accuracy as uncertainty, including
+coarse fixes larger than 100 km. Drop valid expired OwnTracks observations
+before stored-clock/request conflicts; preserve state, freshness and request
+history. Fresh conflicts and invalid/future observations remain errors.
+Accept only the verified NNNN-N addition to MiCrew rotation titles and retain
+all existing note, station-time and calendar-date validation.
+
 0.4.19: Preserve sanitized TimerError messages on the voice HTTP routes,
 including timer capacity and disabled TV timers. Keep unrelated validation
 failures generic. Explicitly close rejected POST requests whose bodies may
@@ -35,8 +42,11 @@ readiness before autostart and preserve the original pinned recovery helper.
 valid expired/older observations, supported irrelevant telemetry and well-formed
 non-Home region transitions. Acknowledge with the OwnTracks empty array without
 writing observations, request history or coordinates or renewing freshness.
-Retain strict authentication, malformed/future/conflicting-timestamp checks and
-disabled-presence rejection. Non-OwnTracks presence calls keep strict errors.
+Retain strict authentication, malformed/future checks, fresh conflicting-timestamp
+checks and disabled-presence rejection. Valid expired OwnTracks reports drain
+before conflict or request-history checks. Accept finite nonnegative location
+accuracy without clamping it; overlapping Home uncertainty remains Unknown.
+Non-OwnTracks presence calls keep strict errors.
 Do not silently accept encrypted locations that this receiver cannot decode.
 
 0.4.14: Keep the crisp board presentation. Meal images join the same bounded

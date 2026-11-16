@@ -54,6 +54,27 @@ def test_requires_single_day_rotation_and_selected_carrier_and_respects_cancella
     assert parse_mycrew_events([event, event | {"status": "cancelled"}], "DL") == []
 
 
+def test_numeric_rotation_with_single_digit_suffix_preserves_flights_dates_and_privacy():
+    event = duty() | {"summary": "4321-2"}
+    flights = parse_mycrew_events([event], "DL")
+    assert flights == parse_mycrew_events([duty()], "DL")
+    assert parse_mycrew_trip_days([event]) == [
+        {"start_date": "2026-02-06", "end_date": "2026-02-07"}]
+    assert "4321-2" not in json.dumps(flights)
+    assert "private" not in json.dumps(flights).casefold()
+    malformed = event | {"description": event["description"].replace("Report: 0800L", "Report: 0800Z")}
+    assert parse_mycrew_events([malformed], "DL") == []
+
+
+@pytest.mark.parametrize("title", [
+    "432-2", "43210-2", "4321-23", "X321-2", "4321 - 2", "4321-", "4321-2 trip", "trip 4321-2",
+])
+def test_numeric_rotation_suffix_does_not_accept_other_unverified_title_shapes(title):
+    event = duty() | {"summary": title}
+    assert parse_mycrew_events([event], "DL") == []
+    assert parse_mycrew_trip_days([event]) == []
+
+
 def test_trip_dates_preserve_source_spans_without_joining_separate_duties_or_retaining_notes():
     first = duty()
     later = duty() | {"id": "another-private-id", "start": {"date": "2026-02-10"}, "end": {"date": "2026-02-11"}}

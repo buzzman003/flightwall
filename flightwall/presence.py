@@ -70,8 +70,14 @@ def _iso(value):
     return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def _number(value, minimum, maximum):
-    return type(value) in (int, float) and math.isfinite(value) and minimum <= value <= maximum
+def _number(value, minimum, maximum=None):
+    if type(value) not in (int, float):
+        return False
+    try:
+        finite = math.isfinite(value)
+    except OverflowError:
+        return False
+    return finite and minimum <= value and (maximum is None or value <= maximum)
 
 
 def _object_request_id(payload):
@@ -255,7 +261,7 @@ class PresenceStore:
                     raise PresenceError("OwnTracks location needs valid latitude and longitude.")
                 if not _number(home_lat, -90, 90) or not _number(home_lon, -180, 180):
                     raise PresenceError("Configure the private Home geofence on the display computer first.")
-                if not _number(radius, 30, 5000) or not _number(accuracy, 0, 100000):
+                if not _number(radius, 30, 5000) or not _number(accuracy, 0):
                     raise PresenceError("The Home radius or reported location accuracy is invalid.")
                 first, second = math.radians(home_lat), math.radians(latitude)
                 dlat, dlon = second - first, math.radians(longitude - home_lon)
@@ -294,7 +300,9 @@ class PresenceStore:
         if owntracks and record["state"] is None:
             return {"updated": False, "duplicate": False, "ignored": True, "person": person}
         expired = observed <= now - ttl
-        if expired and not owntracks:
+        if expired:
+            if owntracks:
+                return {"updated": False, "duplicate": False, "ignored": True, "person": person}
             raise PresenceError("The observation has expired. Send a fresh phone status.")
         fingerprint = hashlib.sha256(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         request_hash = hashlib.sha256(request_id.encode()).hexdigest() if request_id is not None else None
@@ -319,12 +327,8 @@ class PresenceStore:
                     if owntracks:
                         return {"updated": False, "duplicate": False, "ignored": True, "person": person}
                     raise PresenceError("A newer or conflicting observation is already saved; send a fresh status.")
-                if expired:
-                    return {"updated": False, "duplicate": False, "ignored": True, "person": person}
                 if record == previous:
                     return {"updated": False, "duplicate": True, "person": person}
-            elif expired:
-                return {"updated": False, "duplicate": False, "ignored": True, "person": person}
             stored["people"][person] = record
             if request_hash is not None:
                 ledger[request_hash] = {"observed_at": record["observed_at"], "fingerprint": fingerprint}

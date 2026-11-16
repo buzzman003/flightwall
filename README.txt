@@ -1,3 +1,14 @@
+FLIGHT WALL 0.4.20
+
+OwnTracks accepts large finite nonnegative GPS uncertainty and drains expired
+reports before checking conflicts against saved observations. This allows an
+old imprecise fix to leave the phone queue. Home still requires a fresh report
+whose uncertainty fits inside the saved geofence.
+
+The verified four-digit rotation identifier with a one-digit hyphen suffix is
+accepted for MiCrew flight notes and trip dates. Notes still require supported
+flight rows, report clocks and station-local time validation.
+
 FLIGHT WALL 0.4.19
 
 Alexa can report the five-running-timer limit and disabled TV timers with

@@ -137,7 +137,7 @@ class PresenceStoreTests(unittest.TestCase):
         self.assertEqual(self.store.path.read_bytes(), before)
         self.assertEqual(self.store.snapshot(later)["chris"]["state"], "unknown")
 
-    def test_owntracks_expired_and_older_are_discarded_but_same_clock_conflict_is_rejected(self):
+    def test_owntracks_expired_and_older_are_discarded_but_fresh_same_clock_conflict_is_rejected(self):
         report = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "acc": 10, "tst": self.now.timestamp()}
         self.store.update("chris", report, self.now)
         before = self.store.path.read_bytes()
@@ -146,10 +146,32 @@ class PresenceStoreTests(unittest.TestCase):
                              (report, self.now + timedelta(minutes=90))):
             self.assertTrue(self.store.update("chris", payload, now)["ignored"])
             self.assertEqual(self.store.path.read_bytes(), before)
-        for now in (self.now, self.now + timedelta(minutes=90)):
-            with self.assertRaises(PresenceError):
-                self.store.update("chris", dict(report, lat=34), now)
+        with self.assertRaises(PresenceError):
+            self.store.update("chris", dict(report, lat=34), self.now)
+        self.assertTrue(self.store.update("chris", dict(report, lat=34), self.now + timedelta(minutes=90))["ignored"])
         self.assertEqual(self.store.path.read_bytes(), before)
+
+    def test_expired_owntracks_conflicts_drain_without_changing_state_freshness_or_retry_ledger(self):
+        report = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "acc": 10,
+                  "tst": self.now.timestamp(), "request_id": "synthetic-queued-fix"}
+        self.store.update("chris", report, self.now)
+        before = self.store.path.read_bytes()
+        modified = self.store.path.stat().st_mtime_ns
+        later = self.now + timedelta(minutes=90)
+        for payload in (dict(report, lat=34), dict(report, acc=580164),
+                        {"_type": "transition", "desc": "Home", "event": "leave",
+                         "tst": self.now.timestamp(), "request_id": "synthetic-queued-fix"}):
+            with self.subTest(kind=payload["_type"], accuracy=payload.get("acc")):
+                self.assertTrue(self.store.update("chris", payload, later)["ignored"])
+                self.assertEqual(self.store.path.read_bytes(), before)
+                self.assertEqual(self.store.path.stat().st_mtime_ns, modified)
+        state = self.store.snapshot(later)["chris"]
+        self.assertEqual(state["state"], "unknown")
+        self.assertTrue(state["stale"])
+        self.assertEqual(state["last_seen"], "2026-11-01T14:00:00.000000Z")
+        fresh = dict(report, tst=later.timestamp(), request_id="synthetic-fresh-fix")
+        self.assertTrue(self.store.update("chris", fresh, later)["updated"])
+        self.assertEqual(self.store.snapshot(later)["chris"]["state"], "home")
 
     def test_expired_owntracks_does_not_create_a_saved_observation(self):
         payload = {"_type": "location", "lat": 33.6407, "lon": -84.4277, "tst": self.now.timestamp() - 5400}
@@ -174,6 +196,27 @@ class PresenceStoreTests(unittest.TestCase):
         if os.name == "posix":
             self.assertEqual(os.stat(self.store.path).st_mode & 0o777, 0o600)
         self.assertEqual(set(self.store.snapshot(self.now)["chris"]), {"state", "last_seen", "stale"})
+
+    def test_coarse_owntracks_accuracy_keeps_uncertainty_instead_of_blocking_the_queue(self):
+        self.config["home_radius_m"] = 400
+        report = {"_type": "location", "lat": 33.6407, "lon": -84.4277,
+                  "acc": 580164, "tst": self.now.timestamp()}
+        self.assertTrue(self.store.update("chris", report, self.now)["updated"])
+        self.assertEqual(self.store.snapshot(self.now)["chris"]["state"], "unknown")
+        self.store.update("chris", dict(report, lat=0, lon=0, tst=self.now.timestamp() + 1), self.now)
+        self.assertEqual(self.store.snapshot(self.now)["chris"]["state"], "away")
+        self.store.update("chris", dict(report, acc=1e308, tst=self.now.timestamp() + 2), self.now)
+        self.assertEqual(self.store.snapshot(self.now)["chris"]["state"], "unknown")
+        for private in ('"lat"', '"lon"', '"acc"', "580164"):
+            self.assertNotIn(private, self.store.path.read_text())
+
+    def test_invalid_accuracy_remains_rejected_even_for_expired_owntracks(self):
+        report = {"_type": "location", "lat": 33.6407, "lon": -84.4277,
+                  "tst": self.now.timestamp() - 5400}
+        for accuracy in (-1, None, True, "580164", float("nan"), float("inf"), 10 ** 1000):
+            with self.subTest(accuracy_type=type(accuracy).__name__), self.assertRaises(PresenceError):
+                self.store.update("chris", dict(report, acc=accuracy), self.now)
+        self.assertFalse(self.store.path.exists())
 
     def test_invalid_geofence_and_corrupt_store_fail_closed(self):
         payload = {"_type": "location", "lat": 33.6, "lon": -84.4, "tst": self.now.timestamp()}
@@ -307,7 +350,8 @@ class PresenceHTTPTests(unittest.TestCase):
         modified = self.store.path.stat().st_mtime_ns
         waypoint = {"_type": "waypoint", "desc": "Private activity", "lat": 33.64, "lon": -84.42, "tst": now.timestamp()}
         backlog = [{"_type": "status", "android": {"loc": 1, "bo": 0}},
-                   dict(current, tst=now.timestamp() - 5400), waypoint,
+                   dict(current, tst=now.timestamp() - 5400),
+                   dict(current, acc=580164, tst=now.timestamp() - 93600), waypoint,
                    {"_type": "waypoints", "waypoints": [waypoint]},
                    {"_type": "transition", "event": "leave", "desc": "Private activity", "tst": now.timestamp()},
                    {"_type": "lwt", "tst": now.timestamp() - 20000},
@@ -368,8 +412,9 @@ class PresenceHTTPTests(unittest.TestCase):
             clock[0] = at
             self.assertEqual(self.request("/api/v1/presence/chris", self.chris, transition), (200, []))
             self.assertEqual(self.store.path.read_bytes(), before)
-            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(current, lat=34))[0], 400)
-            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(transition, event="leave"))[0], 400)
+            expected = 400 if at == now else 200
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(current, lat=34))[0], expected)
+            self.assertEqual(self.request("/api/v1/presence/chris", self.chris, dict(transition, event="leave"))[0], expected)
             self.assertEqual(self.store.path.read_bytes(), before)
         self.assertEqual(self.store.snapshot(clock[0])["chris"]["state"], "unknown")
         clock[0] = now
