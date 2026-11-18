@@ -1,3 +1,10 @@
+0.4.28 LOCAL NEARBY ROUTE ALLOWANCE
+
+Permit a private local nearby route limit from $0 to $2 per month. Keep the
+$1 default, existing reservation history, combined monthly and daily limits,
+20% nearby share, focus lease, quiet hours and both-Away policy. A fractional
+allowance must allow a single $0.005 lookup without resetting the ledger.
+
 0.4.27 NEARBY FLIGHTAWARE REQUEST FORMAT
 
 Serialize paid nearby request bounds in whole-second UTC with trailing Z and

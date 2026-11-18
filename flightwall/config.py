@@ -15,6 +15,7 @@ from .card_preferences import CARD_DEFAULTS
 DEFAULT_DATA_DIR = "/userdata/system/configs/flightwall"
 DEFAULT_INSTALL_DIR = "/userdata/roms/ports/.data/flightwall"
 FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD = 15
+FLIGHTAWARE_MAX_NEARBY_MONTHLY_LIMIT_USD = 2
 DEFAULTS = {
     **CARD_DEFAULTS,
     "calendar_name": "FC View", "calendar_id": "", "airline": "", "demo": True,
@@ -199,7 +200,7 @@ def validate(key, value):
             "takeover_hours": (1, 96), "nearby_radius_nm": (1, 250),
             "flightaware_poll_seconds": (60, 3600), "flightaware_daily_limit": (1, 2000),
             "flightaware_monthly_limit_usd": (0, FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD),
-            "nearby_enrichment_monthly_limit_usd": (0, 1),
+            "nearby_enrichment_monthly_limit_usd": (0, FLIGHTAWARE_MAX_NEARBY_MONTHLY_LIMIT_USD),
             "update_interval_minutes": (5, 1440), "control_port": (1024, 65535),
             "appointment_duration_minutes": (1, 1440),
             "kids_stale_minutes": (5, 1440), "presence_ttl_minutes": (5, 1440), "home_radius_m": (30, 5000),

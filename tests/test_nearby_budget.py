@@ -58,6 +58,29 @@ def test_nearby_month_subcap_rejects_next_lookup_but_own_positions_remain_availa
     assert read(tmp_path)["nearby_reserved_milliusd"] == 1000
 
 
+@pytest.mark.parametrize(("limit", "previous_nearby"), [(1.005, 1000), (2, 1995)])
+def test_explicit_nearby_increase_allows_exactly_one_more_lookup(tmp_path, limit, previous_nearby):
+    previous = ledger(nearby_reserved_milliusd=previous_nearby)
+    save(tmp_path, previous)
+    settings = config(flightaware_monthly_limit_usd=10, nearby_enrichment_monthly_limit_usd=limit)
+    with patch("flightwall.feeds.utcnow", return_value=NOW):
+        FlightFeeds(tmp_path)._allow_paid_request(settings, LOOKUP, purpose="nearby")
+        with pytest.raises(PaidLimitError, match="Nearby metadata allowance") as error:
+            FlightFeeds(tmp_path)._allow_paid_request(settings, LOOKUP, purpose="nearby")
+        assert error.value.reason == "nearby_limit"
+    assert read(tmp_path) == previous | {"count": 11, "reserved_milliusd": 3505,
+                                        "nearby_reserved_milliusd": previous_nearby + 5, "nearby_day_count": 1}
+
+
+def test_nearby_budget_ceiling_applies_even_if_setting_validation_is_bypassed(tmp_path):
+    previous = ledger()
+    save(tmp_path, previous)
+    settings = config(flightaware_monthly_limit_usd=10, nearby_enrichment_monthly_limit_usd=2.001)
+    with patch("flightwall.feeds.utcnow", return_value=NOW), pytest.raises(PaidLimitError) as error:
+        FlightFeeds(tmp_path)._allow_paid_request(settings, LOOKUP, purpose="nearby")
+    assert error.value.reason == "usage_unknown" and read(tmp_path) == previous
+
+
 def test_nearby_stops_at_eighty_percent_total_and_does_not_use_final_operating_reserve(tmp_path):
     save(tmp_path, ledger(reserved_milliusd=4000))
     feed = FlightFeeds(tmp_path)

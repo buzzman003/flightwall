@@ -1,3 +1,10 @@
+0.4.28 NEARBY ROUTE ALLOWANCE
+
+Verify the local-only $2 ceiling, unchanged $1 default and existing 20% share
+of the overall budget. Synthetic usage at $1 should allow one $0.005 lookup
+under a $1.005 limit, with subsequent lookups blocked. Verify the release and
+rollback from published 0.4.26, preserving prior usage and private settings.
+
 0.4.27 NEARBY AEROAPI REQUEST FORMAT AND FAILURE DIAGNOSTICS
 
 The free FlightAware usage endpoint rejected fractional seconds with HTTP 400

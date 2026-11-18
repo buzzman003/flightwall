@@ -15,7 +15,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .config import DEFAULTS, FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD, private_json
+from .config import DEFAULTS, FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD, FLIGHTAWARE_MAX_NEARBY_MONTHLY_LIMIT_USD, private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
 from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
                             fresh_nearby_route, nearby_route_result, nearby_lookup_identity,
@@ -343,9 +343,11 @@ class FlightFeeds:
                     or isinstance(configured_limit, bool)):
                 raise ValueError("Invalid monthly app budget")
             limit_milliusd = int(limit * 1000)
-            nearby_limit = Decimal(str(config.get("nearby_enrichment_monthly_limit_usd", 1)))
-            if (not nearby_limit.is_finite() or not 0 <= nearby_limit <= 1
-                    or isinstance(config.get("nearby_enrichment_monthly_limit_usd"), bool)):
+            configured_nearby_limit = config.get("nearby_enrichment_monthly_limit_usd",
+                                                 DEFAULTS["nearby_enrichment_monthly_limit_usd"])
+            nearby_limit = Decimal(str(configured_nearby_limit))
+            if (not nearby_limit.is_finite() or not 0 <= nearby_limit <= FLIGHTAWARE_MAX_NEARBY_MONTHLY_LIMIT_USD
+                    or isinstance(configured_nearby_limit, bool)):
                 raise ValueError("Invalid nearby metadata budget")
             nearby_cap = min(int(nearby_limit * 1000), limit_milliusd // 5)
             daily = config["flightaware_daily_limit"]

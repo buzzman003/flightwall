@@ -1,3 +1,9 @@
+FLIGHT WALL 0.4.28
+
+The local FlightAware nearby-route allowance supports up to $2 per month.
+It still defaults to $1 and cannot exceed 20% of the total monthly app limit.
+Existing reservations count against the selected allowance.
+
 FLIGHT WALL 0.4.27
 
 Nearby FlightAware route lookups use whole-second UTC timestamps. Setup's
