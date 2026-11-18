@@ -1,3 +1,13 @@
+0.4.29 BATOCERA PREVIEW AUDIO DURING BOOT-LAUNCHED PORTS
+
+The installed EmulationStation was observed with a preview video and an
+audio stream open behind Flight Wall after a direct launch. Reopening the
+same Flight Wall version through the indexed Ports entry closed both while
+the menu process remained running. Verify startup guards, one loopback launch
+request, native activation and rollback from signed 0.4.28, and the updated
+boot service's normal menu lifecycle. A physical cold boot is separate from
+testing the service's launch path while the machine is already running.
+
 0.4.28 NEARBY ROUTE ALLOWANCE
 
 Verify the local-only $2 ceiling, unchanged $1 default and existing 20% share

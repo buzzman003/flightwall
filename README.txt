@@ -1,3 +1,10 @@
+FLIGHT WALL 0.4.29
+
+The optional Batocera boot service asks EmulationStation to open Flight Wall
+through the indexed Ports entry. EmulationStation stops its menu previews and
+audio during the Port session and resumes normal menu behavior on exit.
+Existing installations need the reviewed boot service file installed separately.
+
 FLIGHT WALL 0.4.28
 
 The local FlightAware nearby-route allowance supports up to $2 per month.

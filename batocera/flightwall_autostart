@@ -46,7 +46,124 @@ run)
     fi
     mkdir -p "$DATA/logs"
     echo 'Flight Wall autostart found persistent storage and a managed menu window.'
-    exec "$PORT" >>"$DATA/logs/autostart.log" 2>&1
+    if ! python3 - "$STATE" "$PORT" "$DATA" >>"$DATA/logs/autostart.log" 2>&1 <<'PY'
+import http.client
+import json
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+
+STATE, PORT, DATA = map(Path, sys.argv[1:])
+INSTALL = PORT.parent / ".data" / "flightwall"
+MAX_INDEX_BYTES = 2 * 1024 * 1024
+
+
+def request(method, path, *, body=None, limit=1024):
+    # The built-in frontend listener is loopback-only by default. Do not use
+    # a proxy, follow redirects, or change the frontend's public web setting.
+    connection = http.client.HTTPConnection("127.0.0.1", 1234, timeout=2)
+    try:
+        headers = {"Content-Type": "text/plain"} if body is not None else {}
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        data = response.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError("Oversized EmulationStation response.")
+        return response.status, data
+    finally:
+        connection.close()
+
+
+def idle():
+    status, body = request("GET", "/isIdle")
+    state = json.loads(body)
+    if status == 200 and isinstance(state, list) and len(state) == 1 and state[0] is True:
+        return True
+    if status == 201 and isinstance(state, list) and len(state) == 1 and state[0] is False:
+        return False
+    raise ValueError("Invalid EmulationStation idle response.")
+
+
+def gui_open():
+    result = subprocess.run(["wmctrl", "-lp"], capture_output=True, check=True, timeout=2)
+    expected = [b"--install-dir", bytes(INSTALL), b"--data-dir", bytes(DATA), b"gui"]
+    for line in result.stdout.splitlines():
+        fields = line.split(None, 4)
+        if len(fields) != 5 or fields[4] != b"Flight Wall" or not fields[2].isdigit():
+            continue
+        proc = Path("/proc") / fields[2].decode("ascii")
+        try:
+            if (proc / "exe").resolve(strict=True) != (INSTALL / "current/FlightWall").resolve(strict=True):
+                continue
+            with (proc / "cmdline").open("rb") as handle:
+                if handle.read(8192).split(b"\0")[1:6] == expected:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def launch():
+    # The X11 window can appear just before the frontend starts accepting HTTP.
+    # Retry this read-only probe while the local listener comes up.
+    for attempt in range(5):
+        if (STATE / "stopped").exists():
+            return 0
+        try:
+            if not idle():
+                print("Flight Wall autostart skipped while EmulationStation was busy.")
+                return 0
+            break
+        except (OSError, http.client.HTTPException):
+            if attempt == 4:
+                raise
+            time.sleep(1)
+
+    status, body = request("GET", "/systems/ports/games", limit=MAX_INDEX_BYTES)
+    entries = json.loads(body)
+    if status != 200 or not isinstance(entries, list) or not any(
+        isinstance(entry, dict) and entry.get("path") == str(PORT) for entry in entries
+    ):
+        raise ValueError("Flight Wall is not indexed in the EmulationStation Ports menu.")
+    if (STATE / "stopped").exists() or gui_open() or not idle():
+        return 0
+    try:
+        (STATE / "launch-requested").touch(mode=0o600, exist_ok=False)
+    except FileExistsError:
+        return 0
+
+    # Launch through the menu so it hides fanfare/previews and tears down its
+    # audio while the port runs. A lost response might still have queued it.
+    try:
+        request("POST", "/launch", body=bytes(PORT))
+    except (OSError, ValueError, http.client.HTTPException):
+        print("Flight Wall launch response was unavailable. Checking the window.")
+
+    deadline = time.monotonic() + 25
+    while time.monotonic() < deadline:
+        if (STATE / "stopped").exists():
+            return 0
+        if gui_open():
+            print("Flight Wall autostart verified the game-menu launch.")
+            return 0
+        time.sleep(0.5)
+    print("Flight Wall autostart could not verify the launch window.")
+    return 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(launch())
+    except (OSError, ValueError, http.client.HTTPException, subprocess.SubprocessError):
+        print("Flight Wall autostart could not complete the local game-menu launch.")
+        sys.exit(1)
+PY
+    then
+        touch "$STATE/failed"
+        exit 1
+    fi
     ;;
 stop) [ ! -d "$STATE" ] || touch "$STATE/stopped" ;;
 status) [ -d "$STATE" ] && [ ! -e "$STATE/stopped" ] && [ ! -e "$STATE/failed" ] ;;

@@ -1,3 +1,12 @@
+0.4.29 BATOCERA BOOT LAUNCH AND MENU PREVIEWS
+
+Route optional boot launch through the indexed EmulationStation Ports entry
+on its existing loopback interface. Wait for persistent storage, an actual
+menu window and an idle frontend. Let the frontend manage preview playback
+and audio through its normal Port lifecycle. Do not enable public web access,
+change global audio preferences or submit another launch after an uncertain
+response. Existing stable service files require independent installation checks.
+
 0.4.28 LOCAL NEARBY ROUTE ALLOWANCE
 
 Permit a private local nearby route limit from $0 to $2 per month. Keep the
