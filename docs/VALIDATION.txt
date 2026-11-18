@@ -1,3 +1,20 @@
+0.4.23 EMPTY DELTA-MAIL SEARCH RESPONSE HOTFIX
+
+Regression coverage reproduces a successful empty Gmail list response whose
+partial-field projection omitted the result count. The corrected projection
+requests resultSizeEstimate, messages(id) and nextPageToken. A zero estimate
+with no messages array is a healthy sync for either separately authorized
+mailbox, without a message-metadata/body fetch or mailbox mutation.
+Invalid or empty HTTP responses still fail closed. Search filters, scopes,
+request bounds, existing travel records, settings, games and LEDs are unchanged.
+
+Release acceptance requires all Linux tests without skips, frozen graphics,
+fresh installation, original 0.3.0 and genuine published 0.4.22 executable
+upgrades, and failed-start rollback preserving the original recovery helper.
+The 0.4.22 installer is independently pinned by asset metadata and SHA-256.
+Post-update live mailbox health is a separate check; do not claim new travel
+or a real provider match from an empty search or synthetic regression.
+
 0.4.22 STARTUP, NEARBY CONTEXT, AND SEPARATE LISA TRAVEL
 
 Windows checks cover transient startup failures, bounded readiness, responsive

@@ -470,7 +470,9 @@ class DeltaTravel:
                 parameters = {"q": "from:" + SENDER + " newer_than:30d -in:spam -in:trash "
                               '{subject:"Non Revenue Listing" subject:reservation subject:itinerary '
                               'subject:cancellation subject:"schedule change" subject:"flight cancelled" subject:"flight canceled"}',
-                              "maxResults": 20, "fields": "messages(id),nextPageToken"}
+                              # Keep a JSON field even when no messages match;
+                              # otherwise Gmail can return an empty HTTP 204.
+                              "maxResults": 20, "fields": "messages(id),nextPageToken,resultSizeEstimate"}
                 for page in range(3):
                     response = self.client.api("/messages", parameters)
                     messages = response.get("messages", [])

@@ -1,0 +1,19 @@
+FLIGHT WALL 0.4.23
+
+Correct the bounded Delta Gmail messages-list projection so a successful query
+with zero matching messages remains a healthy empty sync for either separately
+authorized profile. The response count is requested alongside message IDs and
+the pagination token. No message metadata or body is fetched for an empty list.
+
+The supported sender/search filters, read-only permissions and separate mailbox
+consents are unchanged. Invalid or empty HTTP responses still fail closed.
+An empty query neither deletes reviewed travel nor fabricates future flights.
+
+Keep all existing games, logins, private settings, calendars, paid limits and
+the current crisp LED board, shopping ticker and timer presentation unchanged.
+The original pinned recovery helper remains in place.
+
+Release gates include zero-skip Linux tests, frozen OpenGL/software rendering,
+fresh installation, genuine original 0.3.0 and published 0.4.22 executable
+upgrades, and startup rollback. Live mailbox verification follows installation;
+this maintenance fix does not establish boarding or a live flight association.

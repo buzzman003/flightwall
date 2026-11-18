@@ -56,9 +56,9 @@ class NativeGateTests(unittest.TestCase):
     def test_current_baseline_is_independently_pinned(self):
         path = self.root / "not-published-current.tar.gz"
         path.write_bytes(b"synthetic different current installer")
-        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.21")
+        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.22")
         self.assertEqual(gate.CURRENT_BASELINE_SHA256,
-                         "f020f6420f113bf8013047e2671060e014b459f37ef36a7c1374fa043b68c300")
+                         "672eb5dbe44e82595582fc9604e686990ee05784e2f798627f74d702d7127faf")
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             gate.verify_current_baseline(path)
 
@@ -66,8 +66,9 @@ class NativeGateTests(unittest.TestCase):
         workflow = (MODULE.parents[1] / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn("releases/tags/v" + gate.CURRENT_BASELINE_VERSION, workflow)
         self.assertIn("sha256:" + gate.CURRENT_BASELINE_SHA256, workflow)
-        self.assertIn("assets[0].get('size') != 50889962", workflow)
-        self.assertIn("assets[0].get('id') != 753336703", workflow)
+        self.assertIn("assets[0].get('size') != 50931299", workflow)
+        self.assertIn("assets[0].get('id') != 761310119", workflow)
+        self.assertIn("release.get('target_commitish') != '7fa7646d57a243a3d310be88d762396210753c06'", workflow)
         reports = set(re.findall(r"native-validation-from-([0-9]+\.[0-9]+\.[0-9]+)\.json", workflow))
         self.assertEqual(reports, {gate.CURRENT_BASELINE_VERSION})
         self.assertNotIn("flightwall-batocera-0.4.6.tar.gz", workflow)
@@ -164,14 +165,14 @@ class NativeGateTests(unittest.TestCase):
     def test_current_report_requires_both_upgrade_and_rollback_with_original_recovery(self):
         release = self.root / "release"
         release.mkdir()
-        (release / "VERSION").write_text("0.4.22")
+        (release / "VERSION").write_text("0.4.23")
         (release / "FlightWall").write_bytes(b"synthetic frozen bundle")
         report = self.root / "report.json"
-        acceptance = {"from": "0.4.21", "to": "0.4.22", "real_executables": True,
+        acceptance = {"from": "0.4.22", "to": "0.4.23", "real_executables": True,
                       "next_launch_only": True, "pinned_recovery_version": "0.3.0",
                       "pinned_recovery_preserved": True, "background_service_restored": True,
                       "version_floor_preserved": True, "private_fixtures_preserved": 20}
-        value = {"passed": True, "version": "0.4.22", "baseline_sha256": gate.BASELINE_SHA256,
+        value = {"passed": True, "version": "0.4.23", "baseline_sha256": gate.BASELINE_SHA256,
                  "current_baseline_sha256": gate.CURRENT_BASELINE_SHA256,
                  "bundle_files": gate.inventory(release),
                  "upgrade": {**acceptance, "rollback": False},
@@ -193,6 +194,7 @@ class NativeGateTests(unittest.TestCase):
                      ("upgrade", "from", "0.4.11"),
                      ("upgrade", "from", "0.4.12"),
                      ("upgrade", "from", "0.4.13"),
+                     ("upgrade", "from", "0.4.21"),
                      ("upgrade", "to", "0.5.0"), ("rollback", "rollback", False),
                      ("upgrade", "pinned_recovery_version", "0.4.0"),
                      ("upgrade", "private_fixtures_preserved", 0),

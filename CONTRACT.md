@@ -1,3 +1,13 @@
+0.4.23 EMPTY DELTA-MAIL SEARCH RESPONSES
+
+The bounded Delta messages-list projection includes resultSizeEstimate alongside
+messages(id) and nextPageToken. A successful JSON response with zero results and
+no messages array is a healthy empty sync, not a failed mailbox connection.
+Do not relax generic invalid/empty HTTP-response validation, widen the search,
+fetch nonexistent message IDs or change either mailbox's separate consent.
+No-message results do not clear reviewed travel records or invent upcoming legs.
+Keep games, private settings, paid limits and the crisp LED display unchanged.
+
 0.4.22 STARTUP, NEARBY CONTEXT, AND LISA TRAVEL
 
 Retry transient local startup failures for a bounded interval while handling

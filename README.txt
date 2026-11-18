@@ -1,3 +1,10 @@
+FLIGHT WALL 0.4.23
+
+A supported Delta-mail search with no matching messages now counts as a healthy
+empty sync. The narrow Gmail search and separate read-only permissions are
+unchanged. Existing games, logins, settings and crisp LED presentation stay as
+they are; this update does not create a reservation or prove actual travel.
+
 FLIGHT WALL 0.4.22
 
 The TV launch waits briefly for a slow local service instead of treating a
