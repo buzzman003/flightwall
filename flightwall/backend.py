@@ -27,7 +27,7 @@ from .content import SourceContent
 from .household_policy import household_context, filter_personal_items, card_visible
 from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
-from .outlook import local_visits, planned_buzz_days, trip_preview
+from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .personal_travel import PersonalTravel, visible_travel
 from .delta_travel import DeltaTravel
@@ -116,7 +116,7 @@ class Runtime:
         self._brief_worker = None
         # One transient confirmed arrival, never a location/presence history.
         self._recent_vps_arrival = None
-        self._nearby_viewer_at = None
+        self._nearby_activity = ("other", None)
         self._mail_refresh = threading.Event()
         self._content_refresh = threading.Event()
 
@@ -129,15 +129,18 @@ class Runtime:
 
     def note_display_activity(self, view):
         """A short, in-memory admin GUI lease; never a remote setting or history."""
-        if type(view) is not str or view not in {"nearby", "other"}:
+        if type(view) is not str or view not in {"nearby", "nearby-paused", "other"}:
             raise ValueError("Unsupported display activity")
         with self.lock:
-            self._nearby_viewer_at = time.monotonic() if view == "nearby" else None
+            self._nearby_activity = (view, time.monotonic() if view != "other" else None)
+
+    def nearby_view_activity(self):
+        with self.lock:
+            view, observed = self._nearby_activity
+        return view if observed is not None and 0 <= time.monotonic() - observed < 6 else "other"
 
     def nearby_view_is_active(self):
-        with self.lock:
-            observed = self._nearby_viewer_at
-        return observed is not None and 0 <= time.monotonic() - observed < 6
+        return self.nearby_view_activity() != "other"
 
     def _calendar_cache_stamp(self):
         try:
@@ -216,6 +219,9 @@ class Runtime:
             plan = planned_buzz_days(snapshot, config, now)
             if plan:
                 outlook.update(buzz_plan=plan, roster_last_sync=snapshot.get("last_sync"))
+            travel = family_travel_labels(config, now)
+            if travel and not snapshot.get("demo"):
+                outlook["travel_labels"] = travel
         status["custody_outlook"] = outlook
         status["local_visits"] = local_visits(snapshot, now) if config["local_visits_enabled"] else []
         status["trip_preview"] = trip_preview(snapshot, config, now)
@@ -409,7 +415,8 @@ class Runtime:
         for item in status["personal_items"]:
             item.pop("image_data", None)
         status["custody_outlook"] = {key: value for key, value in status.get("custody_outlook", {}).items()
-                                     if key not in {"activities", "activity_last_sync", "buzz_plan", "roster_last_sync"}}
+                                     if key not in {"activities", "activity_last_sync", "buzz_plan", "roster_last_sync",
+                                                    "travel_labels"}}
         # Absolute aircraft positions plus home-relative offsets would reveal
         # the private home pin. Maintenance needs only the relative local view;
         # the separate admin TV route retains validated provider coordinates.
@@ -629,11 +636,12 @@ class Runtime:
                 except (ValueError, OSError):
                     pass
             try:
+                nearby_activity = self.nearby_view_activity()
                 self.feeds.poll(config, selected, on_duty=context["flight_priority"] or
                                 (not context["recent_vps_arrival"] and
                                  (is_on_duty(roster_selected, config, now) or context["chris_away"])),
                                 watches=watches, personal_flights=personal_flights,
-                                nearby_visible=self.nearby_view_is_active())
+                                nearby_visible=nearby_activity != "other", nearby_fast=nearby_activity == "nearby-paused")
                 provider = self.feeds.operating_status_for_config(config, selected, now)
                 self._vps_arrival(snapshot, config, selected, provider, now)
             except Exception:

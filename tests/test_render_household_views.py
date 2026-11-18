@@ -157,6 +157,25 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertNotIn("BUZZ GONE", hidden)
         self.assertIn("MOM'S HOUSE", hidden)
 
+    def test_family_travel_label_preserves_custody_and_duty_and_stays_private(self):
+        self.outlook.update(
+            travel_labels={"2026-10-31": "Parker Chicago", "2026-11-02": "Parker Chicago", "2026-11-09": 3},
+            roster_last_sync=NOW.isoformat(),
+            buzz_plan={"2026-11-02": {"gone": True}},
+        )
+        labels, image = labels_for(self.state)
+        self.assertEqual(labels.count("Parker Chicago"), 2)
+        for label in ("MOM'S HOUSE", "DAD'S HOUSE", "CHANGE DAY", "3:00 PM MOM", "BUZZ GONE"):
+            self.assertIn(label, labels)
+        self.assertEqual(image.size, (512, 256))
+        for state, config in ((self.state, {"guest_mode": True}), (self.state, {"demo": True}),
+                              (self.state | {"backend_available": False}, {}), (self.state | {"demo": True}, {})):
+            self.assertNotIn("Parker Chicago", labels_for(state, **config)[0])
+        self.outlook["stale"] = True
+        labels, _ = labels_for(self.state)
+        self.assertIn("Parker Chicago", labels)
+        self.assertEqual(labels.count("UNKNOWN"), 10)
+
     def test_agenda_is_separate_and_hidden_from_guests_and_stale_frames(self):
         self.outlook.update(activities=[
             {"title": "Rory Soccer", "start": "2026-10-31T17:30:00Z", "end": "2026-10-31T19:00:00Z"},

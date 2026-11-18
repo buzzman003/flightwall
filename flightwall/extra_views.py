@@ -323,7 +323,19 @@ def _aircraft_telemetry(row):
     return altitude, speed, track
 
 
+def _outer_aircraft_row_y(index, count):
+    return 88 + index * min(23, 130 // count)
+
+
+def _aircraft_thumbnail_box(index, outer_count=0):
+    if outer_count:
+        y = _outer_aircraft_row_y(index, outer_count)
+        return 472, y - 2, 23, min(18, 130 // outer_count - 1)
+    return 454, 80 + index * 54, 38, 30
+
+
 def render_nearby(draw, image, state, config, now):
+    from .aircraft_icons import representative_photo, thumbnail
     from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _width, deck_footer_width
     from .flight_alerts import fresh_nearby_route
     _header(draw, state, now, "NEARBY AIRCRAFT")
@@ -354,7 +366,7 @@ def render_nearby(draw, image, state, config, now):
             _text(draw, (label_x, label_y), str(index + 1), AMBER, 2)
     route_shown = False
     for index, (distance, row) in enumerate((outer or rows[:3])):
-        y = (88 + index * 13) if outer else (60 + index * 54)
+        y = _outer_aircraft_row_y(index, len(outer)) if outer else (60 + index * 54)
         aircraft = _aircraft_type(row)
         route = fresh_nearby_route(row, now) if config.get("nearby_enrichment_enabled") is True else None
         route_shown = route_shown or route is not None
@@ -362,13 +374,13 @@ def render_nearby(draw, image, state, config, now):
         if outer:
             # Ten legible one-line rows retain the identifying fields. Full
             # received telemetry stays on the priority inner-aircraft panels.
-            _text(draw, (326, y), label, WHITE, max_width=66)
+            _text(draw, (324, y), label, WHITE, max_width=60)
             if aircraft:
-                _text(draw, (394, y), aircraft, MUTED, max_width=24)
-            _text(draw, (449, y), f"{distance:.1f}", CYAN, align="right")
+                _text(draw, (386, y), aircraft, MUTED, max_width=24)
+            _text(draw, (436, y), f"{distance:.1f}", CYAN, align="right")
             altitude = row.get("altitude")
             altitude = str(round(altitude)) if _number(altitude) and -2000 <= altitude <= 100000 else "N/A"
-            _text(draw, (492, y), altitude, WHITE, align="right", max_width=44)
+            _text(draw, (471, y), altitude, WHITE, align="right", max_width=35)
             continue
         type_width = 6 * len(aircraft) + 5 if aircraft else 0
         scale = 2 if _width(label, 2) <= 166 - type_width else 1
@@ -377,11 +389,10 @@ def render_nearby(draw, image, state, config, now):
         if aircraft:
             _text(draw, (492, y + (4 if scale == 2 else 0)), aircraft, MUTED, align="right")
         altitude, speed, track = _aircraft_telemetry(row)
-        from .aircraft_icons import thumbnail
         icon = thumbnail(aircraft)
-        detail_width = 122 if icon is not None else 166
+        detail_width = 122 if icon is not None or representative_photo(aircraft) is not None else 166
         if icon is not None:
-            image.paste(icon, (454, y + 20), icon)
+            image.paste(icon, _aircraft_thumbnail_box(index)[:2], icon)
         route_label = f"{distance:.1f} MI"
         if route:
             route_label = f"{route['origin']}>{route['destination']} {route_label}"
@@ -390,8 +401,8 @@ def render_nearby(draw, image, state, config, now):
         _text(draw, (326, y + 40), "GS " + speed + " / TRK " + track, MUTED, max_width=detail_width)
     if outer:
         _text(draw, (326, 60), f"{radius:g}-30 MI / NEAREST {len(outer)}", AMBER, max_width=166)
-        for x, title, align in ((326, "ID", "left"), (394, "TYPE", "left"),
-                                (449, "MI", "right"), (492, "FT", "right")):
+        for x, title, align in ((324, "ID", "left"), (386, "TYPE", "left"),
+                                (436, "MI", "right"), (470, "FT", "right")):
             _text(draw, (x, 74), title, MUTED, align=align)
         draw.line((324, 82, 492, 82), fill=LINE)
         _text(draw, (23, 210), f"NO AIRCRAFT INSIDE {radius:g} MI", CYAN, max_width=280)

@@ -61,7 +61,7 @@ def _source_files(source: Path, private_key: Path):
                        "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json",
                        "consents.json", "setup-consents.json", "setup-complete.json",
                        "openai-usage.json", "flightaware-usage.json", "flight-environment.json",
-                       "adsblol-usage.json", "adsblol-usage.lock",
+                       "adsblol-usage.json", "adsblol-fast-usage.json", "adsblol-usage.lock",
                        "personal-travel.json", "personal-travel.lock",
                        "delta-travel-status.json", "delta-travel-lisa-status.json",
                        "national-radar.png", "national-radar-loop.png", "trip-weather.json",
@@ -72,7 +72,7 @@ def _source_files(source: Path, private_key: Path):
     # nested under _internal. Code such as shopping.py and public assets/stores
     # remain valid; a directory named shopping contains mutable household data.
     forbidden_dirs = {".git", ".ssh", ".aws", ".codex", ".agents", ".local-install",
-                      "userdata", "secrets", "accounts", "artwork", "presence",
+                      "userdata", "secrets", "accounts", "artwork", "presence", "couple-photos",
                       "shopping", "phone-invites", "updates", "logs", "trip-weather"}
     files = []
     total = 0

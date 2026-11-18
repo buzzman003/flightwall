@@ -1,4 +1,4 @@
-"""Small original type-matched silhouettes, with no network or photo cache.
+"""Offline, type-matched aircraft photos and original fallback silhouettes.
 
 These intentionally simple top views carry no airline, livery or tail claim.
 Only explicitly supported received ICAO types get artwork; unknown types keep
@@ -11,8 +11,52 @@ https://beechcraft.txtav.com/en/king-air-360
 https://www.deutscheaircraft.com/products/d328-turboprop
 """
 from functools import lru_cache
+import io
+from pathlib import Path
+import re
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
+
+
+PHOTO_PATH = Path(__file__).resolve().parent.parent / "assets" / "aircraft"
+TYPE_CODE = re.compile(r"[A-Z0-9]{2,4}")
+MAX_PHOTO_BYTES = 500_000
+
+
+def representative_photo(aircraft_type):
+    """Load only known aircraft-type artwork from the signed asset bundle."""
+    if not isinstance(aircraft_type, str) or not TYPE_CODE.fullmatch(aircraft_type):
+        return None
+    return _representative_photo(aircraft_type)
+
+
+@lru_cache(maxsize=48)
+def _representative_photo(code):
+    path = PHOTO_PATH / (code + ".jpg")
+    try:
+        if path.is_symlink():
+            return None
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_PHOTO_BYTES + 1)
+        if not raw or len(raw) > MAX_PHOTO_BYTES:
+            return None
+        with Image.open(io.BytesIO(raw), formats=("JPEG",)) as source:
+            if not 1 <= source.width <= 640 or not 1 <= source.height <= 640:
+                return None
+            image = source.convert("RGB")
+            image.info.clear()
+            return image
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
+@lru_cache(maxsize=72)
+def photo_panel(code, size, background):
+    """Reuse the native-size thumbnail while the frame layout is stable."""
+    photo = representative_photo(code)
+    if photo is not None:
+        return ImageOps.pad(photo, size, Image.Resampling.LANCZOS, background)
+    return None
 
 
 @lru_cache(maxsize=4)

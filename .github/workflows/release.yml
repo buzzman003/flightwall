@@ -46,8 +46,8 @@ jobs:
               raise SystemExit('VERSION must contain canonical numeric major.minor.patch and one LF newline; CRLF is not supported by the Linux installer.')
           version = raw[:-1].decode('ascii')
           version_tuple(version)
-          if version_tuple(version) <= version_tuple('0.4.28'):
-              raise SystemExit('Candidate version must be newer than the pinned published 0.4.28 release.')
+          if version_tuple(version) <= version_tuple('0.4.29'):
+              raise SystemExit('Candidate version must be newer than the pinned published 0.4.29 release.')
           if version != __version__:
               raise SystemExit('VERSION and flightwall/__init__.py __version__ must match. Bump both for each new release.')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
@@ -94,7 +94,7 @@ jobs:
           PY
           printf '%s\n' '086bf6267e3c96b55de1cfda70ec3adff21c65aff19bb5a525936a70b969de08  baseline/flightwall-batocera-0.3.0.tar.gz' | sha256sum --check --strict
 
-      - name: Obtain the pinned published 0.4.28 executable baseline
+      - name: Obtain the pinned published 0.4.29 executable baseline
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -102,19 +102,19 @@ jobs:
           import json, os, subprocess
           from pathlib import Path
           repo = os.environ['GITHUB_REPOSITORY']
-          release = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/releases/tags/v0.4.28']))
-          if release.get('draft') is not False or release.get('prerelease') is not False or release.get('tag_name') != 'v0.4.28':
-              raise SystemExit('The published 0.4.28 baseline release is required.')
-          if release.get('target_commitish') != '925e61ec42e655e2496757da70749c107e409401':
-              raise SystemExit('The published 0.4.28 baseline targets an unexpected source commit.')
-          assets = [asset for asset in release.get('assets', []) if asset.get('name') == 'flightwall-batocera-0.4.28.tar.gz']
-          if (len(assets) != 1 or assets[0].get('size') != 50935857 or assets[0].get('id') != 764203121 or
-                  assets[0].get('digest') != 'sha256:6f7f9d0b6654a6e42f329b98b9588dbf926ec72faa7a24816b56ab73d2e81a70'):
-              raise SystemExit('The published 0.4.28 baseline has unexpected metadata.')
-          with Path('baseline/flightwall-batocera-0.4.28.tar.gz').open('xb') as output:
+          release = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/releases/tags/v0.4.29']))
+          if release.get('draft') is not False or release.get('prerelease') is not False or release.get('tag_name') != 'v0.4.29':
+              raise SystemExit('The published 0.4.29 baseline release is required.')
+          if release.get('target_commitish') != '8a044fe611cb825ffddb754083b9948af5db51d2':
+              raise SystemExit('The published 0.4.29 baseline targets an unexpected source commit.')
+          assets = [asset for asset in release.get('assets', []) if asset.get('name') == 'flightwall-batocera-0.4.29.tar.gz']
+          if (len(assets) != 1 or assets[0].get('size') != 50936145 or assets[0].get('id') != 764819213 or
+                  assets[0].get('digest') != 'sha256:e3b7538e3a15d01a7e6ddbeae73166bee36419162fe91f2434c161b7f3cbf156'):
+              raise SystemExit('The published 0.4.29 baseline has unexpected metadata.')
+          with Path('baseline/flightwall-batocera-0.4.29.tar.gz').open('xb') as output:
               subprocess.run(['gh', 'api', f"repos/{repo}/releases/assets/{assets[0]['id']}", '-H', 'Accept: application/octet-stream'], stdout=output, check=True)
           PY
-          printf '%s\n' '6f7f9d0b6654a6e42f329b98b9588dbf926ec72faa7a24816b56ab73d2e81a70  baseline/flightwall-batocera-0.4.28.tar.gz' | sha256sum --check --strict
+          printf '%s\n' 'e3b7538e3a15d01a7e6ddbeae73166bee36419162fe91f2434c161b7f3cbf156  baseline/flightwall-batocera-0.4.29.tar.gz' | sha256sum --check --strict
 
       - name: Build Linux x86_64 application using Debian 12
         env:
@@ -143,7 +143,7 @@ jobs:
               --output /validation-output/native-validation.json
           cp native-output/native-validation.json native-validation.json
 
-      - name: Require actual 0.4.28 upgrade and rollback with original pinned recovery
+      - name: Require actual 0.4.29 upgrade and rollback with original pinned recovery
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -156,9 +156,9 @@ jobs:
             python scripts/validate-native.py --release "releases/$RELEASE_VERSION" \
               --installer "artifacts/flightwall-batocera-$RELEASE_VERSION.tar.gz" \
               --baseline baseline/flightwall-batocera-0.3.0.tar.gz \
-              --current-baseline baseline/flightwall-batocera-0.4.28.tar.gz --source /workspace \
-              --output /validation-output/native-validation-from-0.4.28.json
-          cp native-output/native-validation-from-0.4.28.json native-validation-from-0.4.28.json
+              --current-baseline baseline/flightwall-batocera-0.4.29.tar.gz --source /workspace \
+              --output /validation-output/native-validation-from-0.4.29.json
+          cp native-output/native-validation-from-0.4.29.json native-validation-from-0.4.29.json
 
       - name: Package unsigned frozen application for publishing job
         env:
@@ -172,7 +172,7 @@ jobs:
           path: |
             unsigned-linux.tar.gz
             native-validation.json
-            native-validation-from-0.4.28.json
+            native-validation-from-0.4.29.json
             linux-tests.xml
             artifacts/*
           retention-days: 2
@@ -234,7 +234,7 @@ jobs:
           python3 -m venv .sign-venv
           .sign-venv/bin/python -m pip install --disable-pip-version-check cryptography==46.0.3
           .sign-venv/bin/python scripts/validate-native.py --release "unsigned/$RELEASE_VERSION" --verify-report native-validation.json
-          .sign-venv/bin/python scripts/validate-native.py --release "unsigned/$RELEASE_VERSION" --verify-current-report native-validation-from-0.4.28.json
+          .sign-venv/bin/python scripts/validate-native.py --release "unsigned/$RELEASE_VERSION" --verify-current-report native-validation-from-0.4.29.json
           .sign-venv/bin/python scripts/make_release.py build \
             --source "unsigned/$RELEASE_VERSION" \
             --version "$RELEASE_VERSION" \
@@ -264,11 +264,11 @@ jobs:
               release = Path(temporary) / 'release'
               safe_extract(signed / 'flightwall-release.zip', release, os.environ['RELEASE_VERSION'])
               gate.verify_report(release, Path('native-validation.json'))
-              gate.verify_report(release, Path('native-validation-from-0.4.28.json'), require_current=True)
+              gate.verify_report(release, Path('native-validation-from-0.4.29.json'), require_current=True)
           (signed / 'flightwall-signing-public.pem').write_bytes(public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
           (signed / 'public-key.txt').write_text(base64.b64encode(public.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode() + '\n')
           shutil.copy2('native-validation.json', signed / 'native-validation.json')
-          shutil.copy2('native-validation-from-0.4.28.json', signed / 'native-validation-from-0.4.28.json')
+          shutil.copy2('native-validation-from-0.4.29.json', signed / 'native-validation-from-0.4.29.json')
           shutil.copy2('linux-tests.xml', signed / 'linux-tests.xml')
           for path in sorted(Path('artifacts').iterdir()):
               if path.is_file() and path.name != 'SHA256SUMS.txt':
@@ -291,9 +291,9 @@ jobs:
           The update ZIP is for existing installations; use the versioned Batocera tar.gz for first install.
           Updates activate at the next safe Ports launch and preserve calendar credentials/settings.
           Release gates require all Linux tests, real frozen OpenGL/software rendering, a fresh install,
-          genuine 0.3.0 and published 0.4.28 executable upgrades and failed-start rollback with synthetic private data.
+          genuine 0.3.0 and published 0.4.29 executable upgrades and failed-start rollback with synthetic private data.
           Both upgrade paths retain the original pinned 0.3.0 recovery helper.
-          See native-validation.json, native-validation-from-0.4.28.json and linux-tests.xml.
+          See native-validation.json, native-validation-from-0.4.29.json and linux-tests.xml.
           These are not physical TV/phone or live Alexa checks.
           NOTES
           gh release create "v$RELEASE_VERSION" \

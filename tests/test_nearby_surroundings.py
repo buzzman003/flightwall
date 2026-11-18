@@ -10,7 +10,9 @@ import urllib.error
 import pytest
 
 from flightwall.config import DEFAULTS, private_json
-from flightwall.feeds import FlightFeeds, NEARBY_POLL_SECONDS, _nearby_retry_seconds
+from flightwall.feeds import (
+    FlightFeeds, NEARBY_FAST_POLL_SECONDS, NEARBY_FAST_REQUEST_LIMIT, NEARBY_POLL_SECONDS, _nearby_retry_seconds,
+)
 
 
 NOW = datetime(2026, 11, 17, 15, tzinfo=timezone.utc)
@@ -27,11 +29,11 @@ def snapshot(rows=(), now=NOW):
     return {"now": now.timestamp() * 1000, "ac": list(rows)}
 
 
-def poll(feed, response, now=NOW, tick=0, config=CONFIG):
+def poll(feed, response, now=NOW, tick=0, config=CONFIG, **view):
     with (patch("flightwall.feeds.utcnow", return_value=now),
           patch("flightwall.feeds.time.monotonic", return_value=tick),
           patch("flightwall.feeds.request_json", return_value=response) as network):
-        feed.poll(config, None)
+        feed.poll(config, None, **view)
     return network
 
 
@@ -67,10 +69,10 @@ def test_outer_boundary_thirty_included_and_five_excluded(tmp_path):
     feed = FlightFeeds(tmp_path)
     poll(feed, snapshot([aircraft("abc001", 30), aircraft("abc002", 30.00001)]))
     assert [row["hex"] for row in feed.nearby_outer_for_config(CONFIG, NOW)] == ["abc001"]
-    poll(feed, snapshot([aircraft("abc003", 5), aircraft("abc001", 30)], NOW + timedelta(seconds=180)),
-         NOW + timedelta(seconds=180), 180)
-    assert [row["hex"] for row in feed.nearby_for_config(CONFIG, NOW + timedelta(seconds=180))] == ["abc003"]
-    assert feed.nearby_outer_for_config(CONFIG, NOW + timedelta(seconds=180)) == []
+    next_poll = NOW + timedelta(seconds=NEARBY_POLL_SECONDS)
+    poll(feed, snapshot([aircraft("abc003", 5), aircraft("abc001", 30)], next_poll), next_poll, NEARBY_POLL_SECONDS)
+    assert [row["hex"] for row in feed.nearby_for_config(CONFIG, next_poll)] == ["abc003"]
+    assert feed.nearby_outer_for_config(CONFIG, next_poll) == []
 
 
 def test_expired_inner_position_never_turns_snapshot_into_observed_empty_ring(tmp_path):
@@ -90,8 +92,9 @@ def test_empty_snapshot_freshness_uses_source_clock_not_successful_receipt(tmp_p
     later = NOW + timedelta(seconds=21)
     assert feed.nearby_status_for_config(CONFIG, later) == "stale"
     assert feed.nearby_outer_for_config(CONFIG, later) == []
-    poll(feed, snapshot([], NOW - timedelta(seconds=100)), NOW + timedelta(seconds=180), 180)
-    assert feed.nearby_status_for_config(CONFIG, NOW + timedelta(seconds=180)) == "stale"
+    next_poll = NOW + timedelta(seconds=NEARBY_POLL_SECONDS)
+    poll(feed, snapshot([], NOW - timedelta(seconds=100)), next_poll, NEARBY_POLL_SECONDS)
+    assert feed.nearby_status_for_config(CONFIG, next_poll) == "stale"
 
 
 def test_error_and_invalid_config_never_publish_outer_or_claim_empty_success(tmp_path):
@@ -100,13 +103,15 @@ def test_error_and_invalid_config_never_publish_outer_or_claim_empty_success(tmp
     for changes in ({"demo": True}, {"nearby_enabled": False}, {"home_latitude": 1},
                     {"nearby_radius_miles": 10}, {"home_latitude": None}):
         assert feed.nearby_outer_for_config(CONFIG | changes, NOW) == []
-    with (patch("flightwall.feeds.utcnow", return_value=NOW + timedelta(seconds=180)),
-          patch("flightwall.feeds.time.monotonic", return_value=180),
-          patch("flightwall.feeds.request_json", side_effect=OSError("offline"))):
+    next_poll = NOW + timedelta(seconds=NEARBY_POLL_SECONDS)
+    with (patch("flightwall.feeds.utcnow", return_value=next_poll),
+          patch("flightwall.feeds.time.monotonic", return_value=NEARBY_POLL_SECONDS),
+          patch("flightwall.feeds.request_json", side_effect=OSError("offline")) as network):
         feed.poll(CONFIG, None)
-    assert feed.nearby_for_config(CONFIG, NOW + timedelta(seconds=180)) == []
-    assert feed.nearby_outer_for_config(CONFIG, NOW + timedelta(seconds=180)) == []
-    assert feed.nearby_status_for_config(CONFIG, NOW + timedelta(seconds=180)) == "stale"
+        network.assert_called_once()
+    assert feed.nearby_for_config(CONFIG, next_poll) == []
+    assert feed.nearby_outer_for_config(CONFIG, next_poll) == []
+    assert feed.nearby_status_for_config(CONFIG, next_poll) == "stale"
 
 
 def test_unkeyed_allowance_persists_cadence_across_restart_and_pin_change(tmp_path):
@@ -118,11 +123,63 @@ def test_unkeyed_allowance_persists_cadence_across_restart_and_pin_change(tmp_pa
     assert "latitude" not in json.dumps(usage) and "abc123" not in json.dumps(usage)
     restarted = FlightFeeds(tmp_path)
     assert poll(restarted, snapshot([], NOW + timedelta(seconds=1)), NOW + timedelta(seconds=1), 1).call_count == 0
-    assert poll(restarted, snapshot([], NOW + timedelta(seconds=179)), NOW + timedelta(seconds=179), 179,
+    assert poll(restarted, snapshot([], NOW + timedelta(seconds=209)), NOW + timedelta(seconds=209), 209,
                 CONFIG | {"home_latitude": 1}).call_count == 0
-    assert poll(restarted, snapshot([], NOW + timedelta(seconds=180)), NOW + timedelta(seconds=180), 180,
+    assert poll(restarted, snapshot([], NOW + timedelta(seconds=210)), NOW + timedelta(seconds=210), 210,
                 CONFIG | {"home_latitude": 1}).call_count == 1
-    assert NEARBY_POLL_SECONDS == 180
+    assert NEARBY_POLL_SECONDS == 210
+
+
+def test_fast_poll_requires_visible_pause_and_does_not_carry_over_on_exit(tmp_path):
+    feed = FlightFeeds(tmp_path)
+
+    def at(seconds, **view):
+        now = NOW + timedelta(seconds=seconds)
+        return poll(feed, snapshot([], now), now, seconds, **view).call_count
+
+    assert at(0) == 1
+    assert at(4, nearby_visible=True, nearby_fast=True) == 0
+    assert at(5, nearby_visible=True) == 0
+    assert at(6, nearby_fast=True) == 0
+    assert at(7, nearby_visible=True, nearby_fast=True) == 1
+    assert at(12, nearby_visible=True, nearby_fast=True) == 1
+    assert at(17) == 0
+    assert at(222) == 1
+    assert len(json.loads(feed._nearby_fast_usage_path.read_text())) == 2
+
+
+def test_fast_allowance_survives_restart_then_resumes_ordinary_cadence(tmp_path):
+    feed = FlightFeeds(tmp_path)
+    assert feed._reserve_nearby_request(NOW, fast=True) == 0
+    assert not feed._nearby_fast_usage_path.exists()
+    for slot in range(1, NEARBY_FAST_REQUEST_LIMIT + 1):
+        last_fast = NOW + timedelta(seconds=slot * NEARBY_FAST_POLL_SECONDS)
+        assert feed._reserve_nearby_request(last_fast, fast=True) == 0
+
+    restarted = FlightFeeds(tmp_path)
+    soon = last_fast + timedelta(seconds=NEARBY_FAST_POLL_SECONDS)
+    assert restarted._reserve_nearby_request(soon, fast=True) == NEARBY_POLL_SECONDS - NEARBY_FAST_POLL_SECONDS
+    next_poll = last_fast + timedelta(seconds=NEARBY_POLL_SECONDS)
+    assert restarted._reserve_nearby_request(next_poll, fast=True) == 0
+    assert len(json.loads(restarted._nearby_fast_usage_path.read_text())) == 60
+    journal = json.loads(restarted._nearby_usage_path.read_text())
+    assert set(journal) == {"schema_version", "requested_at", "retry_until"} and journal["schema_version"] == 1
+    assert len(journal["requested_at"]) == 62
+
+    # A new fast slot opens as each earlier fast request ages out.
+    first_release = NOW + timedelta(days=1, seconds=NEARBY_FAST_POLL_SECONDS)
+    assert restarted._reserve_nearby_request(first_release - timedelta(seconds=8)) == 0
+    assert restarted._reserve_nearby_request(first_release - timedelta(seconds=1), fast=True) == 1
+    assert restarted._reserve_nearby_request(first_release, fast=True) == 0
+
+
+def test_corrupt_fast_journal_still_allows_ordinary_requests(tmp_path):
+    feed = FlightFeeds(tmp_path)
+    feed._nearby_fast_usage_path.write_text("broken", encoding="utf-8")
+    assert feed._reserve_nearby_request(NOW) == 0
+    assert feed._reserve_nearby_request(NOW + timedelta(seconds=5), fast=True) == 205
+    assert feed._reserve_nearby_request(NOW + timedelta(seconds=210), fast=True) == 0
+    assert feed._nearby_fast_usage_path.read_text() == "broken"
 
 
 def test_rolling_allowance_cannot_be_reset_at_midnight_and_corruption_fails_closed(tmp_path):
@@ -130,6 +187,7 @@ def test_rolling_allowance_cannot_be_reset_at_midnight_and_corruption_fails_clos
     stamps = [(NOW - timedelta(seconds=(480 - index) * 179)).isoformat() for index in range(480)]
     private_json(feed._nearby_usage_path, {"schema_version": 1, "requested_at": stamps, "retry_until": None})
     assert feed._reserve_nearby_request(NOW) == 480
+    assert feed._reserve_nearby_request(NOW, fast=True) == 480
     assert poll(feed, snapshot()).call_count == 0
     feed._nearby_usage_path.write_text("broken", encoding="utf-8")
     assert poll(FlightFeeds(tmp_path), snapshot()).call_count == 0
@@ -158,20 +216,22 @@ def test_server_retry_after_survives_restart_and_recovers(tmp_path):
         feed.poll(CONFIG, None)
         assert network.call_count == 1
     restarted = FlightFeeds(tmp_path)
-    assert poll(restarted, snapshot([], NOW + timedelta(seconds=3599)), NOW + timedelta(seconds=3599), 10).call_count == 0
+    assert poll(restarted, snapshot([], NOW + timedelta(seconds=3598)), NOW + timedelta(seconds=3598), 9).call_count == 0
+    assert poll(restarted, snapshot([], NOW + timedelta(seconds=3599)), NOW + timedelta(seconds=3599), 10,
+                nearby_visible=True, nearby_fast=True).call_count == 0
     assert poll(restarted, snapshot([], NOW + timedelta(seconds=3600)), NOW + timedelta(seconds=3600), 11).call_count == 1
     assert restarted.nearby_status_for_config(CONFIG, NOW + timedelta(seconds=3600)) == "ready"
 
 
 def test_failure_backoff_grows_and_overlapping_requests_are_skipped(tmp_path):
     feed = FlightFeeds(tmp_path)
-    for attempt, tick in enumerate((0, 180, 540), start=1):
+    for attempt, tick in enumerate((0, NEARBY_POLL_SECONDS, NEARBY_POLL_SECONDS * 3), start=1):
         with (patch("flightwall.feeds.utcnow", return_value=NOW + timedelta(seconds=tick)),
               patch("flightwall.feeds.time.monotonic", return_value=tick),
               patch("flightwall.feeds.request_json", side_effect=OSError("offline")) as network):
             feed.poll(CONFIG, None)
             assert network.call_count == 1
-            assert feed._nearby_retry_at == tick + 180 * 2 ** (attempt - 1)
+            assert feed._nearby_retry_at == tick + NEARBY_POLL_SECONDS * 2 ** (attempt - 1)
     feed._nearby_lock.acquire()
     try:
         assert poll(feed, snapshot([], NOW + timedelta(seconds=2000)), NOW + timedelta(seconds=2000), 2000).call_count == 0

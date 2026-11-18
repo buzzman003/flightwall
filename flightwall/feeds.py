@@ -127,11 +127,13 @@ NEARBY_MAX_AGE_SECONDS = 120
 NEARBY_MAX_ROWS = 40
 NEARBY_OUTER_RADIUS_MILES = 30
 NEARBY_OUTER_MAX_ROWS = 10
-# The deployed OpenAPI (reviewed 2026-11-17) limits unkeyed /v2 requests to
-# 500 per provider 24-hour bucket. One shared query every three minutes uses at
-# most 480/day; faster polling needs a separately configured source/tier.
+# Unkeyed /v2 allows 500 requests per provider 24-hour bucket. The ordinary
+# cadence leaves room for a limited burst when a viewer pauses the card.
 # https://api.adsb.lol/api/openapi.json
-NEARBY_POLL_SECONDS = 180
+NEARBY_POLL_SECONDS = 210
+NEARBY_FAST_POLL_SECONDS = 5
+NEARBY_FAST_REQUEST_LIMIT = 60
+NEARBY_REQUEST_LIMIT = 480
 NEARBY_BACKOFF_MAX_SECONDS = 1800
 NEARBY_ROUTE_FAILURE_COOLDOWN_SECONDS = 900
 NEARBY_ROUTE_DIAGNOSTIC_CODES = ("attempts", "matched", "empty_response", "no_verified_match", "ambiguous",
@@ -294,8 +296,10 @@ class FlightFeeds:
         self._nearby_outer_completed = (None, [])
         self._nearby_receipt = (None, None, False)
         self._nearby_retry_at = -math.inf
+        self._nearby_wait = (False, -math.inf)
         self._nearby_failures = 0
         self._nearby_usage_path = self.data_dir / "adsblol-usage.json"
+        self._nearby_fast_usage_path = self.data_dir / "adsblol-fast-usage.json"
         self._nearby_usage_storage = PersonalStore(self.data_dir, lambda: {})
         self._nearby_usage_storage.lock_path = self.data_dir / "adsblol-usage.lock"
         self._last_live = -math.inf
@@ -559,19 +563,35 @@ class FlightFeeds:
         except FileNotFoundError:
             return {"schema_version": 1, "requested_at": [], "retry_until": None}
         if (not isinstance(usage, dict) or set(usage) != {"schema_version", "requested_at", "retry_until"}
-                or type(usage["schema_version"]) is not int or usage["schema_version"] != 1
-                or not isinstance(usage["requested_at"], list) or len(usage["requested_at"]) > 480):
-            raise ValueError("Nearby request allowance is unavailable")
-        stamps = [parse_time(value) for value in usage["requested_at"]]
-        if any(stamp > now for stamp in stamps) or stamps != sorted(set(stamps)):
+                or type(usage["schema_version"]) is not int or usage["schema_version"] != 1):
             raise ValueError("Nearby request allowance is unavailable")
         retry = usage["retry_until"]
         if retry is not None and parse_time(retry) > now + timedelta(days=7):
             raise ValueError("Nearby retry clock is invalid")
-        usage["requested_at"] = [stamp.isoformat() for stamp in stamps if now - stamp < timedelta(days=1)]
+        usage["requested_at"] = self._nearby_usage_stamps(usage["requested_at"], now, NEARBY_REQUEST_LIMIT)
         return usage
 
-    def _reserve_nearby_request(self, now):
+    @staticmethod
+    def _nearby_usage_stamps(values, now, limit):
+        if not isinstance(values, list) or len(values) > limit:
+            raise ValueError("Nearby request allowance is unavailable")
+        stamps = [parse_time(value) for value in values]
+        if any(stamp > now for stamp in stamps) or stamps != sorted(set(stamps)):
+            raise ValueError("Nearby request allowance is unavailable")
+        return [stamp.isoformat() for stamp in stamps if now - stamp < timedelta(days=1)]
+
+    def _read_nearby_fast_usage(self, now):
+        try:
+            with self._nearby_fast_usage_path.open(encoding="utf-8") as stream:
+                raw = stream.read(4097)
+            return self._nearby_usage_stamps(json.loads(raw) if len(raw) <= 4096 else None,
+                                             now, NEARBY_FAST_REQUEST_LIMIT)
+        except FileNotFoundError:
+            return []
+        except (OSError, ValueError, TypeError, AttributeError, OverflowError, RecursionError):
+            return None  # A damaged fast allowance still permits the ordinary cadence.
+
+    def _reserve_nearby_request(self, now, *, fast=False):
         """A restart/config change cannot reset cadence or the daily allowance."""
         with self._nearby_usage_storage._locked():
             usage = self._read_nearby_usage(now)
@@ -579,13 +599,24 @@ class FlightFeeds:
             if usage["retry_until"] is not None:
                 waits.append((parse_time(usage["retry_until"]) - now).total_seconds())
             stamps = usage["requested_at"]
-            if stamps:
-                waits.append(NEARBY_POLL_SECONDS - (now - parse_time(stamps[-1])).total_seconds())
-            if len(stamps) >= 480:
+            if len(stamps) >= NEARBY_REQUEST_LIMIT:
                 waits.append((parse_time(stamps[0]) + timedelta(days=1) - now).total_seconds())
-            wait = max(waits)
-            if wait > 0:
-                return wait
+            if max(waits) > 0:
+                return max(waits)
+            elapsed = (now - parse_time(stamps[-1])).total_seconds() if stamps else math.inf
+            if elapsed < NEARBY_POLL_SECONDS:
+                fast_stamps = self._read_nearby_fast_usage(now) if fast else None
+                if fast_stamps is None:
+                    return NEARBY_POLL_SECONDS - elapsed
+                earliest = NEARBY_FAST_POLL_SECONDS - elapsed
+                if len(fast_stamps) >= NEARBY_FAST_REQUEST_LIMIT:
+                    fast_release = (parse_time(fast_stamps[0]) + timedelta(days=1) - now).total_seconds()
+                    earliest = min(NEARBY_POLL_SECONDS - elapsed, max(earliest, fast_release))
+                if earliest > 0:
+                    return earliest
+                # Share the ordinary ledger's lock and reserve the fast slot first.
+                # A failed second write can only consume an extra allowance.
+                private_json(self._nearby_fast_usage_path, [*fast_stamps, now.isoformat()])
             usage["requested_at"].append(now.isoformat())
             usage["retry_until"] = None
             # Reserve before the request, including errors/timeouts, just as
@@ -673,7 +704,8 @@ class FlightFeeds:
                 self._nearby_route_cache.pop(oldest)
             break
 
-    def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None, nearby_visible=False):
+    def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None, nearby_visible=False,
+             nearby_fast=False):
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
@@ -707,11 +739,11 @@ class FlightFeeds:
         if not self._nearby_lock.acquire(blocking=False):
             return
         try:
-            self._poll_nearby(config, now, on_duty=on_duty, nearby_visible=nearby_visible)
+            self._poll_nearby(config, now, on_duty=on_duty, nearby_visible=nearby_visible, nearby_fast=nearby_fast)
         finally:
             self._nearby_lock.release()
 
-    def _poll_nearby(self, config, now, *, on_duty=False, nearby_visible=False):
+    def _poll_nearby(self, config, now, *, on_duty=False, nearby_visible=False, nearby_fast=False):
         if config["demo"] or not config["nearby_enabled"]:
             self.nearby = []
             self._nearby_completed = (None, [])
@@ -742,15 +774,20 @@ class FlightFeeds:
             self._last_nearby = -math.inf
         self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
         tick = time.monotonic()
-        if tick - self._last_nearby < NEARBY_POLL_SECONDS or tick < self._nearby_retry_at:
+        fast = nearby_visible is True and nearby_fast is True
+        interval = NEARBY_FAST_POLL_SECONDS if fast else NEARBY_POLL_SECONDS
+        waiting_mode, wait_until = self._nearby_wait
+        if (tick - self._last_nearby < interval or tick < self._nearby_retry_at
+                or (fast == waiting_mode and tick < wait_until)):
             if not on_duty and nearby_visible is True:
                 self._poll_nearby_routes(config, now, visible=True)
             return
         try:
-            wait = self._reserve_nearby_request(now)
+            wait = self._reserve_nearby_request(now, fast=fast)
             if wait > 0:
-                self._nearby_retry_at = tick + wait
+                self._nearby_wait = (fast, tick + wait)
                 return
+            self._nearby_wait = (fast, -math.inf)
             self._last_nearby = tick
             # The community ADS-B feed is optional and has no availability guarantee.
             # One circle supplies both areas without an extra metered request.

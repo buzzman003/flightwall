@@ -1,3 +1,22 @@
+FLIGHT WALL 0.4.30
+
+The ten-day family outlook can display an optional private recurring travel
+label alongside the existing schedule. A Together card can rotate local
+photos at presentation resolution while one opted-in adult is freshly Home
+and the other is freshly Away. The featured selection changes weekly. Guest
+mode and stale presence hide the card. The schedule and photos are managed
+locally in the private data directory.
+
+Pause or hold Nearby Aircraft for about five-second free ADSB.lol polls.
+This has a separate allowance of 60 fast requests per rolling day. The card
+returns to normal polling when that allowance is used or the hold ends.
+New positions appear when the provider supplies a fresh observation.
+
+Nearby Aircraft shows bundled color photos for 150 aircraft types, including
+regional military aircraft, in both the nearby and surrounding lists. Photos
+work offline and stay clear above the LED layer. The photo credits are in
+assets/aircraft/ATTRIBUTION.tsv.
+
 FLIGHT WALL 0.4.29
 
 The optional Batocera boot service asks EmulationStation to open Flight Wall

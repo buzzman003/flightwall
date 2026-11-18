@@ -71,6 +71,21 @@ def test_operating_priority_still_suppresses_paid_nearby_even_with_visible_card(
           patch.object(feed, "_poll_live", side_effect=lambda *a: order.append("operating")),
           patch.object(feed, "_poll_watches", side_effect=lambda *a: order.append("watch")),
           patch.object(feed, "_flightaware") as paid):
-        feed.poll(CONFIG, None, on_duty=True, nearby_visible=True)
+        feed.poll(CONFIG, None, on_duty=True, nearby_visible=True, nearby_fast=True)
         assert order == ["operating", "watch"] and free.call_count == 1
         paid.assert_not_called()
+
+
+def test_fast_received_positions_do_not_shorten_paid_route_cooldown(tmp_path):
+    (tmp_path / "flightaware.key").write_text("synthetic-key")
+    feed = FlightFeeds(tmp_path)
+    with (patch("flightwall.feeds.utcnow", return_value=NOW) as clock,
+          patch("flightwall.feeds.time.monotonic", return_value=1000) as tick,
+          patch("flightwall.feeds.request_json", return_value=snapshot(NOW)) as free,
+          patch.object(feed, "_flightaware", return_value={"flights": []}) as paid):
+        feed.poll(CONFIG, None, nearby_visible=True, nearby_fast=True)
+        assert free.call_count == 1 and paid.call_count == 1
+        clock.return_value, tick.return_value = NOW + timedelta(seconds=6), 1006
+        free.return_value = snapshot(clock.return_value, "abc124", "DAL124")
+        feed.poll(CONFIG, None, nearby_visible=True, nearby_fast=True)
+        assert free.call_count == 2 and paid.call_count == 1

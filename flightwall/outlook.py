@@ -1,8 +1,9 @@
 """Calendar-derived outlooks; schedules never establish physical presence."""
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 import hashlib
 import json
+import re
 
 UTC = timezone.utc
 ACTIVITIES_PER_PAGE = 6
@@ -123,6 +124,53 @@ def custody_outlook(intervals, last_sync, config, now, *, failed=False):
         rows.append({"date": day.isoformat(), "state": state, "segments": segments})
     return {"days": rows, "stale": not fresh, "last_sync": last_sync,
             "timezone": str(zone), "error": "Calendar unavailable or stale" if not fresh else None}
+
+
+def family_travel_plan(value):
+    """Validate a private neutral label and bounded recurring local-day spans."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value) if len(value) <= 1024 else None
+        except (ValueError, RecursionError):
+            value = None
+    if value == {}:
+        return {}
+    if not isinstance(value, dict) or set(value) != {"label", "spans"}:
+        raise ValueError("Family travel needs a label and recurring date spans")
+    label, spans = value["label"], value["spans"]
+    if not isinstance(label, str) or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9 .'\-]{0,13}", label):
+        raise ValueError("Choose a short family travel label of at most 14 characters")
+    if not isinstance(spans, list) or not 1 <= len(spans) <= 4:
+        raise ValueError("Choose one to four recurring family travel spans")
+    for span in spans:
+        if not isinstance(span, dict) or set(span) != {"start_date", "days", "repeat_days"}:
+            raise ValueError("Each family travel span needs start_date, days and repeat_days")
+        start, days, repeat = span["start_date"], span["days"], span["repeat_days"]
+        try:
+            if date.fromisoformat(start).isoformat() != start:
+                raise ValueError
+        except (ValueError, TypeError):
+            raise ValueError("Use YYYY-MM-DD for the first date of each family travel span") from None
+        if type(days) is not int or type(repeat) is not int or not 1 <= days <= min(repeat, 10) or repeat > 366:
+            raise ValueError("Family travel spans last 1 to 10 days and recur at most every 366 days")
+    return {"label": label.rstrip(), "spans": spans}
+
+
+def family_travel_labels(config, now):
+    """Return the next ten local dates covered by the owner-entered plan."""
+    if config.get("demo") or config.get("guest_mode"):
+        return {}
+    plan = family_travel_plan(config.get("family_travel_plan", "{}"))
+    if not plan:
+        return {}
+    spans = [(date.fromisoformat(row["start_date"]), row["days"], row["repeat_days"]) for row in plan["spans"]]
+    today = now.astimezone(ZoneInfo(config.get("timezone", "UTC"))).date()
+    result = {}
+    for offset in range(10):
+        target = today + timedelta(days=offset)
+        if any(target >= start and (target - start).days % repeat < days for start, days, repeat in spans):
+            result[target.isoformat()] = plan["label"]
+    return result
 
 
 def local_visits(snapshot, now, *, include_future=False):

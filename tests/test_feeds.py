@@ -10,7 +10,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 from flightwall.config import DEFAULTS
-from flightwall.feeds import FlightFeeds, nearby_distance_miles, request_json
+from flightwall.feeds import FlightFeeds, NEARBY_POLL_SECONDS, nearby_distance_miles, request_json
 from flightwall.presence import PresenceStore
 
 
@@ -385,12 +385,12 @@ class FeedTests(unittest.TestCase):
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
         self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "ready")
-        with patch("flightwall.feeds.time.monotonic", return_value=191), \
+        with patch("flightwall.feeds.time.monotonic", return_value=10 + NEARBY_POLL_SECONDS), \
                 patch("flightwall.feeds.request_json", side_effect=OSError("offline")):
             self.feed.poll(config, None)
         self.assertEqual(self.feed.nearby_for_config(config, NOW), [])
         self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "stale")
-        with patch("flightwall.feeds.time.monotonic", return_value=372), \
+        with patch("flightwall.feeds.time.monotonic", return_value=10 + 2 * NEARBY_POLL_SECONDS), \
                 patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
         self.assertEqual(len(self.feed.nearby_for_config(config, NOW)), 1)

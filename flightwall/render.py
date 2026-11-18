@@ -224,6 +224,8 @@ def _footer(draw, state, view, now, tz, personal_item=None):
         status, color = ("SCHEDULE UNAVAILABLE / UNKNOWN IS NOT AWAY", AMBER) if outlook.get("stale", True) else ("FAMILY PLAN / CALENDAR SCHEDULE", MUTED)
     elif view == "today_activities":
         status, color = "FAMILY CALENDAR / LOCAL TIME", MUTED
+    elif view == "couple_photos":
+        status, color = "", MUTED
     elif view == "flight_watch":
         card = _selected_card(state, "flight_watch") or {}
         status, color = "PUBLIC REQUEST / " + str(card.get("date") or "DATE UNKNOWN")[:10], MUTED
@@ -1239,6 +1241,10 @@ def _custody_outlook(draw, state, config, now):
              or not calendar_fresh(outlook.get("last_sync"), now, config.get("kids_stale_minutes", 30)))
     plan = outlook.get("buzz_plan")
     plan = plan if isinstance(plan, dict) else {}
+    travel = outlook.get("travel_labels")
+    private_outlook = (not config.get("guest_mode") and not config.get("demo") and not state.get("demo")
+                       and state.get("backend_available") is not False)
+    travel = travel if private_outlook and isinstance(travel, dict) else {}
     planned_duty_fresh = (not config.get("guest_mode") and not state.get("demo")
                           and state.get("backend_available") is not False
                           and calendar_fresh(outlook.get("roster_last_sync"), now, config.get("kids_stale_minutes", 30)))
@@ -1249,7 +1255,10 @@ def _custody_outlook(draw, state, config, now):
     colors = {"home": CYAN, "away": AMBER, "unknown": MUTED, "mixed": WHITE}
     for index in range(10):
         date = first + timedelta(days=index)
-        row = days.get(date.isoformat(), {})
+        key = date.isoformat()
+        row = days.get(key, {})
+        travel_label = travel.get(key)
+        travel_label = travel_label if isinstance(travel_label, str) else ""
         kind = row.get("state") if not stale else "unknown"
         kind = kind if kind in colors else "unknown"
         x, y = 15 + (index % 5) * 98, 60 + (index // 5) * 83
@@ -1259,21 +1268,25 @@ def _custody_outlook(draw, state, config, now):
         if kind != "mixed":
             _text(draw, (x + 45, y + 30), names[kind], colors[kind], align="center", max_width=82, tracking=1)
         else:
-            _text(draw, (x + 45, y + 22), "CHANGE DAY", WHITE, align="center")
+            title_offset, segment_offset, segment_spacing = (17, 26, 9) if travel_label else (22, 33, 10)
+            _text(draw, (x + 45, y + title_offset), "CHANGE DAY", WHITE, align="center")
             segments = row.get("segments")
             segments = [part for part in segments if isinstance(part, dict)] if isinstance(segments, list) else []
             if not segments:
-                _text(draw, (x + 45, y + 42), "MIXED / CHECK", MUTED, align="center", max_width=82)
+                _text(draw, (x + 45, y + segment_offset + segment_spacing), "MIXED / CHECK", MUTED, align="center", max_width=82)
             for part_index, part in enumerate(segments[:3]):
                 part_kind = part.get("state", "unknown")
                 part_kind = part_kind if part_kind in names else "unknown"
                 start = _dt(part.get("start"))
                 label = {"home": "MOM", "away": "DAD", "unknown": "?"}[part_kind]
                 when = format_time(start.astimezone(zone)) if start else "--:--"
-                _text(draw, (x + 6, y + 33 + part_index * 10), when + " " + label, colors[part_kind], max_width=78)
+                _text(draw, (x + 6, y + segment_offset + part_index * segment_spacing), when + " " + label,
+                      colors[part_kind], max_width=78)
             if len(segments) > 3:
                 _text(draw, (x + 83, y + 64), "+", MUTED, align="right")
-        duty = plan.get(date.isoformat())
+        if travel_label:
+            _text(draw, (x + 45, y + 54), travel_label, CYAN, align="center", max_width=86)
+        duty = plan.get(key)
         if planned_duty_fresh and isinstance(duty, dict) and duty.get("gone") is True:
             _text(draw, (x + 45, y + 64), "BUZZ GONE", AMBER, align="center", max_width=82)
 
@@ -1521,6 +1534,8 @@ def render_frame(state, config, size=BASE_SIZE):
         _custody_outlook(draw, state, config, now)
     elif view == "today_activities":
         _today_activities(draw, state, config, now)
+    elif view == "couple_photos":
+        _header(draw, state, now, "TOGETHER")
     elif view == "local_visit":
         _local_visit(draw, state, config, now)
     elif view == "flight_watch":

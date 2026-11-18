@@ -17,7 +17,7 @@ class ReleasePrivacyTests(unittest.TestCase):
         self.key = self.root / "not-created-signing.pem"
 
     def test_runtime_private_directories_rejected_even_nested_or_empty(self):
-        for name in ("accounts", "artwork", "presence", "shopping", "phone-invites", "updates", "logs",
+        for name in ("accounts", "artwork", "couple-photos", "presence", "shopping", "phone-invites", "updates", "logs",
                      ".local-install", ".aws", ".ssh", ".codex", ".agents", "userdata", "secrets", "trip-weather"):
             with self.subTest(name=name):
                 folder = self.source / "_internal" / name
@@ -37,7 +37,8 @@ class ReleasePrivacyTests(unittest.TestCase):
                  "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock",
                  "trip-weather.json", "flight-environment.json", "national-radar.png", "national-radar-loop.png",
                  "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock",
-                 "adsblol-usage.json", "adsblol-usage.lock", "personal-travel.json", "personal-travel.lock",
+                 "adsblol-usage.json", "adsblol-fast-usage.json", "adsblol-usage.lock",
+                 "personal-travel.json", "personal-travel.lock",
                  "delta-travel-status.json", "delta-travel-lisa-status.json")
         for name in names:
             with self.subTest(name=name):

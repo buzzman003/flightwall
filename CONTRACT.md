@@ -1,3 +1,24 @@
+0.4.30 FAMILY TRAVEL LABEL AND SHARED PHOTOS
+
+Project a private recurring travel label onto local dates in the ten-day
+outlook. Preserve custody and existing rows. Keep household schedules and
+photos out of release artefacts and ordinary status/MCP. The private shared
+photo card requires fresh opposite adult phone states, working display data,
+and guest mode off. Apply that rule every rendered frame, including while
+paused. Display photo pixels at presentation resolution above the crisp
+logical board layer. Rotate the featured selection weekly using the local
+saved photo bank.
+
+Use the focused, paused or held TV card for five-second free polling. Bound
+fast polling to 60 attempts per rolling day and all free polls to 480.
+Ordinary polling uses 210 seconds. Keep prior daily reservations, provider
+backoff, actual observation timestamps and the separate paid lookup rules.
+
+Composite bundled, credited aircraft type photos above the LED layer in both
+the near and surrounding lists. Match the feed's ICAO type designator. Keep
+the existing fallback artwork for unsupported types. Photos work offline and
+require no aircraft registration queries or paid aviation requests.
+
 0.4.29 BATOCERA BOOT LAUNCH AND MENU PREVIEWS
 
 Route optional boot launch through the indexed EmulationStation Ports entry

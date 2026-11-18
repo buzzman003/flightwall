@@ -27,6 +27,7 @@ from .render import compose_display_overlays, display_content_bounds, render_fra
 from .feeds import parse_time
 from .household_policy import build_rotation, card_visible, filter_personal_items, household_context
 from .card_preferences import card_enabled
+from .couple_photos import LocalPhotoDeck, VIEW as COUPLE_PHOTOS, eligible as couple_photos_eligible
 from .tv_options import GROUPS, draw_options, next_value
 
 
@@ -754,6 +755,40 @@ def geographic_patch(frame, viewport):
     return _presentation_layer(frame, viewport, "geographic_patch")
 
 
+def attach_nearby_photos(frame, state, config, screen_size, now, timer_progress=None, ticker_progress=None):
+    """Keep aircraft photos aligned to the rows after LED composition."""
+    frame.info.pop("aircraft_patches", None)
+    if (state.get("view") != "nearby" or not card_enabled("nearby", config)
+            or config.get("demo") is True or state.get("demo") is True
+            or state.get("backend_available", True) is not True):
+        return
+    from .aircraft_icons import photo_panel, representative_photo
+    from .extra_views import _aircraft_thumbnail_box, _aircraft_type, _nearby_outer_rows, _nearby_rows
+    from .render import PANEL
+    rows, radius = _nearby_rows(state, config, now)
+    outer = _nearby_outer_rows(state, config, now, radius) if not rows else []
+    if not (rows or outer):
+        return
+    left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+    _, _, target_w, target_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+    viewport = (0, 0, target_w, target_h)
+    patches = []
+    for index, (_, row) in enumerate(outer or rows[:3]):
+        code = _aircraft_type(row)
+        photo = representative_photo(code)
+        if photo is None:
+            continue
+        x, y, w, h = _aircraft_thumbnail_box(index, len(outer))
+        box = (left + x * width / 512, top + y * height / 256, w * width / 512, h * height / 256)
+        projected = _project_layer(frame, viewport, (box, photo))
+        if projected:
+            _, (_, _, w, h) = projected
+            size = (min(w, 480), min(h, 380))
+            patches.append((box, photo_panel(code, size, PANEL)))
+    if patches:
+        frame.info["aircraft_patches"] = patches
+
+
 def attach_dinner_photos(frame, state, config, screen_size, now, timer_progress=None, ticker_progress=None):
     """Place bounded meal photography after the LED composition."""
     from PIL import ImageOps
@@ -786,16 +821,29 @@ def attach_dinner_photos(frame, state, config, screen_size, now, timer_progress=
     return frame
 
 
+def attach_couple_photo(frame, state, config, deck, screen_size, now, timer_progress=None, ticker_progress=None):
+    """Fit the whole private picture into the current inset, after LEDs."""
+    left, top, width, height = display_content_bounds(state, now, timer_progress, ticker_progress)
+    _, _, target_w, target_h = display_viewport(screen_size, frame.size, config.get("display_scale_mode", "fit"))
+    inset = (left + 14 * width / 512, top + 54 * height / 256, 484 * width / 512, 170 * height / 256)
+    pixel_w, pixel_h = (inset[2] * target_w / 512, inset[3] * target_h / 256)
+    picture = deck.fit((max(1, min(3840, round(pixel_w))), max(1, min(2160, round(pixel_h)))))
+    if picture is not None and pixel_w > 0 and pixel_h > 0:
+        w = inset[2] * min(1, picture.width / pixel_w)
+        h = inset[3] * min(1, picture.height / pixel_h)
+        frame.info["couple_photo"] = ((inset[0] + (inset[2] - w) / 2, inset[1] + (inset[3] - h) / 2, w, h), picture)
+
+
 def _presentation_layer(frame, viewport, name):
     return _project_layer(frame, viewport, frame.info.get(name))
 
 
-def _project_layer(frame, viewport, value):
+def _project_layer(frame, viewport, value, max_size=(2048, 1024)):
     try:
         box, image = value
         left, top, width, height = box
         if (not isinstance(image, Image.Image) or image.mode != "RGB"
-                or not 1 <= image.width <= 2048 or not 1 <= image.height <= 1024
+                or not 1 <= image.width <= max_size[0] or not 1 <= image.height <= max_size[1]
                 or not all(isinstance(v, (float, int)) and math.isfinite(v) for v in box)
                 or left < 0 or top < 0 or width <= 0 or height <= 0
                 or left + width > frame.width or top + height > frame.height):
@@ -832,11 +880,24 @@ def _present_frame(frame, config, size):
     if patch:
         image, (x, y, width, height) = patch
         output.paste(image.resize((width, height), Image.Resampling.NEAREST), (x, y))
+    for value in frame.info.get("aircraft_patches", [])[:10]:
+        patch = _project_layer(frame, viewport, value)
+        if patch:
+            image, (x, y, width, height) = patch
+            if image.size != (width, height):
+                image = image.resize((width, height), Image.Resampling.LANCZOS)
+            output.paste(image, (x, y))
     for value in frame.info.get("meal_patches", [])[:4]:
         patch = _project_layer(frame, viewport, value)
         if patch:
             image, (x, y, width, height) = patch
             output.paste(image.resize((width, height), Image.Resampling.LANCZOS), (x, y))
+    photo = _project_layer(frame, viewport, frame.info.get("couple_photo"), max_size=(3840, 2160))
+    if photo:
+        image, (x, y, width, height) = photo
+        if image.size != (width, height):
+            image = image.resize((width, height), Image.Resampling.LANCZOS)
+        output.paste(image, (x, y))
     brightness = config.get("brightness", .7)
     return output if brightness == 1 else output.point([int(value * brightness) for value in range(256)] * 3)
 
@@ -990,11 +1051,12 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
     cursor = RotationCursor(entries, time.monotonic())
     card_transition = CardTransition()
     analog_navigation = AnalogNavigation()
+    couple_photos = LocalPhotoDeck(getattr(connection, "data_dir", None))
     automatic, settings_open, settings_row, help_open = True, False, 0, False
     settings_group = 0
     settings_rows = GROUPS[settings_group][1]
     last_fetch, frames = time.monotonic(), 0
-    activity_view, last_activity = None, last_fetch
+    activity_view, last_activity = "other", last_fetch
     clock = pygame.time.Clock()
     running, error, backend_available = True, None, True
     guest_hide_latch = False
@@ -1125,7 +1187,19 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             wall_now = datetime.now(timezone.utc)
             current_status = fresh_household_status(status, config, wall_now, backend_available=backend_available)
             entries = build_rotation(current_status, config, wall_now)
+            sleeping = is_sleeping(config, wall_now)
+            photos_permitted = (not (settings_open or help_open or sleeping)
+                                and couple_photos_eligible(current_status, config))
+            photo_day = wall_now.astimezone(ZoneInfo(config.get("timezone", "UTC"))).date() if photos_permitted else None
+            if couple_photos.refresh(now, photos_permitted, photo_day):
+                entries = [*entries, {"key": COUPLE_PHOTOS, "view": COUPLE_PHOTOS,
+                                      "duration_seconds": config.get("rotation_seconds", 15)}]
             entry = cursor.tick(entries, now, automatic)
+            show_couple_photo = entry["view"] == COUPLE_PHOTOS
+            if couple_photos.select(show_couple_photo) is None and show_couple_photo:
+                entries.pop()
+                entry = cursor.tick(entries, now, automatic)
+                show_couple_photo = False
             state = entry_render_state(current_status, config, entry, wall_now)
             # Entries have already passed per-frame presence/privacy gates.
             # Priority repeats and individual trip pages are real deck slots.
@@ -1138,7 +1212,6 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             state["rotation_hold_seconds"] = max(0, math.ceil(cursor.hold_until - now))
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
-            sleeping = is_sleeping(config, wall_now)
             try:
                 focused = bool(pygame.display.get_active() and pygame.key.get_focused())
             except Exception:
@@ -1146,10 +1219,11 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             visible_nearby = (state["view"] == "nearby" and focused and backend_available
                               and not (settings_open or help_open or sleeping or error)
                               and config.get("nearby_enabled") is True and card_enabled("nearby", config))
-            desired_activity = "nearby" if visible_nearby else "other"
+            desired_activity = "other"
+            if visible_nearby:
+                desired_activity = "nearby-paused" if not automatic or now < cursor.hold_until else "nearby"
             if max_frames is None and (
-                    desired_activity == "nearby" and (activity_view != "nearby" or now - last_activity >= 2)
-                    or activity_view == "nearby" and desired_activity == "other"):
+                    desired_activity != activity_view or (desired_activity != "other" and now - last_activity >= 2)):
                 report_display_activity(connection, desired_activity)
                 last_activity = now
             activity_view = desired_activity
@@ -1190,10 +1264,15 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
                 if display_surface is not None:
                     attach_nearby_map(frame, state, config, connection, display_surface.get_size(),
                                       wall_now, timer_progress, ticker_progress)
+                    attach_nearby_photos(frame, state, config, display_surface.get_size(),
+                                         wall_now, timer_progress, ticker_progress)
                     attach_flight_context(frame, state, config, connection, display_surface.get_size(),
                                           wall_now, timer_progress, ticker_progress)
                     attach_dinner_photos(frame, state, config, display_surface.get_size(),
                                          wall_now, timer_progress, ticker_progress)
+                    if show_couple_photo:
+                        attach_couple_photo(frame, state, config, couple_photos, display_surface.get_size(),
+                                            wall_now, timer_progress, ticker_progress)
             screen.draw(frame, config)
             if frames == 0 and on_healthy:
                 on_healthy()
@@ -1209,7 +1288,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             clock.tick((30 if screen.gl else 12) if transitioning or ticker_active else
                        (12 if screen.gl or animated_radar else 4))
     finally:
-        if max_frames is None and activity_view == "nearby":
+        if max_frames is None and activity_view != "other":
             report_display_activity(connection, "other")
         pygame.quit()
     return {"frames": frames, "opengl": bool(screen.gl), "shader": False}

@@ -33,13 +33,16 @@ def main():
                 shutil.copy2(previous, history / name)
     prefix = f"flightwall-batocera-{version}"
     installer = output / f"{prefix}.tar.gz"
+    private_dirs = {"__pycache__", "couple-photos"}
+
+    def source_filter(entry):
+        return None if any(part.casefold() in private_dirs for part in Path(entry.name).parts) or entry.name.endswith(".pyc") else entry
+
     with tarfile.open(installer, "w:gz", compresslevel=6) as archive:
-        archive.add(release, arcname=f"{prefix}/releases/{version}")
+        archive.add(release, arcname=f"{prefix}/releases/{version}", filter=source_filter)
         archive.add(ROOT / "scripts" / "install.sh", arcname=f"{prefix}/install.sh")
         archive.add(ROOT / "scripts" / "diagnose.sh", arcname=f"{prefix}/scripts/diagnose.sh")
         archive.add(ROOT / "scripts" / "register-ports-media.py", arcname=f"{prefix}/scripts/register-ports-media.py")
-        def source_filter(entry):
-            return None if "__pycache__" in Path(entry.name).parts or entry.name.endswith(".pyc") else entry
         for name in ("batocera", "docs", "README.txt", "LICENSE.txt", "THIRD-PARTY.txt", "VERSION", "integrations"):
             archive.add(ROOT / name, arcname=f"{prefix}/{name}", filter=source_filter)
     source = output / f"flightwall-source-{version}.zip"
@@ -51,7 +54,7 @@ def main():
     source_paths.extend(ROOT / name for name in allowed_files if (ROOT / name).is_file())
     with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(source_paths):
-            if "__pycache__" in path.parts or path.suffix == ".pyc":
+            if any(part.casefold() in private_dirs for part in path.relative_to(ROOT).parts) or path.suffix == ".pyc":
                 continue
             # Explicit source inventory: never traverse a data directory, venv,
             # build output, credentials or signing key directory.

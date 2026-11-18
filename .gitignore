@@ -19,6 +19,7 @@ signing-*
 # Private household data, never distribute or commit
 accounts/
 artwork/
+couple-photos/
 *-token.txt
 gmail-*.json
 household-cache.json
@@ -53,6 +54,9 @@ flight-watches.json
 flight-watches.lock
 flightaware-usage.json
 flightaware-usage.lock
+adsblol-usage.json
+adsblol-fast-usage.json
+adsblol-usage.lock
 flight-environment.json
 national-radar.png
 national-radar-loop.png

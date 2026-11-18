@@ -1,3 +1,22 @@
+0.4.30 FAMILY TRAVEL LABEL AND SHARED PHOTOS
+
+Use synthetic local-date fixtures to check alternating travel spans, their
+first and last days, ten-day position, and fallbacks. Check that the shared
+photo card appears in either Home/Away direction, is excluded in guest mode
+and on Unknown/stale/outage, and clears without lingering during pause.
+Verify full-resolution photo composition without the LED effect, safe local
+image loading, weekly changes in the featured selection, and exclusion of
+private assets from public packages. Check signed bundled aircraft photographs
+against their credited source, type and license. Test positioning above the
+LED layer for both traffic lists and alignment with the timer and ticker.
+Test native upgrade and rollback from published 0.4.29 before activation.
+
+Verify the faster free aircraft cadence only on a paused or held Nearby card,
+its 60-attempt rolling allowance, ordinary polling after the hold, provider
+backoff, and the unchanged combined quota. Existing home coordinates are
+not exposed. Check that provider requests don't synthesize movement between
+source observations.
+
 0.4.29 BATOCERA PREVIEW AUDIO DURING BOOT-LAUNCHED PORTS
 
 The installed EmulationStation was observed with a preview video and an

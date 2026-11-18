@@ -76,9 +76,13 @@ OFF-DUTY NEARBY TRAFFIC: ADSB.LOL (OPTIONAL COMMUNITY FEED)
 This uses https://api.adsb.lol/ without a paid FlightAware subscription. The
 community provider describes free ad-hoc/feeder access and optional sponsorship
 for more quota. Availability, access rules and coverage can change; continuous
-unlimited access is not promised. The app currently makes unauthenticated local
-circle requests at most once per minute while off duty. Your roster flights
-retain priority. No paid fallback or subscription is enabled automatically.
+unlimited access is not promised. A shared request normally refreshes the near
+and surrounding areas every 210 seconds. While the Nearby card has focus, use
+Space to pause or P to hold it for roughly five-second polling. Flight Wall
+allows up to 60 extra fast requests and 480 total in a rolling 24 hours, and
+honors provider backoff. The card returns to ordinary polling when the fast
+allowance runs out or you leave it. Roster flights retain priority for separate
+paid requests. Enabling the community feed does not enable paid lookups.
 
 First save your own home/display pin privately through setup. Enabling nearby
 traffic sends that pin to ADSB.lol as query coordinates; it does not send your

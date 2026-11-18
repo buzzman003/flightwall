@@ -529,7 +529,8 @@ class RemoteServer:
                             return
                         body = self._body()
                         if (not isinstance(body, dict) or set(body) != {"view"}
-                                or type(body["view"]) is not str or body["view"] not in {"nearby", "other"}):
+                                or type(body["view"]) is not str
+                                or body["view"] not in {"nearby", "nearby-paused", "other"}):
                             raise ValueError("Unsupported display activity")
                         callback = owner.callbacks.get("display_activity")
                         if not callable(callback):

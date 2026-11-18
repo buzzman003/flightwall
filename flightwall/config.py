@@ -37,6 +37,7 @@ DEFAULTS = {
     "dinner_start": "14:30", "dinner_end": "19:00", "alexa_enabled": False,
     "dinner_options_enabled": False, "dinner_options_monthly_limit_usd": 0,
     "dinner_options_preferences": "", "dinner_options_servings": 8, "dinner_options_max_minutes": 60,
+    "couple_photos_enabled": False,
     "secondary_calendar_id": "", "secondary_calendar_name": "Buzz Flight Brief",
     "mycrew_calendar_id": "", "mycrew_clock": "",
     "family_calendar_profile": "chris", "family_calendar_id": "", "family_calendar_name": "",
@@ -64,7 +65,7 @@ DEFAULTS = {
     "vps_leave_target_early_minutes": 60, "vps_leave_target_late_minutes": 50,
     "display_scale_mode": "fit", "timers_enabled": True,
     "custody_outlook_enabled": True, "custody_outlook_days": 10, "flight_preview_days": 5,
-    "planned_trip_days": "[]",
+    "planned_trip_days": "[]", "family_travel_plan": "{}",
     "local_visits_enabled": True, "shopping_ticker_enabled": True,
     "shopping_ticker_visible": True, "shopping_enabled": False,
     "shopping_lisa_opt_in": False, "shopping_list_source": "flightwall",
@@ -137,6 +138,9 @@ def validate(key, value):
     if key == "commute_schedule_idents":
         from .commute import schedule_idents
         return json.dumps(schedule_idents(value), separators=(",", ":"))
+    if key == "family_travel_plan":
+        from .outlook import family_travel_plan
+        return json.dumps(family_travel_plan(value), separators=(",", ":"))
     if key == "planned_trip_days":
         from .mycrew import clean_trip_days
         spans = value

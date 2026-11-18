@@ -14,14 +14,15 @@ def test_runtime_display_lease_is_end_exclusive_refreshable_and_other_clears(tmp
     with patch("flightwall.backend.time.monotonic", return_value=100) as clock:
         assert runtime.nearby_view_is_active() is False
         runtime.note_display_activity("nearby")
-        assert runtime.nearby_view_is_active() is True
+        assert runtime.nearby_view_activity() == "nearby"
         clock.return_value = 105.999
         assert runtime.nearby_view_is_active() is True
         clock.return_value = 106
         assert runtime.nearby_view_is_active() is False
-        runtime.note_display_activity("nearby")
+        runtime.note_display_activity("nearby-paused")
         clock.return_value = 111.999
         assert runtime.nearby_view_is_active() is True
+        assert runtime.nearby_view_activity() == "nearby-paused"
         runtime.note_display_activity("other")
         assert runtime.nearby_view_is_active() is False
         clock.return_value = 112
@@ -73,9 +74,10 @@ def test_activity_accepts_only_exact_admin_body_and_calls_direct_callback(server
     remote, calls = server
     admin = remote.api_key_path.read_text().strip()
     assert request(remote, body={"view": "nearby"}, token=admin) == (200, {"ok": True})
+    assert request(remote, body={"view": "nearby-paused"}, token=admin) == (200, {"ok": True})
     assert request(remote, body={"view": "other"}, token=admin) == (200, {"ok": True})
-    assert calls == ["nearby", "other"]
-    assert "display_activity" not in SETTING_TYPES and "nearby_visible" not in SETTING_TYPES
+    assert calls == ["nearby", "nearby-paused", "other"]
+    assert {"display_activity", "nearby_visible", "nearby_fast"}.isdisjoint(SETTING_TYPES)
 
 
 @pytest.mark.parametrize("body", [
@@ -97,7 +99,7 @@ def test_activity_rejects_unauthenticated_alexa_phone_and_delegated_mcp_bearers(
     with remote._lock:
         delegated = remote._mint("synthetic-mcp-client", SCOPE)["access_token"]
     for token in (None, "invalid-synthetic-token", alexa, phone, delegated):
-        code, result = request(remote, body={"view": "nearby"}, token=token)
+        code, result = request(remote, body={"view": "nearby-paused"}, token=token)
         assert code == 401 and result == {"error": "Authentication required"}
     assert calls == []
 
@@ -117,9 +119,9 @@ def test_display_activity_is_not_advertised_or_callable_through_mcp(server):
     remote, calls = server
     admin = remote.api_key_path.read_text().strip()
     assert "display_activity" not in {tool["name"] for tool in _tools()}
-    for name in ("display_activity", "display-activity", "nearby_visible"):
+    for name in ("display_activity", "display-activity", "nearby_visible", "nearby_fast"):
         body = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                "params": {"name": name, "arguments": {"view": "nearby"}}}
+                "params": {"name": name, "arguments": {"view": "nearby-paused"}}}
         code, value = request(remote, "/mcp", body, admin)
         assert code == 200 and value["result"]["isError"] is True
     assert calls == []
@@ -131,11 +133,13 @@ def test_admin_activity_updates_actual_runtime_lease_and_clears_without_persiste
     remote.callbacks["display_activity"] = runtime.note_display_activity
     admin = remote.api_key_path.read_text().strip()
     with patch("flightwall.backend.time.monotonic", return_value=100) as clock:
-        assert request(remote, body={"view": "nearby"}, token=admin)[0] == 200
-        assert runtime.nearby_view_is_active() is True
+        assert request(remote, body={"view": "nearby-paused"}, token=admin)[0] == 200
+        assert runtime.nearby_view_activity() == "nearby-paused"
+        assert runtime.nearby_view_is_active()
         clock.return_value = 106
         assert runtime.nearby_view_is_active() is False
         assert request(remote, body={"view": "nearby"}, token=admin)[0] == 200
+        assert runtime.nearby_view_activity() == "nearby"
         assert request(remote, body={"view": "other"}, token=admin)[0] == 200
         assert runtime.nearby_view_is_active() is False
     assert not (tmp_path / "runtime" / "display-activity.json").exists()

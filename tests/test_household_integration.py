@@ -108,6 +108,9 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         self.mail_status.assert_called_once_with("chris")
 
     def test_private_family_agenda_data_stays_on_the_display_route(self):
+        self.runtime.config.update({"family_travel_plan": {
+            "label": "Parker Chicago", "spans": [{"start_date": "2026-10-23", "days": 2, "repeat_days": 42}],
+        }})
         household = self.runtime.household.status(now=NOW)
         household["custody_outlook"]["activities"] = [{"title": "Rory Dance", "start": iso(NOW),
                                                         "end": iso(NOW + timedelta(hours=1))}]
@@ -118,7 +121,9 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
             maintenance = self.runtime.status(NOW)["custody_outlook"]
         self.assertEqual(visible["activities"][0]["title"], "Rory Dance")
         self.assertTrue(visible["buzz_plan"]["2026-10-22"]["gone"])
-        self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync"}.isdisjoint(maintenance))
+        self.assertEqual(visible["travel_labels"], {"2026-10-23": "Parker Chicago", "2026-10-24": "Parker Chicago"})
+        self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync", "travel_labels"}
+                        .isdisjoint(maintenance))
 
     def test_lisa_private_cards_require_all_three_fresh_household_conditions(self):
         result = self.runtime.display_status(NOW)
@@ -169,6 +174,9 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         self.assertTrue(any(item.get("image_data") for item in again["inspiration"] if item["owner"] == "lisa"))
 
     def test_actual_http_status_and_mcp_keep_private_display_content_local(self):
+        self.runtime.config.update({"family_travel_plan": {
+            "label": "Parker Chicago", "spans": [{"start_date": "2026-10-23", "days": 2, "repeat_days": 42}],
+        }})
         callbacks = {"get_status": lambda: self.runtime.status(NOW),
                      "get_display_status": lambda: self.runtime.display_status(NOW)}
         server = RemoteServer(self.runtime.data_dir, self.runtime.config.get, callbacks, port=0).start()
@@ -187,13 +195,16 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         try:
             display = request("/api/v1/display")
             self.assertIn("LISA-PRIVATE-MAIL", json.dumps(display))
+            self.assertEqual(display["custody_outlook"]["travel_labels"]["2026-10-23"], "Parker Chicago")
+            self.assertNotIn("family_travel_plan", display["config"])
             status = request("/api/v1/status")
             rpc = request("/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                                     "params": {"name": "get_status", "arguments": {}}})
             self.assertFalse(rpc["result"]["isError"])
             for result in (status, rpc):
                 serialized = json.dumps(result)
-                for private in ("LISA-PRIVATE", "PRIVATE-HEALTH-QUERY", "image_data", "data:image/"):
+                for private in ("LISA-PRIVATE", "PRIVATE-HEALTH-QUERY", "image_data", "data:image/", "Parker Chicago",
+                                "family_travel_plan", "travel_labels"):
                     self.assertNotIn(private, serialized)
         finally:
             server.stop()

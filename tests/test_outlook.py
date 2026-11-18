@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from flightwall.config import ConfigStore, PUBLIC_FIELDS, REMOTE_SETTINGS, validate
-from flightwall.outlook import activity_agenda, agenda_focus, custody_outlook, local_visits, planned_buzz_days, today_activities, trip_preview
+from flightwall.outlook import (activity_agenda, agenda_focus, custody_outlook, family_travel_labels, local_visits,
+                               planned_buzz_days, today_activities, trip_preview)
 from flightwall.household_policy import build_rotation
 
 
@@ -34,6 +35,42 @@ def test_custody_outlook_conflicts_gaps_and_failed_sync_do_not_guess():
     for failed, last_sync in [(True, now.isoformat()), (False, (now - timedelta(hours=1)).isoformat())]:
         result = custody_outlook(rows, last_sync, {}, now, failed=failed)
         assert result["stale"] and all(row["state"] == "unknown" for row in result["days"])
+
+
+def test_family_travel_alternates_local_day_spans_and_rolls_into_the_ten_day_window(tmp_path):
+    store = ConfigStore(tmp_path)
+    config = store.update({"timezone": "America/Chicago", "demo": False, "family_travel_plan": {
+        "label": "Parker Chicago",
+        "spans": [{"start_date": "2027-01-06", "days": 2, "repeat_days": 42},
+                  {"start_date": "2027-01-26", "days": 3, "repeat_days": 42}],
+    }})
+    for observed, dates in (
+        ("2027-01-06T18:00:00Z", ("2027-01-06", "2027-01-07")),
+        ("2027-01-26T05:59:00Z", ("2027-01-26", "2027-01-27", "2027-01-28")),
+        ("2027-01-27T05:59:00Z", ("2027-01-26", "2027-01-27", "2027-01-28")),
+        ("2027-01-27T06:00:00Z", ("2027-01-27", "2027-01-28")),
+        ("2027-02-08T05:59:00Z", ()),
+        ("2027-02-09T05:59:00Z", ("2027-02-17",)),
+        ("2027-03-08T18:00:00Z", ("2027-03-09", "2027-03-10", "2027-03-11")),
+        ("2027-03-29T18:00:00Z", ("2027-03-31", "2027-04-01")),
+    ):
+        assert family_travel_labels(config, dt(observed)) == dict.fromkeys(dates, "Parker Chicago")
+    assert family_travel_labels(config | {"guest_mode": True}, dt("2027-01-26T18:00:00Z")) == {}
+    assert family_travel_labels(config | {"demo": True}, dt("2027-01-26T18:00:00Z")) == {}
+    assert "family_travel_plan" not in PUBLIC_FIELDS | REMOTE_SETTINGS
+    assert "family_travel_plan" not in store.public()
+    with pytest.raises(ValueError, match="requires the local CLI"):
+        store.update({"family_travel_plan": {}}, remote=True)
+
+
+@pytest.mark.parametrize("invalid", [
+    {"start_date": "20270106"}, {"start_date": "2027-02-29"}, {"days": True},
+    {"days": 11}, {"repeat_days": 0}, {"repeat_days": 367}, {"notes": "Omitted"},
+])
+def test_family_travel_rejects_noncanonical_dates_unbounded_spans_and_extra_fields(invalid):
+    span = {"start_date": "2027-01-06", "days": 2, "repeat_days": 42} | invalid
+    with pytest.raises(ValueError):
+        validate("family_travel_plan", {"label": "Parker Chicago", "spans": [span]})
 
 
 def leg(id, origin, destination, start, end, **extra):
