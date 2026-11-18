@@ -15,6 +15,19 @@ that quota. Source observations expire normally, including between polls.
 One-second updates require a separately supported feed arrangement.
 https://api.adsb.lol/api/openapi.json
 
+The first candidate passed all Linux tests but its frozen fresh-install launch
+failed before publication: a new data directory lacked the control token that
+an existing-installation test already had. Bootstrap is now limited to that
+exact missing token plus an unused loopback port. A real empty-data fixture
+checks token provisioning and offline DEMO rendering. Occupied/unreadable/auth
+and timeout failures still cannot trigger a duplicate Runtime.
+Paid nearby metadata uses a six-second administrator-only native viewing lease.
+Tests cover hidden/paused focus, expiry, malformed requests and denial of voice,
+phone and MCP/OAuth credentials. The cap ledger is retained without resetting it.
+Provider usage totals can differ from the app's conservative reserved allowance.
+Compare real account totals privately; do not reset the ledger or publish private
+billing records. Aggregate counts do not attribute each attempted nearby query.
+
 Chris approved Gmail read-only consent on November 17. Profile identity and
 separate storage were verified without printing credentials. The first sync
 imported four supported past legs; five messages required review. No upcoming

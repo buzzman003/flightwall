@@ -397,6 +397,12 @@ def render_nearby(draw, image, state, config, now):
         _text(draw, (23, 210), f"NO AIRCRAFT INSIDE {radius:g} MI", CYAN, max_width=280)
     elif not rows:
         status = state.get("nearby_status")
+        if config.get("nearby_enabled") is not True or state.get("demo", config.get("demo", False)):
+            status = "off"
+        elif status == "ready" and isinstance(state.get("nearby"), list) and state["nearby"]:
+            # A retained, nonempty snapshot can lose its final valid position
+            # between backend polls. That is stale traffic, not observed emptiness.
+            status = "stale"
         title, subtitle, reason = {
             "ready": ("NO AIRCRAFT", "REPORTED", "IN THIS RADIUS"),
             "stale": ("FEED STALE", "", "WAITING FOR UPDATE"),

@@ -17,7 +17,7 @@ from pathlib import Path
 from .config import private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
 from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
-                            fresh_nearby_route, match_nearby_route, nearby_lookup_identity,
+                            fresh_nearby_route, nearby_route_result, nearby_lookup_identity,
                             match_operating_flight, normalize_operating_status, operating_ident,
                             stamp as status_stamp, valid_us_registration, within_tracking_window)
 from .personal import PersonalError, PersonalStore
@@ -124,6 +124,9 @@ NEARBY_OUTER_MAX_ROWS = 10
 # https://api.adsb.lol/api/openapi.json
 NEARBY_POLL_SECONDS = 180
 NEARBY_BACKOFF_MAX_SECONDS = 1800
+NEARBY_ROUTE_DIAGNOSTIC_CODES = ("attempts", "matched", "empty_response", "no_verified_match", "ambiguous",
+    "incomplete_response", "invalid_response", "unsupported_identity", "invalid_position", "stale_position",
+    "transport_error", "budget_stop", "configuration_error")
 METRES_PER_MILE = 1609.344
 METRES_PER_NAUTICAL_MILE = 1852
 
@@ -288,6 +291,9 @@ class FlightFeeds:
         self._operating_terminal = None
         self._nearby_route_cache = {}
         self._last_nearby_route = -math.inf
+        self._nearby_route_diagnostic_counts = {key: 0 for key in NEARBY_ROUTE_DIAGNOSTIC_CODES}
+        self._nearby_diagnostics_lock = threading.Lock()
+        self._nearby_request_started = False
         self._nearby_lock = threading.Lock()
 
     def _allow_paid_request(self, config, path, *, purpose="operating"):
@@ -394,6 +400,11 @@ class FlightFeeds:
         if not api_key or len(raw_key) > 4096:
             raise ValueError("FlightAware key is empty")
         self._allow_paid_request(config, path, purpose=purpose)
+        if purpose == "nearby":
+            # Count only after the existing allowance has permitted a request.
+            # Never include the request URL, aircraft identity or response body.
+            self._nearby_request_started = True
+            self._record_nearby_route_diagnostic("attempts")
         return request_json("https://aeroapi.flightaware.com/aeroapi" + path, {"x-apikey": api_key})
 
     def _set_operating_status(self, config, flight, result):
@@ -546,9 +557,21 @@ class FlightFeeds:
     def _nearby_route_identity(row):
         return row.get("hex"), nearby_lookup_identity(row), row.get("registration") or None
 
-    def _poll_nearby_routes(self, config, now):
+    def _record_nearby_route_diagnostic(self, code):
+        if code not in NEARBY_ROUTE_DIAGNOSTIC_CODES:
+            return
+        with self._nearby_diagnostics_lock:
+            self._nearby_route_diagnostic_counts[code] = min(1_000_000, self._nearby_route_diagnostic_counts[code] + 1)
+
+    def nearby_route_diagnostics(self):
+        """Process-lifetime aggregate reasons only; no identities or history."""
+        with self._nearby_diagnostics_lock:
+            return dict(self._nearby_route_diagnostic_counts)
+
+    def _poll_nearby_routes(self, config, now, *, visible=False):
         """Last priority: one closest-aircraft metadata lookup per five minutes."""
-        if config.get("nearby_enrichment_enabled") is not True or not tracking_available(self.data_dir, config):
+        if (visible is not True or config.get("nearby_enrichment_enabled") is not True
+                or not tracking_available(self.data_dir, config)):
             return
         tick = time.monotonic()
         # Bound in-memory cache only; no aircraft/history/provider JSON files.
@@ -573,16 +596,23 @@ class FlightFeeds:
             if len(self._nearby_route_cache) > 128:
                 oldest = min(self._nearby_route_cache, key=lambda key: self._nearby_route_cache[key]["checked_at"])
                 self._nearby_route_cache.pop(oldest)
+            self._nearby_request_started = False
             try:
                 params = urllib.parse.urlencode({"start": (now - timedelta(hours=24)).isoformat(),
                                                  "end": now.isoformat(), "ident_type": ident_type, "max_pages": 1})
                 response = self._flightaware("/flights/" + ident + "?" + params, config, purpose="nearby")
-                entry["route"] = match_nearby_route(response, row, utcnow())
-            except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError):
-                pass  # Unknown route metadata must not disturb the owner's feed.
+                entry["route"], reason = nearby_route_result(response, row, utcnow())
+                if self._nearby_request_started:
+                    self._record_nearby_route_diagnostic(reason)
+            except PaidLimitError:
+                self._record_nearby_route_diagnostic("budget_stop")
+            except (OSError, urllib.error.URLError):
+                self._record_nearby_route_diagnostic("transport_error" if self._nearby_request_started else "configuration_error")
+            except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+                self._record_nearby_route_diagnostic("invalid_response" if self._nearby_request_started else "configuration_error")
             break
 
-    def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None):
+    def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None, nearby_visible=False):
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
@@ -611,11 +641,11 @@ class FlightFeeds:
         if not self._nearby_lock.acquire(blocking=False):
             return
         try:
-            self._poll_nearby(config, now, on_duty=on_duty)
+            self._poll_nearby(config, now, on_duty=on_duty, nearby_visible=nearby_visible)
         finally:
             self._nearby_lock.release()
 
-    def _poll_nearby(self, config, now, *, on_duty=False):
+    def _poll_nearby(self, config, now, *, on_duty=False, nearby_visible=False):
         if config["demo"] or not config["nearby_enabled"]:
             self.nearby = []
             self._nearby_completed = (None, [])
@@ -647,8 +677,8 @@ class FlightFeeds:
         self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
         tick = time.monotonic()
         if tick - self._last_nearby < NEARBY_POLL_SECONDS or tick < self._nearby_retry_at:
-            if not on_duty:
-                self._poll_nearby_routes(config, now)
+            if not on_duty and nearby_visible is True:
+                self._poll_nearby_routes(config, now, visible=True)
             return
         try:
             wait = self._reserve_nearby_request(now)
@@ -685,8 +715,8 @@ class FlightFeeds:
             self._nearby_retry_at = time.monotonic() + backoff
             self._save_nearby_retry(utcnow(), backoff)
             self.error = "Nearby traffic feed unavailable."
-        if not on_duty:
-            self._poll_nearby_routes(config, utcnow())
+        if not on_duty and nearby_visible is True:
+            self._poll_nearby_routes(config, utcnow(), visible=True)
 
     @staticmethod
     def _watch_flight(data, watch):

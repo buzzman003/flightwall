@@ -8,7 +8,9 @@ Nearby Aircraft can show the nearest ten received aircraft out to thirty
 statute miles when the configured inner ring is freshly empty. Registration
 or a verified commercial flight number and compact aircraft type lead each row.
 Unkeyed ADSB.lol requests respect the published daily limit; this does not
-provide one-second tracking. Paid FlightAware limits are unchanged.
+provide one-second tracking. Paid nearby-route lookups require the nearby
+card to be visible and focused, including while paused; the background service
+and other cards do not renew that short viewing lease. Paid limits are unchanged.
 
 Lisa can connect her own separate read-only Gmail for matching Delta listings.
 This does not enable message previews, Calendar, phone presence or private

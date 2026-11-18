@@ -14,6 +14,7 @@ import json
 import math
 from pathlib import Path
 import random
+import socket
 import threading
 import time
 import urllib.error
@@ -476,7 +477,30 @@ def validate_startup_status(status):
 class BackendConnection:
     def __init__(self, data_dir, config):
         self.data_dir = Path(data_dir)
-        self.base = f"http://127.0.0.1:{config['control_port']}"
+        self.port = config["control_port"]
+        self.base = f"http://127.0.0.1:{self.port}"
+
+    def uninitialized_without_backend(self, error):
+        """A fresh install has no owner token until its first Runtime starts.
+
+        Only that exact missing file plus an unused loopback port permits
+        bootstrap. A missing token beside an existing listener needs repair;
+        it must not regenerate authentication or start a competing backend.
+        """
+        token_path = self.data_dir / "control-token.txt"
+        if (not isinstance(error, FileNotFoundError) or error.filename is None
+                or Path(error.filename) != token_path or token_path.is_symlink()):
+            return False
+        try:
+            # Do not listen or enable address reuse. This reserves then releases
+            # the local endpoint without sending credentials or regenerating a
+            # token while another service owns it. A subsequent bind race still
+            # fails normally inside Runtime; no existing owner is stopped.
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind(("127.0.0.1", self.port))
+            return True
+        except OSError:
+            return False
 
     def request(self, path, patch=None):
         token = (self.data_dir / "control-token.txt").read_text().strip()
@@ -919,6 +943,14 @@ def wait_for_startup_status(connection, pygame, screen, config, *, initial_statu
         clock.tick(30)
 
 
+def report_display_activity(connection, view):
+    """Best-effort local admin lease; no display data, settings or paid request."""
+    try:
+        connection.request("display-activity", {"view": view})
+    except Exception:
+        pass  # Missing activity expires closed at the backend.
+
+
 def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             initial_status=None, startup_config=None):
     import pygame
@@ -953,6 +985,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
     settings_group = 0
     settings_rows = GROUPS[settings_group][1]
     last_fetch, frames = time.monotonic(), 0
+    activity_view, last_activity = None, last_fetch
     clock = pygame.time.Clock()
     running, error, backend_available = True, None, True
     guest_hide_latch = False
@@ -1094,6 +1127,20 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
             sleeping = is_sleeping(config, wall_now)
+            try:
+                focused = bool(pygame.display.get_active() and pygame.key.get_focused())
+            except Exception:
+                focused = False
+            visible_nearby = (state["view"] == "nearby" and focused and backend_available
+                              and not (settings_open or help_open or sleeping or error)
+                              and config.get("nearby_enabled") is True and card_enabled("nearby", config))
+            desired_activity = "nearby" if visible_nearby else "other"
+            if max_frames is None and (
+                    desired_activity == "nearby" and (activity_view != "nearby" or now - last_activity >= 2)
+                    or activity_view == "nearby" and desired_activity == "other"):
+                report_display_activity(connection, desired_activity)
+                last_activity = now
+            activity_view = desired_activity
             if sleeping and not settings_open and not help_open:
                 frame = Image.new("RGB", frame.size)
             animations_allowed = not (settings_open or help_open or sleeping or error
@@ -1150,5 +1197,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             clock.tick((30 if screen.gl else 12) if transitioning or ticker_active else
                        (12 if screen.gl or animated_radar else 4))
     finally:
+        if max_frames is None and activity_view == "nearby":
+            report_display_activity(connection, "other")
         pygame.quit()
     return {"frames": frames, "opengl": bool(screen.gl), "shader": False}

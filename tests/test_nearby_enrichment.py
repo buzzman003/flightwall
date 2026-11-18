@@ -9,7 +9,8 @@ import pytest
 
 from flightwall.config import DEFAULTS
 from flightwall.feeds import FlightFeeds
-from flightwall.flight_alerts import fresh_nearby_route, match_nearby_route, nearby_commercial_ident
+from flightwall.flight_alerts import (fresh_nearby_route, match_nearby_route,
+                                     nearby_commercial_ident, nearby_route_result)
 
 NOW = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
 
@@ -52,6 +53,35 @@ def test_unique_airborne_callsign_is_projected_without_private_or_duplicate_tele
     assert not {"latitude", "longitude", "groundspeed", "altitude", "track", "route"}.intersection(route)
 
 
+@pytest.mark.parametrize("payload,row,expected", [
+    ({"flights": [], "links": None, "num_pages": 1}, aircraft(), "empty_response"),
+    (data(provider(ident="AAL123")), aircraft(), "no_verified_match"),
+    (data(provider(actual_off=None)), aircraft(), "no_verified_match"),
+    (data(provider(position_only=True)), aircraft(), "no_verified_match"),
+    (data(provider(origin={"code_iata": None})), aircraft(), "no_verified_match"),
+    (data(provider(), provider(fa_flight_id="another-current-flight")), aircraft(), "ambiguous"),
+    (data(links={"next": "private-cursor"}), aircraft(), "incomplete_response"),
+    ({"flights": "private-content"}, aircraft(), "invalid_response"),
+    (data(), aircraft(callsign=None, registration=None), "unsupported_identity"),
+    (data(), aircraft(hex="bad"), "invalid_position"),
+    (data(), aircraft(observed_at=(NOW - timedelta(seconds=121)).isoformat()), "stale_position"),
+])
+def test_route_outcome_codes_distinguish_empty_from_rejected_without_private_data(payload, row, expected):
+    original = deepcopy((payload, row))
+    route, reason = nearby_route_result(payload, row, NOW)
+    assert route is None and reason == expected
+    assert match_nearby_route(payload, row, NOW) is None
+    assert (payload, row) == original
+    assert not any(value in reason for value in ("DAL123", "N123AB", "PRIVATE", "private"))
+
+
+def test_success_outcome_preserves_the_existing_narrow_route_projection():
+    route, reason = nearby_route_result(data(), aircraft(), NOW)
+    assert reason == "matched"
+    assert route == match_nearby_route(data(), aircraft(), NOW)
+    assert "reason" not in route and "PRIVATE" not in json.dumps(route)
+
+
 def test_nearby_route_falls_back_to_icao_when_iata_is_missing():
     route = match_nearby_route(data(provider(
         origin={"code_iata": "ATL", "code_icao": "KATL"},
@@ -75,7 +105,7 @@ def test_registration_lookup_requires_unique_verified_airborne_tail_and_supports
     feed._nearby_completed = ((35.0, -90.0, 5), [row])
     with patch("flightwall.feeds.utcnow", return_value=NOW), \
             patch.object(feed, "_flightaware", return_value=data(result)) as network:
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
     assert network.call_count == 1
     query = urlsplit(network.call_args.args[0])
     assert query.path == "/flights/N123AB"
@@ -157,27 +187,27 @@ def test_sparse_closest_three_lookups_have_distinct_success_and_miss_backoff(tmp
     with patch("flightwall.feeds.utcnow", return_value=NOW) as now, \
             patch("flightwall.feeds.time.monotonic", return_value=1000) as tick, \
             patch.object(feed, "_flightaware", return_value=data()) as network:
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         assert network.call_count == 1 and network.call_args.args[0].startswith("/flights/DAL123?")
         assert network.call_args.kwargs == {"purpose": "nearby"}
         query = parse_qs(urlsplit(network.call_args.args[0]).query)
         assert query["max_pages"] == ["1"] and query["ident_type"] == ["designator"]
         tick.return_value = 1299
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         assert network.call_count == 1
         tick.return_value = 1300
         network.return_value = data(flights=[])
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         assert network.call_count == 2 and network.call_args.args[0].startswith("/flights/AAL124?")
         # At ten minutes a successful closest lookup refreshes; the failed
         # second aircraft remains backed off for thirty minutes.
         tick.return_value, now.return_value = 1600, NOW + timedelta(seconds=600)
         feed.nearby = [dict(row, observed_at=now.return_value.isoformat()) for row in feed.nearby]
         network.return_value = data()
-        feed._poll_nearby_routes(config, now.return_value)
+        feed._poll_nearby_routes(config, now.return_value, visible=True)
         assert network.call_count == 3 and network.call_args.args[0].startswith("/flights/DAL123?")
         tick.return_value = 1900
-        feed._poll_nearby_routes(config, now.return_value)
+        feed._poll_nearby_routes(config, now.return_value, visible=True)
         assert network.call_count == 4 and network.call_args.args[0].startswith("/flights/ASA125?")
         # The fourth aircraft remains outside the bounded candidate set.
         assert not any("UAL126" in call.args[0] for call in network.call_args_list)
@@ -192,12 +222,12 @@ def test_failed_lookup_cannot_spam_paid_retries_or_overwrite_operating_error(tmp
     with patch("flightwall.feeds.utcnow", return_value=NOW), \
             patch("flightwall.feeds.time.monotonic", return_value=1000) as tick, \
             patch.object(feed, "_flightaware", side_effect=OSError("PRIVATE-PROVIDER-RESPONSE")) as network:
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         tick.return_value = 2799
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         assert network.call_count == 1
         tick.return_value = 2800
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         assert network.call_count == 2
     assert feed.error == "Owner tracking unavailable"
     assert "PRIVATE" not in repr(feed._nearby_route_cache)
@@ -209,12 +239,12 @@ def test_disabled_missing_key_and_stale_position_do_not_make_a_metadata_request(
     with patch.object(feed, "_flightaware") as network:
         for disabled in (config | {"nearby_enrichment_enabled": False}, config | {"flightaware_enabled": False},
                          config | {"demo": True}):
-            feed._poll_nearby_routes(disabled, NOW)
+            feed._poll_nearby_routes(disabled, NOW, visible=True)
         feed.nearby = [aircraft(observed_at=(NOW - timedelta(seconds=121)).isoformat())]
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         (tmp_path / "flightaware.key").unlink()
         feed.nearby = [aircraft()]
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
         network.assert_not_called()
 
 
@@ -244,7 +274,7 @@ def test_aircraft_metadata_cache_is_bounded_and_old_or_future_entries_are_discar
     with patch("flightwall.feeds.utcnow", return_value=NOW), \
             patch("flightwall.feeds.time.monotonic", return_value=1000), \
             patch.object(feed, "_flightaware", return_value=data()):
-        feed._poll_nearby_routes(config, NOW)
+        feed._poll_nearby_routes(config, NOW, visible=True)
     assert len(feed._nearby_route_cache) == 128
     assert all(key[0] not in {"expired", "future"} for key in feed._nearby_route_cache)
     assert feed._nearby_route_identity(aircraft()) in feed._nearby_route_cache
@@ -257,11 +287,11 @@ def test_operating_then_watch_then_nearby_order_is_preserved_even_when_on_duty(t
             patch.object(feed, "_poll_live", side_effect=lambda *args: order.append("operating")), \
             patch.object(feed, "_poll_watches", side_effect=lambda *args: order.append("watch")), \
             patch("flightwall.feeds.request_json", return_value={"now": NOW.timestamp() * 1000, "ac": []}) as adsb, \
-            patch.object(feed, "_poll_nearby_routes", side_effect=lambda *args: order.append("nearby")):
-        feed.poll(config, None)
+            patch.object(feed, "_poll_nearby_routes", side_effect=lambda *args, **kwargs: order.append("nearby")):
+        feed.poll(config, None, nearby_visible=True)
         assert order == ["operating", "watch", "nearby"]
         order.clear()
-        feed.poll(config, None, on_duty=True)
+        feed.poll(config, None, on_duty=True, nearby_visible=True)
         assert order == ["operating", "watch"] and adsb.call_count == 1
 
 

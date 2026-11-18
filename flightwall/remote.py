@@ -524,6 +524,18 @@ class RemoteServer:
                         if not self._auth(personal=True):
                             return
                         return self._personal_action(personal_routes[path], self._body())
+                    if path == "/api/v1/display-activity":
+                        if not self._auth(static=True):
+                            return
+                        body = self._body()
+                        if (not isinstance(body, dict) or set(body) != {"view"}
+                                or type(body["view"]) is not str or body["view"] not in {"nearby", "other"}):
+                            raise ValueError("Unsupported display activity")
+                        callback = owner.callbacks.get("display_activity")
+                        if not callable(callback):
+                            return self._reply(503, {"error": "Display activity is unavailable"})
+                        callback(body["view"])
+                        return self._reply(200, {"ok": True})
                     routes = {"/api/v1/settings": "update_settings", "/api/v1/calendar/refresh": "refresh_calendar", "/api/v1/updates/check": "check_updates"}
                     if path == "/mcp" or path in routes:
                         if not self._auth():

@@ -514,7 +514,8 @@ def main(argv=None):
                         raise ValueError("The background service is running a different release. Close the display, stop the Flight Wall service, and launch from Ports again.")
                     initial_status = existing
                 except OSError as exc:
-                    if backend_connection_refused(exc):
+                    if (backend_connection_refused(exc)
+                            or isinstance(exc, FileNotFoundError) and connection.uninitialized_without_backend(exc)):
                         runtime = Runtime(args.data_dir, args.install_dir).start()
                     elif not transient_backend_error(exc):
                         raise

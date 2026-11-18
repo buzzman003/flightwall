@@ -10,6 +10,11 @@ Use exact statute distances, nearest ten within thirty miles, and source-clock
 freshness every frame. Repeated cached responses cannot renew observations.
 Reserve community requests privately before calling, preserve limits across
 restarts, honor Retry-After, and keep paid enrichment independent and bounded.
+Paid nearby enrichment requires a short in-memory lease from the focused native
+nearby card. Only the static administrator bearer can renew that fixed activity
+route; voice, phone and MCP/OAuth tokens cannot. No settings, coordinates or
+commands are accepted. Closing/leaving the card expires the lease; free ADS-B
+position receipt remains independent. Keep all paid caps and cooldowns unchanged.
 
 Lisa's travel mailbox requires separate consent and an opt-in. Import only
 explicitly matching Lisa passenger rows from the supported Delta templates.

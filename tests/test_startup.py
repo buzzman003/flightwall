@@ -1,7 +1,9 @@
 """Cold local-service readiness must not strand the TV at a black window."""
 from copy import deepcopy
 from datetime import datetime, timezone
+import errno
 import importlib.util
+import socket
 import threading
 from types import SimpleNamespace
 import urllib.error
@@ -10,8 +12,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from flightwall import __version__
-from flightwall.config import DEFAULTS
-from flightwall.display import (backend_connection_refused, entry_render_state,
+from flightwall.config import ConfigStore, DEFAULTS
+from flightwall.display import (BackendConnection, backend_connection_refused, entry_render_state,
                                 fresh_household_status, transient_backend_error,
                                 validate_startup_status, wait_for_startup_status)
 from flightwall.main import main
@@ -199,3 +201,90 @@ def test_outer_nearby_rows_propagate_and_disappear_on_backend_outage():
     stale = fresh_household_status(current, DEFAULTS, now, backend_available=False)
     assert stale["nearby_outer"] == []
     assert entry_render_state(stale, DEFAULTS, {"view": "nearby", "key": "nearby"}, now)["nearby_outer"] == []
+
+
+@pytest.mark.parametrize("probe_error,allowed", [(None, True),
+    (OSError(errno.EADDRINUSE, "occupied"), False), (TimeoutError(), False), (PermissionError(), False)])
+def test_only_exact_missing_owner_token_and_unused_port_permit_initial_bootstrap(tmp_path, probe_error, allowed):
+    connection = BackendConnection(tmp_path, DEFAULTS)
+    with pytest.raises(FileNotFoundError) as missing:
+        connection.status()
+    with patch("flightwall.display.socket.socket") as probe:
+        probe.return_value.__enter__.return_value.bind.side_effect = probe_error
+        assert connection.uninitialized_without_backend(missing.value) is allowed
+    probe.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM)
+    probe.return_value.__enter__.return_value.bind.assert_called_once_with(("127.0.0.1", DEFAULTS["control_port"]))
+
+
+def test_missing_owner_token_never_bootstraps_over_an_existing_listener(tmp_path):
+    connection = BackendConnection(tmp_path, DEFAULTS)
+    with pytest.raises(FileNotFoundError) as missing:
+        connection.status()
+    with patch("flightwall.display.socket.socket") as probe:
+        probe.return_value.__enter__.return_value.bind.side_effect = OSError(errno.EADDRINUSE, "occupied")
+        assert connection.uninitialized_without_backend(missing.value) is False
+    probe.assert_called_once()
+    assert not (tmp_path / "control-token.txt").exists()
+
+
+@pytest.mark.parametrize("error", [FileNotFoundError(), FileNotFoundError(errno.ENOENT, "missing", "/unrelated/config.json"),
+                                  PermissionError(errno.EACCES, "unreadable", "control-token.txt")])
+def test_unrelated_missing_or_unreadable_files_never_probe_or_allow_bootstrap(tmp_path, error):
+    connection = BackendConnection(tmp_path, DEFAULTS)
+    with patch("flightwall.display.socket.socket") as probe:
+        assert connection.uninitialized_without_backend(error) is False
+    probe.assert_not_called()
+
+
+@pytest.mark.skipif(importlib.util.find_spec("pygame") is None, reason="pygame is optional for renderer tests")
+def test_real_fresh_gui_provisions_owner_token_and_renders_offline_demo(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SDL_VIDEODRIVER", "dummy")
+    data, install = tmp_path / "data", tmp_path / "install"
+    config = ConfigStore(data)
+    with socket.socket() as port:
+        port.bind(("127.0.0.1", 0))
+        selected_port = port.getsockname()[1]
+    config.update({"control_port": selected_port})
+    assert not (data / "control-token.txt").exists()
+    with patch("flightwall.updater.mark_healthy") as healthy:
+        code = main(["--data-dir", str(data), "--install-dir", str(install), "gui", "--windowed", "--frames", "1"])
+    assert code == 0
+    assert (data / "control-token.txt").is_file()
+    assert config.get()["demo"] is True
+    healthy.assert_called_once_with(str(install), str(data), version=__version__)
+    output = capsys.readouterr()
+    assert '"frames": 1' in output.out and not output.err
+
+
+def test_main_missing_token_with_existing_listener_does_not_start_runtime(tmp_path):
+    token = tmp_path / "control-token.txt"
+    missing = FileNotFoundError(errno.ENOENT, "missing", str(token))
+    with patch("flightwall.display.BackendConnection") as connection, \
+            patch("flightwall.backend.Runtime") as runtime, patch("flightwall.display.run_gui") as gui:
+        connection.return_value.status.side_effect = missing
+        connection.return_value.uninitialized_without_backend.return_value = False
+        code = main(["--data-dir", str(tmp_path), "gui", "--windowed", "--frames", "1"])
+    assert code == 1
+    runtime.assert_not_called()
+    gui.assert_not_called()
+
+
+def test_real_existing_reusable_listener_prevents_token_bootstrap(tmp_path):
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        connection = BackendConnection(tmp_path, DEFAULTS | {"control_port": listener.getsockname()[1]})
+        with pytest.raises(FileNotFoundError) as missing:
+            connection.status()
+        assert connection.uninitialized_without_backend(missing.value) is False
+    assert not (tmp_path / "control-token.txt").exists()
+
+
+def test_broken_token_symlink_is_not_treated_as_uninitialized(tmp_path):
+    from pathlib import Path
+    connection = BackendConnection(tmp_path, DEFAULTS)
+    missing = FileNotFoundError(errno.ENOENT, "missing", str(tmp_path / "control-token.txt"))
+    with patch.object(Path, "is_symlink", return_value=True), patch("flightwall.display.socket.socket") as probe:
+        assert connection.uninitialized_without_backend(missing) is False
+    probe.assert_not_called()

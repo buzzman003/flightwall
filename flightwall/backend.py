@@ -114,6 +114,7 @@ class Runtime:
         self._brief_worker = None
         # One transient confirmed arrival, never a location/presence history.
         self._recent_vps_arrival = None
+        self._nearby_viewer_at = None
         self._mail_refresh = threading.Event()
         self._content_refresh = threading.Event()
 
@@ -123,6 +124,18 @@ class Runtime:
         return (bool(config.get("demo")),
                 str(config.get("calendar_id") or config.get("calendar_name") or "FC View"),
                 mycrew_id, config.get("mycrew_clock"), config.get("airline") if mycrew_id else None)
+
+    def note_display_activity(self, view):
+        """A short, in-memory admin GUI lease; never a remote setting or history."""
+        if type(view) is not str or view not in {"nearby", "other"}:
+            raise ValueError("Unsupported display activity")
+        with self.lock:
+            self._nearby_viewer_at = time.monotonic() if view == "nearby" else None
+
+    def nearby_view_is_active(self):
+        with self.lock:
+            observed = self._nearby_viewer_at
+        return observed is not None and 0 <= time.monotonic() - observed < 6
 
     def _calendar_cache_stamp(self):
         try:
@@ -422,6 +435,8 @@ class Runtime:
         return {"version": __version__, "profiles": household["connected_profiles"],
                 "delta_travel": self.delta_travel.status(),
                 "delta_travel_lisa": self.delta_travel_lisa.status(),
+                "nearby_route_diagnostics": {**self.feeds.nearby_route_diagnostics(),
+                                             "viewer_active": self.nearby_view_is_active()},
                 "kids": household["kids"], "presence": self.presence.snapshot(),
                 "messages": {person: {key: value for key, value in self.messages.status(person).items() if key != "items"}
                              for person in ("chris", "lisa")},
@@ -615,7 +630,8 @@ class Runtime:
                 self.feeds.poll(config, selected, on_duty=context["flight_priority"] or
                                 (not context["recent_vps_arrival"] and
                                  (is_on_duty(roster_selected, config, now) or context["chris_away"])),
-                                watches=watches, personal_flights=personal_flights)
+                                watches=watches, personal_flights=personal_flights,
+                                nearby_visible=self.nearby_view_is_active())
                 provider = self.feeds.operating_status_for_config(config, selected, now)
                 self._vps_arrival(snapshot, config, selected, provider, now)
             except Exception:
@@ -751,6 +767,7 @@ class Runtime:
 
     def start(self):
         self.remote = RemoteServer(self.data_dir, self.config.get, {
+            "display_activity": self.note_display_activity,
             "get_status": self.status, "update_settings": self.update_settings,
             "refresh_calendar": self.refresh_calendar, "check_updates": self.check_updates,
             "create_personal_item": self.create_personal_item,

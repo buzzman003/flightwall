@@ -281,28 +281,32 @@ def nearby_lookup_identity(aircraft):
     return None
 
 
-def match_nearby_route(data, aircraft, now):
-    """One actively airborne provider flight matching the observed identity.
+def nearby_route_result(data, aircraft, now):
+    """One exact airborne route and a constant, nonidentifying outcome code.
 
     This buys metadata only, never positions, telemetry, tracks or filed route.
     Unsupported, ambiguous, landed and mismatched registrations stay unknown.
     """
     identity = nearby_lookup_identity(aircraft)
-    if not identity or not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
-        return None
+    if not identity:
+        return None, "unsupported_identity"
+    if not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
+        return None, "invalid_response"
     ident_type, ident = identity
     if not isinstance(aircraft.get("hex"), str) or not re.fullmatch(r"~?[0-9a-fA-F]{6}", aircraft["hex"]):
-        return None
+        return None, "invalid_position"
     try:
         observed = stamp(aircraft.get("observed_at"))
         if not 0 <= (now - observed).total_seconds() <= 120:
-            return None
+            return None, "stale_position"
     except (ValueError, TypeError, OverflowError):
-        return None
+        return None, "invalid_position"
     links, pages = data.get("links"), data.get("num_pages", 1)
     links = {} if links is None else links
     if not isinstance(links, dict) or links.get("next") or type(pages) is not int or pages != 1:
-        return None
+        return None, "incomplete_response"
+    if not data["flights"]:
+        return None, "empty_response"
     matches = []
     for item in data["flights"]:
         if not isinstance(item, dict):
@@ -342,7 +346,14 @@ def match_nearby_route(data, aircraft, now):
                         "fetched_at": now.astimezone(UTC).isoformat(), "provider_flight_id": identifier,
                         "callsign": ident if ident_type == "designator" else None, "registration": observed_tail or None,
                         "aircraft_hex": aircraft.get("hex"), "actual_off": takeoff.isoformat()})
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0], "matched"
+    return None, "ambiguous" if matches else "no_verified_match"
+
+
+def match_nearby_route(data, aircraft, now):
+    """Compatibility projection; diagnostic outcomes never enter route data."""
+    return nearby_route_result(data, aircraft, now)[0]
 
 
 def fresh_nearby_route(aircraft, now):

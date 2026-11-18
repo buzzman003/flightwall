@@ -421,6 +421,13 @@ class NearbyViewTests(unittest.TestCase):
         self.assertNotIn("1 OUTSIDE / ADSB.LOL", capture(render_nearby, base, self.config,
                                                        NOW + timedelta(seconds=121))[0])
 
+    def test_paused_nonempty_snapshot_expires_to_stale_instead_of_an_empty_sky(self):
+        state = {"nearby": [aircraft(age=119)], "nearby_status": "ready", "rotation_paused": True}
+        labels, _ = capture(render_nearby, state, self.config, NOW + timedelta(seconds=2))
+        self.assertIn("FEED STALE", labels)
+        self.assertNotIn("NO AIRCRAFT", labels)
+        self.assertIn("0 FRESH / ADSB.LOL", labels)
+
     def test_outer_band_rechecks_actual_distance_and_newest_identity_each_frame(self):
         from flightwall.extra_views import _nearby_outer_rows
         rows = [aircraft("111111", east=5, north=0),

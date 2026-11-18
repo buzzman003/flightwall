@@ -9,6 +9,9 @@ type, and small original type silhouettes where supported. Source-clock
 freshness, persistent community request limits and Retry-After are enforced.
 Unkeyed requests are limited to 480 per rolling day, at least 180 seconds apart.
 No one-second feed, fee increase or additional provider account is provisioned.
+Paid nearby route enrichment runs only with a short viewing lease from the
+focused nearby card. Background/headless operation and other cards do not
+consume that optional route allowance. Existing caps/cooldowns remain.
 
 Lisa's separate Gmail profile imports supported matching Delta listings without
 enabling mail previews, Calendar, presence or private cards. Optional exact-leg
