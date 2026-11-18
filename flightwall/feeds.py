@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from .config import private_json
+from .config import DEFAULTS, FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD, private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
 from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, flight_identity, fresh_status,
                             fresh_nearby_route, nearby_route_result, nearby_lookup_identity,
@@ -306,8 +306,10 @@ class FlightFeeds:
             raise PaidLimitError("pricing_expired")
         day, month = today.isoformat(), today.strftime("%Y-%m")
         try:
-            limit = Decimal(str(config.get("flightaware_monthly_limit_usd", 5)))
-            if not limit.is_finite() or not 0 <= limit <= 5 or isinstance(config.get("flightaware_monthly_limit_usd"), bool):
+            configured_limit = config.get("flightaware_monthly_limit_usd", DEFAULTS["flightaware_monthly_limit_usd"])
+            limit = Decimal(str(configured_limit))
+            if (not limit.is_finite() or not 0 <= limit <= FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD
+                    or isinstance(configured_limit, bool)):
                 raise ValueError("Invalid monthly app budget")
             limit_milliusd = int(limit * 1000)
             nearby_limit = Decimal(str(config.get("nearby_enrichment_monthly_limit_usd", 1)))
@@ -332,13 +334,15 @@ class FlightFeeds:
                              "reserved_milliusd": 0, "pricing_checked": PRICING_CHECKED.isoformat()}
                 elif isinstance(usage, dict) and set(usage) == {"day", "count"}:
                     # The old daily counter cannot establish earlier spending
-                    # in its month. Consume that whole month conservatively.
+                    # in its month. Reserve the maximum so raising the setting
+                    # later does not re-enable requests until the UTC rollover.
                     legacy_day, count = usage["day"], usage["count"]
                     if (not isinstance(legacy_day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", legacy_day)
                             or datetime.fromisoformat(legacy_day).date() > today or type(count) is not int or count < 0):
                         raise ValueError("Invalid old usage counter")
                     usage = {"schema_version": 2, "day": legacy_day, "count": count, "month": legacy_day[:7],
-                             "reserved_milliusd": max(5000, count * 10), "pricing_checked": PRICING_CHECKED.isoformat()}
+                             "reserved_milliusd": max(FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD * 1000, count * 10),
+                             "pricing_checked": PRICING_CHECKED.isoformat()}
                 base_fields = {"schema_version", "day", "count", "month", "reserved_milliusd", "pricing_checked"}
                 nearby_fields = {"nearby_reserved_milliusd", "nearby_day_count"}
                 if (not isinstance(usage, dict) or set(usage) not in (base_fields, base_fields | nearby_fields)

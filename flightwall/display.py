@@ -187,14 +187,23 @@ class RotationCursor:
         self.stopped_at = None
         self.reconcile(entries, now)
 
-    def reconcile(self, entries, now):
+    @staticmethod
+    def _automatic_index(entries, start):
+        for offset in range(len(entries)):
+            index = (start + offset) % len(entries)
+            if not entries[index].get("manual_only"):
+                return index
+        return 0
+
+    def reconcile(self, entries, now, *, automatic=True):
         keys = [entry["key"] for entry in entries]
         if self.key in keys:
             self.index = keys.index(self.key)
         else:
-            self.index, self.started_at = 0, now
+            self.index = self._automatic_index(entries, 0) if automatic else 0
+            self.started_at = now
             self.stopped_at = now if self.stopped_at is not None else None
-            self.key = keys[0] if keys else None
+            self.key = keys[self.index] if keys else None
 
     def select(self, entries, index, now):
         if entries:
@@ -209,15 +218,15 @@ class RotationCursor:
         self.select(entries, self.index - 1, now)
 
     def tick(self, entries, now, automatic=True):
-        self.reconcile(entries, now)
         stopped = not automatic or now < self.hold_until
+        self.reconcile(entries, now, automatic=not stopped)
         if stopped and self.stopped_at is None:
             self.stopped_at = now
         elif not stopped and self.stopped_at is not None:
             self.started_at += now - self.stopped_at
             self.stopped_at = None
         if entries and not stopped and now - self.started_at >= entries[self.index]["duration_seconds"]:
-            self.advance(entries, now)
+            self.select(entries, self._automatic_index(entries, self.index + 1), now)
         return entries[self.index] if entries else None
 
     def remaining(self, entry, now):
@@ -1120,7 +1129,10 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             state = entry_render_state(current_status, config, entry, wall_now)
             # Entries have already passed per-frame presence/privacy gates.
             # Priority repeats and individual trip pages are real deck slots.
-            state["deck_count"], state["deck_index"] = len(entries), cursor.index
+            deck = entries
+            if cursor.stopped_at is None and not entry.get("manual_only"):
+                deck = [slot for slot in entries if not slot.get("manual_only")]
+            state["deck_count"], state["deck_index"] = len(deck), deck.index(entry)
             state["card_remaining"] = cursor.remaining(entry, now)
             state["rotation_paused"] = not automatic
             state["rotation_hold_seconds"] = max(0, math.ceil(cursor.hold_until - now))

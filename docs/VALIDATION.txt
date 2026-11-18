@@ -1,3 +1,19 @@
+0.4.24 NEARBY ROTATION AND FLIGHTAWARE ALLOWANCE
+
+Verify stale and unavailable Nearby Aircraft slots are skipped in automatic
+rotation, but can still be selected and paused manually. Fresh zero-traffic
+observations count as valid data. Verify fallback when Nearby is the only card
+and a return to normal rotation after the feed refreshes.
+
+Check the existing $5 default and saved budget, the explicit $15 ceiling,
+preserved month-to-date reservations, UTC month rollover, and the $1 maximum
+for nearby route lookups. Synthetic tests cover the ledger and requests without
+contacting the paid provider. A real route match still requires live evidence.
+
+Release acceptance requires the full Linux suite, frozen graphics, fresh
+installation, real 0.3.0 and published 0.4.23 executable upgrades and failed
+startup rollback with the original pinned recovery helper.
+
 0.4.23 EMPTY DELTA-MAIL SEARCH RESPONSE HOTFIX
 
 Regression coverage reproduces a successful empty Gmail list response whose

@@ -119,6 +119,68 @@ def test_keyboard_dpad_and_analog_navigation_wrap_and_settings_keep_their_contro
     assert result.settings == [{"brightness": .75}, {"brightness": .7}]
 
 
+@pytest.mark.parametrize("nearby_status", ("stale", "unavailable"))
+def test_gui_skips_waiting_nearby_card_but_can_browse_and_pause_it(monkeypatch, nearby_status):
+    pygame = pytest.importorskip("pygame")
+    status = status_for(nearby_enabled=True, weather_enabled=True)
+    status["nearby_status"] = nearby_status
+    result = gui(monkeypatch, [[], [], [key(pygame, pygame.K_LEFT)], [key(pygame, pygame.K_SPACE)], []],
+                 times=[0, 15, 15.1, 15.2, 31], status=status, slots=None)
+
+    assert [state["view"] for state in result.states] == ["home", "weather", "nearby", "nearby", "nearby"]
+    assert [(state["deck_index"], state["deck_count"]) for state in result.states[:3]] == [(0, 2), (1, 2), (1, 3)]
+    assert result.states[-1]["rotation_paused"]
+    assert result.states[-1]["nearby_status"] == nearby_status
+
+
+def test_automatic_nearby_returns_in_order_when_feed_recovers():
+    status = status_for(nearby_enabled=True, weather_enabled=True)
+    config = status["config"]
+    waiting = display.build_rotation(status | {"nearby_status": "stale"}, config, NOW)
+    ready = display.build_rotation(status | {"nearby_status": "ready", "nearby": []}, config, NOW)
+    cursor = display.RotationCursor(waiting, 0)
+
+    assert cursor.tick(waiting, 15)["view"] == "weather"
+    assert cursor.tick(ready, 29)["view"] == "weather"
+    assert cursor.tick(ready, 30)["view"] == "home"
+    assert cursor.tick(ready, 45)["view"] == "nearby"
+
+
+def test_automatic_nearby_rechecks_position_expiry_between_backend_polls():
+    status = status_for(nearby_enabled=True, weather_enabled=True)
+    config = status["config"]
+    status.update(nearby_status="ready", nearby=[{"observed_at": (NOW - timedelta(seconds=119)).isoformat()}])
+    ready = display.build_rotation(status, config, NOW)
+    expired = display.build_rotation(status, config, NOW + timedelta(seconds=2))
+    cursor = display.RotationCursor(ready, 0)
+
+    assert cursor.tick(expired, 15)["view"] == "weather"
+    cursor.retreat(expired, 16)
+    cursor.hold_until = 61
+    assert cursor.tick(expired, 16)["view"] == "nearby"
+    assert cursor.tick(expired, 60)["view"] == "nearby"
+    assert cursor.tick(expired, 61)["view"] == "nearby"
+    assert cursor.tick(expired, 75)["view"] == "nearby"
+    assert cursor.tick(expired, 76)["view"] == "weather"
+
+
+def test_automatic_deck_uses_home_when_nearby_is_the_only_manual_card():
+    status = status_for(nearby_enabled=True, trip_cards_visible=False)
+    status["snapshot"]["flights"] = [{"id": "fixture", "number": "DL123", "origin": "ATL", "destination": "VPS",
+                                      "start": (NOW + timedelta(days=1)).isoformat(),
+                                      "end": (NOW + timedelta(days=1, hours=1)).isoformat()}]
+    # An invalid collection from the backend cannot qualify as a fresh empty ring.
+    status.update(nearby_status="ready", nearby=42)
+    entries = display.build_rotation(status, status["config"], NOW)
+    cursor = display.RotationCursor(entries, 0)
+
+    assert [entry["view"] for entry in entries] == ["nearby", "home"]
+    assert cursor.tick(entries, 0)["view"] == "home"
+    assert cursor.tick(entries, 15)["view"] == "home"
+    cursor.advance(entries, 16)
+    assert cursor.tick(entries, 16)["view"] == "nearby"
+
+
 def test_stick_hysteresis_is_independent_for_each_controller():
     stick = display.AnalogNavigation()
     assert stick.direction(1, .6) == 1

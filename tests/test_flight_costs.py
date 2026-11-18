@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from flightwall.config import DEFAULTS
+from flightwall.config import ConfigStore, DEFAULTS
 from flightwall.feeds import FlightFeeds, PaidLimitError, PRICING_CHECKED, PRICING_MAX_AGE_DAYS
 
 NOW = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
@@ -31,6 +31,39 @@ def test_each_endpoint_reserves_full_nominal_fee_and_cannot_cross_monthly_cap(tm
             feed._allow_paid_request(config(flightaware_monthly_limit_usd=.014), POSITION)
     assert error.value.reason == "monthly_limit"
     assert read(tmp_path)["reserved_milliusd"] == 5 and read(tmp_path)["count"] == 1
+
+
+def test_higher_limit_is_explicit_bounded_and_local_only(tmp_path):
+    setting = "flightaware_monthly_limit_usd"
+    store = ConfigStore(tmp_path)
+    assert store.get()[setting] == 5
+    with pytest.raises(ValueError, match="local CLI"):
+        store.update({setting: 10}, remote=True)
+    assert store.get()[setting] == 5
+    assert setting not in store.public()
+    assert store.update({setting: 15})[setting] == 15
+    with pytest.raises(ValueError, match="between 0 and 15"):
+        store.update({setting: 16})
+    assert ConfigStore(tmp_path).get()[setting] == 15
+
+
+@pytest.mark.parametrize("limit", [10, 15])
+def test_approved_higher_limit_reuses_current_month_reservations(tmp_path, limit):
+    previous = {"schema_version": 2, "day": "2026-10-31", "month": "2026-10", "count": 2,
+                "reserved_milliusd": limit * 1000 - 10, "pricing_checked": PRICING_CHECKED.isoformat(),
+                "nearby_reserved_milliusd": 915, "nearby_day_count": 1}
+    (tmp_path / "flightaware-usage.json").write_text(json.dumps(previous))
+    with patch("flightwall.feeds.utcnow", return_value=NOW):
+        with pytest.raises(PaidLimitError) as default_error:
+            FlightFeeds(tmp_path)._allow_paid_request(config(), POSITION)
+        assert default_error.value.reason == "monthly_limit"
+        assert read(tmp_path) == previous
+        higher = config(flightaware_monthly_limit_usd=limit)
+        FlightFeeds(tmp_path)._allow_paid_request(higher, POSITION)
+        with pytest.raises(PaidLimitError) as exhausted_error:
+            FlightFeeds(tmp_path)._allow_paid_request(higher, LOOKUP)
+        assert exhausted_error.value.reason == "monthly_limit"
+    assert read(tmp_path) == previous | {"count": 3, "reserved_milliusd": limit * 1000}
 
 
 def test_unknown_unbounded_or_unpriced_endpoints_never_reach_network(tmp_path):
@@ -68,7 +101,10 @@ def test_legacy_current_month_consumes_budget_without_losing_daily_counter(tmp_p
         with pytest.raises(PaidLimitError) as error:
             feed._allow_paid_request(config(), LOOKUP)
     assert error.value.reason == "monthly_limit"
-    assert read(tmp_path)["count"] == 7 and read(tmp_path)["reserved_milliusd"] == 5000
+    assert read(tmp_path)["count"] == 7 and read(tmp_path)["reserved_milliusd"] == 15000
+    with patch("flightwall.feeds.utcnow", return_value=NOW), pytest.raises(PaidLimitError) as raised_limit:
+        FlightFeeds(tmp_path)._allow_paid_request(config(flightaware_monthly_limit_usd=15), LOOKUP)
+    assert raised_limit.value.reason == "monthly_limit"
     with patch("flightwall.feeds.utcnow", return_value=NOW + timedelta(days=1)):
         feed._allow_paid_request(config(), LOOKUP)
     assert read(tmp_path)["count"] == 1 and read(tmp_path)["reserved_milliusd"] == 5

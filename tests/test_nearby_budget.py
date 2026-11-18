@@ -44,14 +44,16 @@ def test_known_prior_schema2_total_is_preserved_and_new_nearby_counter_starts_ze
                                         "nearby_reserved_milliusd": 5, "nearby_day_count": 1}
 
 
-def test_nearby_month_subcap_rejects_next_lookup_but_own_positions_remain_available(tmp_path):
+@pytest.mark.parametrize("limit", [5, 15])
+def test_nearby_month_subcap_rejects_next_lookup_but_own_positions_remain_available(tmp_path, limit):
     save(tmp_path, ledger(nearby_reserved_milliusd=1000))
     feed = FlightFeeds(tmp_path)
+    limits = config(flightaware_monthly_limit_usd=limit)
     with patch("flightwall.feeds.utcnow", return_value=NOW):
         with pytest.raises(PaidLimitError) as error:
-            feed._allow_paid_request(config(), LOOKUP, purpose="nearby")
+            feed._allow_paid_request(limits, LOOKUP, purpose="nearby")
         assert error.value.reason == "nearby_limit"
-        feed._allow_paid_request(config(), POSITION)
+        feed._allow_paid_request(limits, POSITION)
     assert read(tmp_path)["reserved_milliusd"] == 3510
     assert read(tmp_path)["nearby_reserved_milliusd"] == 1000
 

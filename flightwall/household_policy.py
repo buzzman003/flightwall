@@ -352,7 +352,14 @@ def build_rotation(status, config, now=None):
             for view in ("trip_summary", "trip_map"):
                 add(view, f"{view}:{page}", trip_page=page, trip_preview=preview)
     if config.get("nearby_enabled") is True and snapshot.get("demo") is not True:
-        add("nearby")
+        from .feeds import _nearby_fresh
+        inner = status.get("nearby", [])
+        # Accept a confirmed empty ring, but recheck retained positions that
+        # can expire between the GUI's backend polls.
+        nearby_ready = (status.get("nearby_status") == "ready" and status.get("backend_available", True) is True
+                        and isinstance(inner, list)
+                        and (not inner or any(isinstance(row, dict) and _nearby_fresh(row, now) for row in inner)))
+        add("nearby", manual_only=not nearby_ready)
     if config.get("weather_enabled") is True and snapshot.get("demo") is False:
         add("weather")
     section = status.get("national_radar")
@@ -444,6 +451,6 @@ def build_rotation(status, config, now=None):
         for index, item in enumerate(_cards(layovers)[:4]):
             if _visible(item, now, require_window=True):
                 add("layover", "layover:" + str(item.get("id") or index), item)
-    if not entries:
+    if not any(not entry.get("manual_only") for entry in entries):
         add("home")
     return entries

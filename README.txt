@@ -1,3 +1,14 @@
+FLIGHT WALL 0.4.24
+
+The automatic rotation passes over Nearby Aircraft while the feed is stale
+or unavailable. It returns on a normal rotation when fresh data arrives.
+You can still open Nearby Aircraft manually to check the feed status.
+
+The owner can set a local FlightAware monthly usage limit up to $15. The
+default is $5, and existing installations keep their saved limit. This limit
+tracks estimated API usage before provider credits. The nearby route limit
+stays at a maximum of $1 within the overall allowance.
+
 FLIGHT WALL 0.4.23
 
 A supported Delta-mail search with no matching messages now counts as a healthy

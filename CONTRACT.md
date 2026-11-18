@@ -1,3 +1,16 @@
+0.4.24 NEARBY ROTATION AND FLIGHTAWARE ALLOWANCE
+
+Skip stale or unavailable Nearby Aircraft slots during automatic selection.
+Keep manual access and let a manually selected or paused card wait for data.
+Fresh observations, including an empty inner ring, stay eligible. Treat the
+feed's existing clock and rate limits as authoritative, with no extra requests
+caused by the card rotation.
+
+The private local FlightAware setting accepts limits from $0 to $15 per
+month and defaults to $5. Keep the existing monthly reservations and reset
+them only at the normal UTC month boundary. The nearby route sublimit remains
+at most $1. The budget counts estimated usage before provider discounts.
+
 0.4.23 EMPTY DELTA-MAIL SEARCH RESPONSES
 
 The bounded Delta messages-list projection includes resultSizeEstimate alongside
