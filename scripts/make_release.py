@@ -51,7 +51,7 @@ def keygen(directory: Path):
     print("Public key configuration value:", encoded)
 
 
-def _source_files(source: Path, private_key: Path):
+def _source_files(source: Path, private_key: Path | None = None):
     forbidden_names = {"token.json", "credentials.json", "client_secret.json", "config.json", "state.json",
                        ".env", "flightwall-signing-private.pem", "flightwall-token.json",
                        "google-client.json", "google-token.json", "gmail-client.json", "gmail-token.json",

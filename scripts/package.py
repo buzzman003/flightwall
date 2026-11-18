@@ -13,6 +13,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from flightwall import __version__
+from scripts.make_release import _source_files
 
 
 def main():
@@ -34,12 +35,14 @@ def main():
     prefix = f"flightwall-batocera-{version}"
     installer = output / f"{prefix}.tar.gz"
     private_dirs = {"__pycache__", "couple-photos"}
+    # Audit the frozen tree once, then preserve every runtime file verbatim.
+    _source_files(release)
 
     def source_filter(entry):
         return None if any(part.casefold() in private_dirs for part in Path(entry.name).parts) or entry.name.endswith(".pyc") else entry
 
     with tarfile.open(installer, "w:gz", compresslevel=6) as archive:
-        archive.add(release, arcname=f"{prefix}/releases/{version}", filter=source_filter)
+        archive.add(release, arcname=f"{prefix}/releases/{version}")
         archive.add(ROOT / "scripts" / "install.sh", arcname=f"{prefix}/install.sh")
         archive.add(ROOT / "scripts" / "diagnose.sh", arcname=f"{prefix}/scripts/diagnose.sh")
         archive.add(ROOT / "scripts" / "register-ports-media.py", arcname=f"{prefix}/scripts/register-ports-media.py")
