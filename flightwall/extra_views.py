@@ -228,18 +228,20 @@ def render_weather(draw, image, state, config, now):
     _text(draw, (15, 245), _weather_timing_label(timing, "fetched_at", zone, now), MUTED, max_width=deck_footer_width(state))
 
 
-def _nearby_rows(state, config, now):
+def _nearby_radius(config):
     radius = config.get("nearby_radius_miles")
     if radius is None:
         nautical = config.get("nearby_radius_nm")
         radius = nautical * 1.15078 if _number(nautical) else None
     if not _number(radius) or not 0 < radius <= 300:
-        return [], None
-    if config.get("nearby_enabled") is not True or state.get("demo", config.get("demo", False)):
-        return [], radius
+        return None
+    return radius
+
+
+def _position_rows(rows, radius, now, *, minimum=0, limit=40):
+    """Recheck received points, including while rotation is paused."""
     from .render import _dt
     valid = {}
-    rows = state.get("nearby")
     for row in rows[:5000] if isinstance(rows, list) else []:
         if not isinstance(row, dict):
             continue
@@ -253,12 +255,33 @@ def _nearby_rows(state, config, now):
                 or not isinstance(ident, str) or not re.fullmatch(r"~?[a-fA-F0-9]{6}", ident)):
             continue
         distance = math.hypot(east, north)
-        if distance > radius + 1e-7:
-            continue
         previous = valid.get(ident.lower())
         if previous is None or stamp > previous[0]:
             valid[ident.lower()] = (stamp, distance, row)
-    return [(item[1], item[2]) for item in sorted(valid.values(), key=lambda item: (item[1], item[2]["hex"]))[:40]], radius
+    ranked = sorted(valid.values(), key=lambda item: (item[1], item[2]["hex"]))
+    return [(item[1], item[2]) for item in ranked
+            if item[1] <= radius + 1e-7 and (not minimum or item[1] > minimum + 1e-7)][:limit]
+
+
+def _nearby_rows(state, config, now):
+    radius = _nearby_radius(config)
+    if radius is None:
+        return [], None
+    if config.get("nearby_enabled") is not True or state.get("demo", config.get("demo", False)):
+        return [], radius
+    return _position_rows(state.get("nearby"), radius, now), radius
+
+
+def _nearby_outer_rows(state, config, now, radius):
+    # A failed or aged inner snapshot is not evidence of an empty inner ring.
+    # The feed only offers this list after a successful empty-inner observation;
+    # recheck its row clocks and availability for every displayed frame too.
+    if (radius is None or radius >= 30 or config.get("nearby_enabled") is not True
+            or state.get("demo", config.get("demo", False))
+            or state.get("nearby_status") != "ready" or state.get("nearby")
+            or state.get("backend_available", True) is not True):
+        return []
+    return _position_rows(state.get("nearby_outer"), 30, now, minimum=radius, limit=10)
 
 
 def _metadata(value, maximum=16):
@@ -267,13 +290,47 @@ def _metadata(value, maximum=16):
     return value[:maximum].upper()
 
 
+def _aircraft_label(row, route):
+    from .flight_alerts import nearby_commercial_ident
+    # A received operator-like callsign is not, by itself, a verified service.
+    commercial = nearby_commercial_ident(row) if route else None
+    registration = _metadata(row.get("registration"))
+    # Older normalized snapshots used `flight` for the received callsign. It
+    # may also contain the registration/hex, so retain that distinction instead
+    # of inventing a commercial service or calling a hex address a callsign.
+    callsign = _metadata(row.get("callsign"))
+    if row.get("callsign") is None:
+        callsign = _metadata(row.get("flight"))
+    if (callsign is not None and (not re.fullmatch(r"[A-Z0-9][A-Z0-9 -]{0,11}", callsign)
+                                 or callsign in {registration, row["hex"].upper()})):
+        callsign = None
+    return (commercial or registration
+            or ("CALL " + callsign if callsign else None)
+            or "HEX " + row["hex"].upper())
+
+
+def _aircraft_type(row):
+    value = _metadata(row.get("aircraft_type"), 8)
+    return value if value and re.fullmatch(r"[A-Z0-9]{2,4}", value) else None
+
+
+def _aircraft_telemetry(row):
+    altitude, speed = row.get("altitude"), row.get("groundspeed")
+    altitude = str(round(altitude)) + " FT" if _number(altitude) and -2000 <= altitude <= 100000 else "ALT N/A"
+    speed = str(round(speed)) + "KT" if _number(speed) and 0 <= speed <= 2000 else "N/A"
+    track = row.get("track", row.get("heading"))
+    track = f"{round(track) % 360:03d}" if _number(track) and 0 <= track <= 360 else "N/A"
+    return altitude, speed, track
+
+
 def render_nearby(draw, image, state, config, now):
-    from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, deck_footer_width
-    from .flight_alerts import fresh_nearby_route, nearby_commercial_ident
+    from .render import AMBER, CYAN, LINE, MUTED, PANEL, WHITE, _header, _text, _width, deck_footer_width
+    from .flight_alerts import fresh_nearby_route
     _header(draw, state, now, "NEARBY AIRCRAFT")
     rows, radius = _nearby_rows(state, config, now)
+    outer = _nearby_outer_rows(state, config, now, radius) if not rows else []
     draw.rectangle((14, 56, 310, 204), fill=PANEL, outline=LINE)
-    draw.rectangle((318, 56, 498, 204), fill=PANEL, outline=LINE)
+    draw.rectangle((318, 56, 498, 226), fill=PANEL, outline=LINE)
     cx, cy, pixels = 162, 131, 64
     for fraction in (.5, 1):
         r = pixels * fraction
@@ -296,32 +353,49 @@ def render_nearby(draw, image, state, config, now):
             label_y = min(189, max(72, y - 8))
             _text(draw, (label_x, label_y), str(index + 1), AMBER, 2)
     route_shown = False
-    for index, (distance, row) in enumerate(rows[:3]):
-        y = 60 + index * 49
-        registration = _metadata(row.get("registration"))
-        callsign = _metadata(row.get("callsign")) or _metadata(row.get("flight"))
-        aircraft = _metadata(row.get("aircraft_type"), 8)
-        label = nearby_commercial_ident(row) or registration or callsign or "ID UNAVAIL"
-        type_width = 6 * len(aircraft) + 5 if aircraft else 0
-        _text(draw, (326, y), str(index + 1) + " " + label, WHITE, 2, max_width=166 - type_width)
-        if aircraft:
-            _text(draw, (492, y + 4), aircraft, MUTED, align="right")
+    for index, (distance, row) in enumerate((outer or rows[:3])):
+        y = (88 + index * 13) if outer else (60 + index * 54)
+        aircraft = _aircraft_type(row)
         route = fresh_nearby_route(row, now) if config.get("nearby_enrichment_enabled") is True else None
         route_shown = route_shown or route is not None
+        label = _aircraft_label(row, route)
+        if outer:
+            # Ten legible one-line rows retain the identifying fields. Full
+            # received telemetry stays on the priority inner-aircraft panels.
+            _text(draw, (326, y), label, WHITE, max_width=66)
+            if aircraft:
+                _text(draw, (394, y), aircraft, MUTED, max_width=24)
+            _text(draw, (449, y), f"{distance:.1f}", CYAN, align="right")
+            altitude = row.get("altitude")
+            altitude = str(round(altitude)) if _number(altitude) and -2000 <= altitude <= 100000 else "N/A"
+            _text(draw, (492, y), altitude, WHITE, align="right", max_width=44)
+            continue
+        type_width = 6 * len(aircraft) + 5 if aircraft else 0
+        scale = 2 if _width(label, 2) <= 166 - type_width else 1
+        _text(draw, (320, y + 4), str(index + 1), AMBER)
+        _text(draw, (326, y), label, WHITE, scale, max_width=166 - type_width)
+        if aircraft:
+            _text(draw, (492, y + (4 if scale == 2 else 0)), aircraft, MUTED, align="right")
+        altitude, speed, track = _aircraft_telemetry(row)
+        from .aircraft_icons import thumbnail
+        icon = thumbnail(aircraft)
+        detail_width = 122 if icon is not None else 166
+        if icon is not None:
+            image.paste(icon, (454, y + 20), icon)
         route_label = f"{distance:.1f} MI"
         if route:
-            route_label = f"{route['origin']} > {route['destination']} / {route_label}"
-        _text(draw, (326, y + 18), route_label, CYAN, max_width=166)
-        altitude, speed = row.get("altitude"), row.get("groundspeed")
-        altitude = str(round(altitude)) + " FT" if _number(altitude) and -2000 <= altitude <= 100000 else "ALT N/A"
-        speed = str(round(speed)) + " KT GS" if _number(speed) and 0 <= speed <= 2000 else "GS N/A"
-        _text(draw, (326, y + 29), altitude + " / " + speed, WHITE, max_width=166)
-        track = row.get("track", row.get("heading"))
-        detail = f"TRK {round(track) % 360:03d}" if _number(track) and 0 <= track <= 360 else "TRK N/A"
-        if registration and registration != label:
-            detail += " / " + registration
-        _text(draw, (326, y + 39), detail, MUTED, max_width=166)
-    if not rows:
+            route_label = f"{route['origin']}>{route['destination']} {route_label}"
+        _text(draw, (326, y + 18), route_label, CYAN, max_width=detail_width)
+        _text(draw, (326, y + 29), altitude, WHITE, max_width=detail_width)
+        _text(draw, (326, y + 40), "GS " + speed + " / TRK " + track, MUTED, max_width=detail_width)
+    if outer:
+        _text(draw, (326, 60), f"{radius:g}-30 MI / NEAREST {len(outer)}", AMBER, max_width=166)
+        for x, title, align in ((326, "ID", "left"), (394, "TYPE", "left"),
+                                (449, "MI", "right"), (492, "FT", "right")):
+            _text(draw, (x, 74), title, MUTED, align=align)
+        draw.line((324, 82, 492, 82), fill=LINE)
+        _text(draw, (23, 210), f"NO AIRCRAFT INSIDE {radius:g} MI", CYAN, max_width=280)
+    elif not rows:
         status = state.get("nearby_status")
         title, subtitle, reason = {
             "ready": ("NO AIRCRAFT", "REPORTED", "IN THIS RADIUS"),
@@ -337,5 +411,6 @@ def render_nearby(draw, image, state, config, now):
         _text(draw, (326, 135), reason, MUTED, max_width=166)
     draw.line((14, 232, 498, 232), fill=LINE)
     sources = "ADSB.LOL / FLIGHTAWARE" if route_shown else "ADSB.LOL"
-    _text(draw, (15, 241), f"{len(rows)} FRESH / {sources}", MUTED,
+    count = f"{len(outer)} OUTSIDE / " if outer else f"{len(rows)} FRESH / "
+    _text(draw, (15, 241), count + sources, MUTED,
           max_width=deck_footer_width(state))

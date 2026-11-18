@@ -205,6 +205,7 @@ def test_runtime_hides_nearby_response_if_pin_or_radius_changed_during_fetch(tmp
             return response
 
         with patch("flightwall.feeds.utcnow", return_value=NOW), \
+                patch.object(runtime.feeds, "_reserve_nearby_request", return_value=0), \
                 patch("flightwall.feeds.request_json", side_effect=old_response):
             runtime.feeds.poll(original, None)
         assert runtime.display_status(NOW)["nearby"] == []

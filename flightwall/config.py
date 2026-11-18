@@ -46,6 +46,7 @@ DEFAULTS = {
     "lisa_private_enabled": False, "guest_mode": False,
     "messages_enabled": False, "chris_gmail_enabled": False, "lisa_gmail_enabled": False,
     "delta_travel_enabled": False, "delta_travel_owner_names": "[]", "delta_travel_lisa_names": "[]",
+    "delta_travel_lisa_mail_enabled": False, "lisa_flight_tracking_enabled": False,
     "chris_lawyer_senders": "[]", "chris_lawyer_domains": "[]",
     "lisa_mail_senders": "[]", "lisa_mail_domains": "[]", "message_preview_chars": 180,
     "chris_notifications_enabled": False, "lisa_notifications_enabled": False,
@@ -87,6 +88,7 @@ PUBLIC_FIELDS = (REMOTE_SETTINGS - {"home_latitude", "home_longitude"}) | {
     "brief_leave_times_enabled",
     "trip_weather_enabled", "national_radar_enabled", "airport_alerts_enabled", "nearby_enrichment_enabled",
     "dinner_options_enabled",
+    "lisa_flight_tracking_enabled",
     "vps_leave_plan_enabled", "vps_leave_drive_minutes", "vps_leave_parking_minutes",
     "vps_leave_security_minutes", "vps_leave_gate_minutes",
     "vps_leave_target_early_minutes", "vps_leave_target_late_minutes",
@@ -327,6 +329,8 @@ class ConfigStore:
             candidate = self.get() | checked
             if candidate["delta_travel_enabled"] and not json.loads(candidate["delta_travel_owner_names"]):
                 raise ValueError("Enter your full passenger-name spelling before enabling Delta email imports")
+            if candidate["delta_travel_lisa_mail_enabled"] and not json.loads(candidate["delta_travel_lisa_names"]):
+                raise ValueError("Enter Lisa's full passenger-name spelling before enabling her Delta email imports")
             if set(json.loads(candidate["delta_travel_owner_names"])) & set(json.loads(candidate["delta_travel_lisa_names"])):
                 raise ValueError("Chris and Lisa need distinct passenger-name spellings")
             if candidate["vps_leave_target_early_minutes"] <= candidate["vps_leave_target_late_minutes"]:

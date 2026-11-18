@@ -1,8 +1,18 @@
-NEARBY AIRCRAFT - OWNER FEEDBACK FOR A FUTURE UPDATE
+NEARBY AIRCRAFT - OWNER FEEDBACK AND IMPLEMENTATION STATUS
 
-STATUS: RECORDED ONLY. DO NOT IMPLEMENT, BUILD, INSTALL OR CHANGE POLLING NOW.
-Baseline: shipped 0.4.7. This request changes no running application settings,
-provider usage, credential, archive, installed executable or release version.
+STATUS: CORE LAYOUT IMPLEMENTED IN THE 0.4.22 CANDIDATE.
+The owner authorized the backlog on November 17. Fresh-empty nearest-ten
+fallback, identifier/type priority and four small original type silhouettes are
+implemented. Unknown types remain text-only; full photo sourcing is deferred.
+The existing configurable inner ring is preserved (default five statute miles).
+One-second polling is NOT enabled. The deployed provider OpenAPI now specifies
+500 unkeyed metered requests/day/IP. A private persistent journal reserves at
+most 480 per rolling day and spaces requests at least 180 seconds apart, with
+Retry-After/backoff. Source freshness remains 120 seconds, so an honest stale
+interval can occur between free polls. Faster near/outer updates require a
+separately supported feed arrangement; paid FlightAware caps are unchanged.
+The original owner request below is retained as design context. Statements
+that images/implementation are deferred describe the earlier record only.
 
 REQUESTED DISPLAY BEHAVIOR
 

@@ -1,0 +1,22 @@
+FLIGHT WALL 0.4.22
+
+Bounded, cancellable TV startup readiness handles a slow existing backend
+without starting another Runtime or showing cached private cards.
+
+Nearby Aircraft adds a nearest-ten outer list when the configured inner ring
+is freshly empty, prominent registration/verified flight number and aircraft
+type, and small original type silhouettes where supported. Source-clock
+freshness, persistent community request limits and Retry-After are enforced.
+Unkeyed requests are limited to 480 per rolling day, at least 180 seconds apart.
+No one-second feed, fee increase or additional provider account is provisioned.
+
+Lisa's separate Gmail profile imports supported matching Delta listings without
+enabling mail previews, Calendar, presence or private cards. Optional exact-leg
+tracking shares the existing FlightAware allowance and never proves boarding.
+
+The existing crisp LED board/ticker/timer presentation, games, private settings,
+calendar credentials and original pinned recovery helper must be preserved.
+Release gates: full Linux tests, real OpenGL/software rendering, fresh install,
+original 0.3.0 and published 0.4.21 executable upgrades and startup rollback.
+Live phone, mailbox approval, future airline tracking and physical Echo behavior
+require their own observed checks.

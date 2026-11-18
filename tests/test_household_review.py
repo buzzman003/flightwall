@@ -81,7 +81,9 @@ class HouseholdReviewTests(unittest.TestCase):
                 wall.now.return_value = NOW + timedelta(seconds=3 * frame[0])
                 return []
             events.side_effect = advance_wall
-            run_gui(Connection(), windowed=True, max_frames=16)
+            # This fixture controls rotation clocks; startup readiness has its
+            # own timeout/input tests and must not consume these slot ticks.
+            run_gui(Connection(), windowed=True, max_frames=16, initial_status=deepcopy(status))
 
         # Each of the first three eligible cards gets one slot in a complete
         # round, alongside all three aviation views.

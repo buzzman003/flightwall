@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 
-from flightwall.gmail_oauth import AUTH_URL, authorize_gmail
+from flightwall.gmail_oauth import AUTH_URL, authorize_gmail, check_gmail_profile
 from flightwall.messages import GmailClient, GMAIL_SCOPE, MessageError, TOKEN_URL
 
 
@@ -169,3 +169,93 @@ def test_pair_write_failure_restores_exact_previous_bytes(setup):
             authorize_gmail(data, credentials, False, callback_port=0, timeout=3, on_url=on_url)
     join(threads)
     assert all(path.read_bytes() == content for path, content in old.items())
+
+
+def test_lisa_desktop_consent_isolated_from_chris_calendar_and_private_features(setup):
+    data, _account, credentials, old = setup
+    lisa = data / "accounts/lisa"
+    lisa.mkdir()
+    calendar = {lisa / "google-client.json": b'{"calendar":"lisa-client"}',
+                lisa / "google-token.json": b'{"calendar":"lisa-token"}'}
+    for path, value in calendar.items():
+        path.write_bytes(value)
+    on_url, query, _replies, threads = driver()
+    with patch.object(GmailClient, "_request", return_value=response()):
+        result = authorize_gmail(data, credentials, False, person="lisa", callback_port=0, timeout=3, on_url=on_url)
+    join(threads)
+    assert result["person"] == "lisa" and result["authorized"]
+    assert query["scope"] == [GMAIL_SCOPE]
+    assert GmailClient(lisa).connected()
+    assert all(path.read_bytes() == value for path, value in (old | calendar).items())
+    assert set(path.name for path in lisa.iterdir()) == {
+        "google-client.json", "google-token.json", "gmail-client.json", "gmail-token.json", "gmail-auth.lock"}
+
+
+@pytest.mark.parametrize("person", ["other", "../chris", "lisa/../../chris", None, []])
+def test_invalid_gmail_profile_is_rejected_before_reading_client_or_opening_callback(tmp_path, person):
+    with patch("flightwall.gmail_oauth._desktop_client") as desktop, patch("flightwall.gmail_oauth.HTTPServer") as server:
+        with pytest.raises(MessageError, match="Chris or Lisa"):
+            authorize_gmail(tmp_path / "not-created", tmp_path / "credentials.json", person=person)
+    desktop.assert_not_called()
+    server.assert_not_called()
+    assert not (tmp_path / "not-created").exists()
+
+
+@pytest.mark.parametrize("actual,matched", [("lisa@example.test", True), ("LISA@EXAMPLE.TEST", True), ("chris@example.test", False)])
+def test_gmail_profile_identity_check_returns_only_match_and_uses_fixed_read_only_endpoint(tmp_path, actual, matched, capsys):
+    with patch("flightwall.gmail_oauth.GmailClient") as client:
+        client.return_value._token.return_value = {"scopes": [GMAIL_SCOPE]}
+        client.return_value._access_token.return_value = "private-access"
+        client.return_value._request.return_value = {"emailAddress": actual}
+        result = check_gmail_profile(tmp_path, "lisa@example.test", person="lisa")
+    client.assert_called_once_with(tmp_path / "accounts/lisa")
+    client.return_value._request.assert_called_once_with(
+        "GET", "https://gmail.googleapis.com/gmail/v1/users/me/profile?fields=emailAddress", token="private-access")
+    assert result == {"person": "lisa", "matches": matched, "read_only": True}
+    assert "@" not in json.dumps(result) and "private" not in json.dumps(result)
+    assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("value", [{}, {"emailAddress": []}, {"emailAddress": ""}, {"emailAddress": "é@example.test"}])
+def test_invalid_gmail_identity_response_fails_closed_without_address_output(tmp_path, value):
+    with patch("flightwall.gmail_oauth.GmailClient") as client:
+        client.return_value._token.return_value = {"scopes": [GMAIL_SCOPE]}
+        client.return_value._request.return_value = value
+        with pytest.raises(MessageError, match="could not be verified") as error:
+            check_gmail_profile(tmp_path, "lisa@example.test", person="lisa")
+    assert "@" not in str(error.value)
+
+
+def test_gmail_profile_error_and_invalid_expectation_never_leak_private_values(tmp_path):
+    with patch("flightwall.gmail_oauth.GmailClient") as client:
+        for invalid in ("missing-domain", "lisa@example.test\n", None):
+            with pytest.raises(MessageError):
+                check_gmail_profile(tmp_path, invalid, person="lisa")
+        client.assert_not_called()
+        client.return_value._token.return_value = {"scopes": [GMAIL_SCOPE]}
+        client.return_value._request.side_effect = RuntimeError("private-access lisa@example.test")
+        with pytest.raises(MessageError) as error:
+            check_gmail_profile(tmp_path, "lisa@example.test", person="lisa")
+    assert "private-access" not in str(error.value) and "@" not in str(error.value)
+
+
+@pytest.mark.parametrize("person", ["other", "../chris", None, []])
+def test_gmail_identity_check_rejects_invalid_profile_before_access(tmp_path, person):
+    with patch("flightwall.gmail_oauth.GmailClient") as client:
+        with pytest.raises(MessageError, match="Chris or Lisa"):
+            check_gmail_profile(tmp_path, "lisa@example.test", person=person)
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize("scopes", [[GMAIL_SCOPE, "https://www.googleapis.com/auth/gmail.modify"],
+                                     [GMAIL_SCOPE, "https://www.googleapis.com/auth/calendar.readonly"],
+                                     [], None, [GMAIL_SCOPE, {}]])
+def test_gmail_identity_check_rejects_broader_or_invalid_permissions_before_profile_request(tmp_path, scopes, capsys):
+    with patch("flightwall.gmail_oauth.GmailClient") as client:
+        client.return_value._token.return_value = {"scopes": scopes}
+        with pytest.raises(MessageError, match="could not be verified") as error:
+            check_gmail_profile(tmp_path, "lisa@example.test", person="lisa")
+    client.return_value._request.assert_not_called()
+    client.return_value._access_token.assert_not_called()
+    assert "@" not in str(error.value) and "https:" not in str(error.value)
+    assert capsys.readouterr() == ("", "")

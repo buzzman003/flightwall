@@ -454,10 +454,12 @@ def _map(draw, image, state, config, now, flight, tz, page="ROUTE MAP / GREAT CI
         md.ellipse((x - 4, y - 4, x + 4, y + 4), fill=BG, outline=AMBER)
         md.rectangle((x - 1, y - 1, x + 1, y + 1), fill=WHITE)
     live_pos = _live_position(state)
+    plotted_live = False
     if live_pos:
         x, y = project(live_pos)
         if 23 <= x <= 488 and 65 <= y <= 193:
             md.polygon(((x, y - 6), (x - 4, y + 4), (x, y + 2), (x + 4, y + 4)), fill=CYAN)
+            plotted_live = True
     image.paste(map_image.crop((15, 57, 497, 202)), (15, 57))
     if live_pos:
         _text(draw, (16, 213), "LIVE POSITION / " + str(state["live"]["source"]), CYAN, max_width=475)
@@ -467,6 +469,7 @@ def _map(draw, image, state, config, now, flight, tz, page="ROUTE MAP / GREAT CI
     _text(draw, (484, 68), "N", CYAN)
     draw.line((486, 81, 486, 95), fill=CYAN)
     draw.line((482, 85, 486, 81, 490, 85), fill=CYAN)
+    return plotted_live
 
 
 def _schedule(draw, state, config, now, flights, tz):
@@ -1533,6 +1536,12 @@ def render_frame(state, config, size=BASE_SIZE):
             view = "home"
             state = dict(state, view="home", selected_card=None)
             _home(draw, state, config, now)
+    elif view == "personal_tracking":
+        from .personal_tracking_view import render_personal_tracking
+        if not render_personal_tracking(draw, image, state, config, now):
+            view = "home"
+            state = dict(state, view="home", selected_card=None)
+            _home(draw, state, config, now)
     elif view == "trip_summary":
         _trip_summary(draw, state, config, now)
     elif view == "trip_map":
@@ -1554,7 +1563,7 @@ def render_frame(state, config, size=BASE_SIZE):
             _layover(draw, state, config, now, card)
     else:
         _details(draw, state, config, now, flight, flights, tz)
-    if view not in {"weather", "nearby", "flight_status", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
+    if view not in {"weather", "nearby", "flight_status", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options", "personal_tracking"}:
         _footer(draw, state, view, now, tz, personal_item)
     _deck_progress(draw, state)
     if not state.get("defer_display_overlays") and not state.get("defer_timer_overlay"):

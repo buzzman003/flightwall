@@ -407,6 +407,9 @@ def build_rotation(status, config, now=None):
         add("flight_watch", "flight_watch:" + str(item.get("id")), item)
     if snapshot.get("demo") is False and status.get("backend_available", True) is True:
         from .personal_travel import ROWS_PER_PAGE, visible_travel
+        from .personal_tracking_view import tracking_rows
+        for row in tracking_rows(status, config, now):
+            add("personal_tracking", "personal_tracking:" + row["id"], row)
         travel = visible_travel(status.get("personal_travel"), config, now)
         for start in range(0, len(travel), ROWS_PER_PAGE):
             add("personal_travel", f"personal_travel:{start // ROWS_PER_PAGE}",

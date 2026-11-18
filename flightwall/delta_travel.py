@@ -1,4 +1,4 @@
-"""Opt-in, Chris-only import of one verified Delta non-revenue email format.
+"""Separate opt-in mail profiles for verified Delta non-revenue listings.
 
 The message payload, locator and passenger names exist only during parsing.
 Only narrow flight records, a private booking hash and aggregate status persist.
@@ -19,7 +19,7 @@ import secrets
 from urllib.parse import quote
 
 from .config import private_json
-from .messages import GmailClient, MessageError
+from .messages import GmailClient, MessageError, _profile
 from .mycrew import airport_zone
 from .personal_travel import PersonalTravel
 
@@ -31,6 +31,7 @@ MAX_MESSAGES = 60
 MAX_TEXT = 131072
 MAX_LEGS = 16
 ERROR = "Delta travel could not be refreshed. Check Chris's separate Gmail connection."
+LISA_ERROR = "Delta travel could not be refreshed. Check Lisa's separate Gmail connection."
 REVIEW = "Some Delta messages need review; unsupported changes were not guessed."
 _HEADERS = ("carrier", "flight", "from", "to", "departure time", "arrival time")
 _CLOCK = re.compile(r"([0-3]?\d)([A-Za-z]{3})\s+([0-1]?\d):([0-5]\d)\s*(AM|PM)", re.I)
@@ -325,9 +326,9 @@ def parse_listing(payload, names, received, booking_salt, *, lisa_names=()):
     if (received.tzinfo is None or received.utcoffset() is None
             or not isinstance(booking_salt, bytes) or len(booking_salt) != 32):
         raise DeltaReview(REVIEW)
-    aliases, candidates = owner_names(list(names)), []
+    aliases, candidates = owner_names(list(names)) if names else (), []
     lisa_aliases = owner_names(list(lisa_names)) if lisa_names else ()
-    if set(aliases) & set(lisa_aliases):
+    if not (aliases or lisa_aliases) or set(aliases) & set(lisa_aliases):
         raise DeltaReview(REVIEW)
     for mime, text in _bodies(payload).items():
         try:
@@ -363,12 +364,15 @@ def _header(headers, name):
 
 
 class DeltaTravel:
-    def __init__(self, data_dir, config_getter):
+    def __init__(self, data_dir, config_getter, *, person="chris"):
+        self.person = _profile(person)
         self.data_dir, self.config_getter = Path(data_dir), config_getter
-        self.client = GmailClient(self.data_dir / "accounts" / "chris")
+        self.client = GmailClient(self.data_dir / "accounts" / self.person)
         self.travel = PersonalTravel(data_dir, config_getter)
-        self.path = self.data_dir / "delta-travel-status.json"
-        self.key_path = self.data_dir / "delta-travel-association.key"
+        prefix = "delta-travel" if self.person == "chris" else "delta-travel-lisa"
+        self.path = self.data_dir / (prefix + "-status.json")
+        self.key_path = self.data_dir / (prefix + "-association.key")
+        self.error = ERROR if self.person == "chris" else LISA_ERROR
 
     def _authorization(self):
         token = self.client._token()
@@ -402,9 +406,12 @@ class DeltaTravel:
 
     def _selection(self):
         config = self.config_getter()
-        if config.get("delta_travel_enabled") is not True or config.get("demo", True) is not False:
+        setting = "delta_travel_enabled" if self.person == "chris" else "delta_travel_lisa_mail_enabled"
+        if config.get(setting) is not True or config.get("demo", True) is not False:
             return None
-        chris = owner_names(config.get("delta_travel_owner_names", "[]"))
+        # Lisa's mailbox can supply only explicitly named Lisa passengers. It
+        # cannot import Chris or other people even on the same reservation.
+        chris = owner_names(config.get("delta_travel_owner_names", "[]")) if self.person == "chris" else ()
         try:
             lisa = json.loads(config.get("delta_travel_lisa_names", "[]"))
         except (ValueError, TypeError):
@@ -412,7 +419,7 @@ class DeltaTravel:
         if not isinstance(lisa, list):
             raise DeltaReview(REVIEW)
         lisa = owner_names(lisa) if lisa else ()
-        if set(chris) & set(lisa):
+        if not (chris or lisa) or set(chris) & set(lisa):
             raise DeltaReview(REVIEW)
         return chris, lisa
 
@@ -426,7 +433,7 @@ class DeltaTravel:
             return {"enabled": False, "status": "disabled", "last_sync": None, "error": None,
                     "inspected": 0, "imported": 0, "review_needed": 0}
         if not self.client.connected():
-            return {"enabled": True, "status": "not_connected", "last_sync": None, "error": ERROR,
+            return {"enabled": True, "status": "not_connected", "last_sync": None, "error": self.error,
                     "inspected": 0, "imported": 0, "review_needed": 0}
         try:
             raw = self.path.read_text(encoding="utf-8")
@@ -434,7 +441,7 @@ class DeltaTravel:
                 raise ValueError()
             value = json.loads(raw)
             if (not isinstance(value, dict) or value.get("status") not in {"ready", "review_needed", "error", "not_connected"}
-                    or value.get("error") not in {None, REVIEW, ERROR}
+                    or value.get("error") not in {None, REVIEW, self.error}
                     or any(type(value.get(key)) is not int or not 0 <= value[key] <= MAX_MESSAGES * MAX_LEGS * 2
                            for key in ("inspected", "imported", "review_needed"))):
                 raise ValueError()
@@ -454,7 +461,7 @@ class DeltaTravel:
             if selection is None:
                 return self.status()
             if not self.client.connected():
-                result = {"status": "not_connected", "last_sync": None, "error": ERROR,
+                result = {"status": "not_connected", "last_sync": None, "error": self.error,
                           "inspected": 0, "imported": 0, "review_needed": 0}
             else:
                 authorization = self._authorization()
@@ -535,7 +542,7 @@ class DeltaTravel:
             result = {"status": "review_needed", "last_sync": None, "error": REVIEW,
                       "inspected": inspected, "imported": 0, "review_needed": max(1, review)}
         except (MessageError, ValueError, OSError, TypeError, KeyError, OverflowError):
-            result = {"status": "error", "last_sync": None, "error": ERROR,
+            result = {"status": "error", "last_sync": None, "error": self.error,
                       "inspected": inspected, "imported": 0, "review_needed": review}
         private_json(self.path, result)
         return result | {"enabled": True}

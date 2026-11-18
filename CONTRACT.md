@@ -1,3 +1,26 @@
+0.4.22 STARTUP, NEARBY CONTEXT, AND LISA TRAVEL
+
+Retry transient local startup failures for a bounded interval while handling
+Escape. Do not start another Runtime because an existing service is slow.
+Invalid authorization/data fails explicitly. Mark health only after rendering
+the first real card. Never draw cached private cards while waiting.
+
+The outer nearby list requires a fresh successful empty configured inner ring.
+Use exact statute distances, nearest ten within thirty miles, and source-clock
+freshness every frame. Repeated cached responses cannot renew observations.
+Reserve community requests privately before calling, preserve limits across
+restarts, honor Retry-After, and keep paid enrichment independent and bounded.
+
+Lisa's travel mailbox requires separate consent and an opt-in. Import only
+explicitly matching Lisa passenger rows from the supported Delta templates.
+Keep her tokens/status/association salt separate from Chris's; previews stay
+independent. Google Gmail read-only consent is broader than the application's
+bounded Delta-email request filter. Do not imply a provider-enforced flight-only
+mail scope. Never persist reservation codes, employee numbers or full messages.
+Personal tracking must match number, route and schedule, preserve LISTED versus
+CONFIRMED, never establish boarding/presence/duty, and share the existing paid
+allowance. Guest/disabled/stale conditions are rechecked while paused.
+
 0.4.21 ACTIVITIES AND PERSONAL DELTA LISTINGS
 
 Today's Activities advances only after every supported current-day activity's

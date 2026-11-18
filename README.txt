@@ -1,3 +1,20 @@
+FLIGHT WALL 0.4.22
+
+The TV launch waits briefly for a slow local service instead of treating a
+timeout as a missing service. Escape remains available during startup.
+The crisp LED presentation is unchanged.
+
+Nearby Aircraft can show the nearest ten received aircraft out to thirty
+statute miles when the configured inner ring is freshly empty. Registration
+or a verified commercial flight number and compact aircraft type lead each row.
+Unkeyed ADSB.lol requests respect the published daily limit; this does not
+provide one-second tracking. Paid FlightAware limits are unchanged.
+
+Lisa can connect her own separate read-only Gmail for matching Delta listings.
+This does not enable message previews, Calendar, phone presence or private
+cards. Optional Lisa flight tracking uses exact listed flight identities and
+the existing shared FlightAware allowance; a listing is not proof of boarding.
+
 FLIGHT WALL 0.4.21
 
 The activity card advances to Tomorrow's Activities in amber after today's

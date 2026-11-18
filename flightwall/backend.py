@@ -89,6 +89,7 @@ class Runtime:
         self.flight_watches = FlightWatchStore(data_dir, self.config.get)
         self.personal_travel = PersonalTravel(data_dir, self.config.get)
         self.delta_travel = DeltaTravel(data_dir, self.config.get)
+        self.delta_travel_lisa = DeltaTravel(data_dir, self.config.get, person="lisa")
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
@@ -184,6 +185,7 @@ class Runtime:
             status = {"version": __version__, "snapshot": snapshot, "config": self.config.public(),
                     "selected_flight": flight, "on_duty": is_on_duty(flight, config, now),
                     "live": copy.deepcopy(live), "nearby": self.feeds.nearby_for_config(config, now),
+                    "nearby_outer": self.feeds.nearby_outer_for_config(config, now),
                     "nearby_status": self.feeds.nearby_status_for_config(config, now),
                     "updater": copy.deepcopy(self.updater_status), "last_live_error": self.feeds.error,
                     "last_error": self.last_error,
@@ -279,12 +281,19 @@ class Runtime:
         context = household_context(status, config, now)
         status["household_context"] = context
         status["personal_travel"] = []
+        status["personal_tracking"] = []
         if (snapshot.get("demo") is False and config.get("guest_mode") is False
                 and config.get("personal_travel_cards_visible") is True):
             try:
-                status["personal_travel"] = visible_travel(self.personal_travel.list_records(), config, now)
+                travel_records = self.personal_travel.list_records()
+                status["personal_travel"] = visible_travel(travel_records, config, now)
             except ValueError:
-                pass
+                travel_records = []
+            if config.get("lisa_flight_tracking_enabled") is True and config.get("flightaware_enabled") is True:
+                try:
+                    status["personal_tracking"] = self.feeds.personal_tracking.snapshot(config, travel_records, now)
+                except (ValueError, OSError, TypeError):
+                    pass
         status["personal_items"] = filter_personal_items(personal_items, status, config, now)
         for item in status["personal_items"]:
             if item.get("kind") == "dinner":
@@ -379,6 +388,7 @@ class Runtime:
         """Maintenance/MCP never receives Lisa's private cards or mailbox data."""
         status = self.display_status(now)
         status.pop("personal_travel", None)
+        status.pop("personal_tracking", None)
         status["messages"]["lisa"] = []
         status["health"] = []
         for item in status["personal_items"]:
@@ -388,10 +398,11 @@ class Runtime:
         # Absolute aircraft positions plus home-relative offsets would reveal
         # the private home pin. Maintenance needs only the relative local view;
         # the separate admin TV route retains validated provider coordinates.
-        status["nearby"] = [{key: value for key, value in row.items()
-                             if key not in {"latitude", "longitude", "lat", "lon"}}
-                            if "east_miles" in row or "north_miles" in row else row
-                            for row in status["nearby"]]
+        for group in ("nearby", "nearby_outer"):
+            status[group] = [{key: value for key, value in row.items()
+                              if key not in {"latitude", "longitude", "lat", "lon"}}
+                             if "east_miles" in row or "north_miles" in row else row
+                             for row in status[group]]
         shopping = status.get("shopping_list", {})
         status["shopping_list"] = {"enabled": shopping.get("enabled", False),
                                    "visible": shopping.get("visible", False),
@@ -410,6 +421,7 @@ class Runtime:
         content = self.content.status()
         return {"version": __version__, "profiles": household["connected_profiles"],
                 "delta_travel": self.delta_travel.status(),
+                "delta_travel_lisa": self.delta_travel_lisa.status(),
                 "kids": household["kids"], "presence": self.presence.snapshot(),
                 "messages": {person: {key: value for key, value in self.messages.status(person).items() if key != "items"}
                              for person in ("chris", "lisa")},
@@ -591,10 +603,19 @@ class Runtime:
                 watches = self.flight_watches.list_watches()
             except (ValueError, OSError):
                 watches = []
+            personal_flights = []
+            if (config.get("lisa_flight_tracking_enabled") is True and config.get("flightaware_enabled") is True
+                    and config.get("demo") is False and config.get("guest_mode") is False
+                    and config.get("personal_travel_cards_visible") is True):
+                try:
+                    personal_flights = self.personal_travel.list_records()
+                except (ValueError, OSError):
+                    pass
             try:
                 self.feeds.poll(config, selected, on_duty=context["flight_priority"] or
                                 (not context["recent_vps_arrival"] and
-                                 (is_on_duty(roster_selected, config, now) or context["chris_away"])), watches=watches)
+                                 (is_on_duty(roster_selected, config, now) or context["chris_away"])),
+                                watches=watches, personal_flights=personal_flights)
                 provider = self.feeds.operating_status_for_config(config, selected, now)
                 self._vps_arrival(snapshot, config, selected, provider, now)
             except Exception:
@@ -626,6 +647,11 @@ class Runtime:
                     self.delta_travel.sync()
                 except Exception:
                     pass  # Never let an optional booking import interrupt other feeds.
+            if not self.stop_event.is_set() and config.get("delta_travel_lisa_mail_enabled"):
+                try:
+                    self.delta_travel_lisa.sync()
+                except Exception:
+                    pass  # Lisa's separately consented mailbox has its own error state.
             if config["messages_enabled"]:
                 for person in ("chris", "lisa"):
                     if not self.stop_event.is_set() and config[f"{person}_gmail_enabled"]:

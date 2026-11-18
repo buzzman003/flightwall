@@ -11,6 +11,26 @@ must appear before the command name.
 
 PERSONAL DELTA TRAVEL
 
+Separate Gmail consent uses a Google OAuth Desktop client already saved in
+the private account directory. Forward callback port 8766 through strict SSH,
+then run the command for the person who is approving their mailbox:
+
+    $FW gmail-authorize --person chris --credentials /private/desktop-client.json --no-browser
+    $FW gmail-authorize --person lisa --credentials /private/desktop-client.json --no-browser
+
+Open the printed Google link yourself. Gmail read-only consent is broader than
+Flight Wall's bounded Delta-email filter. Calendar credentials and mail previews
+remain independent. Do not paste sign-in links, codes or tokens into chat.
+Verify the selected account without printing it:
+
+    $FW gmail-profile-check --person lisa --expected-email YOUR-EXPECTED-ADDRESS
+
+Lisa's mailbox import uses delta_travel_lisa_mail_enabled and explicit private
+delta_travel_lisa_names. Lisa's optional exact-leg tracking is separately gated
+by lisa_flight_tracking_enabled and shares the existing FlightAware cap. These
+settings do not enable presence or private mail previews. Unsupported templates
+need review. No saved listing proves that its passenger boarded the flight.
+
 Review the actual Delta reservation, listing or cancellation in your own mail
 before importing. A calendar copy, listing, jumpseat request or check-in notice
 alone cannot prove a confirmed seat or actual travel. Compare with the primary

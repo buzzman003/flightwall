@@ -7,13 +7,16 @@ os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 from datetime import datetime, timezone
 from functools import lru_cache
 import base64
+import errno
 import hashlib
 import io
 import json
 import math
 from pathlib import Path
 import random
+import threading
 import time
+import urllib.error
 import urllib.request
 from zoneinfo import ZoneInfo
 
@@ -66,7 +69,8 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
             fresh = False
         result["custody_outlook"] = dict(outlook, stale=outlook.get("stale") is not False or not fresh)
     if not backend_available:
-        result["live"], result["nearby"] = None, []
+        result["live"], result["nearby"], result["nearby_outer"] = None, [], []
+        result["personal_tracking"] = []
         result["operating_live"] = None
         result["nearby_status"] = "stale" if status.get("nearby_status") in {"ready", "stale"} else "unavailable"
     from .flight_alerts import fresh_status
@@ -129,6 +133,7 @@ def entry_render_state(status, config, entry, now=None):
     context = household_context(status, config, now)
     state = {**status.get("snapshot", {}), "now": now.isoformat(), "view": view,
              "selected_flight": selected, "live": live, "nearby": status.get("nearby", []),
+             "nearby_outer": status.get("nearby_outer", []),
              "nearby_status": status.get("nearby_status"),
              "household_context": context,
              "presence": status.get("presence", {}),
@@ -139,6 +144,7 @@ def entry_render_state(status, config, entry, now=None):
              "agenda_page": entry.get("agenda_page", 0),
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
+             "personal_tracking": status.get("personal_tracking", []),
              "weather": status.get("weather", {}),
              "operating_status": status.get("operating_status", {}),
              "operating_flight": status.get("operating_flight"),
@@ -152,7 +158,7 @@ def entry_render_state(status, config, entry, now=None):
              "trip_preview": entry.get("trip_preview", status.get("trip_preview", {})), "trip_page": entry.get("trip_page", 0),
              "personal_items": filter_personal_items(status.get("personal_items"), status, config, now),
              "selected_personal_item": item if view == "personal" else None,
-             "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch", "personal_travel"} else None,
+             "selected_card": item if view in {"message", "inspiration", "health", "layover", "local_visit", "flight_watch", "personal_travel", "personal_tracking"} else None,
              "selected_layover": item if view == "layover" else None,
              "setup": (item or status.get("setup") or {}) if view == "setup" else None}
     if view == "flight_brief":
@@ -418,6 +424,53 @@ def _render_led(frame, config, size):
             mask = _led_mask(frame.size, size, round(gap, 4))
             out = Image.composite(out, Image.new("RGB", size), mask)
     return out
+
+
+def backend_connection_refused(error):
+    """Only a refused local connection proves that a backend needs starting."""
+    if isinstance(error, urllib.error.HTTPError):
+        return False
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    return (isinstance(error, ConnectionRefusedError)
+            or isinstance(error, OSError) and (error.errno == errno.ECONNREFUSED
+                                               or getattr(error, "winerror", None) == 10061))
+
+
+def transient_backend_error(error):
+    # Authentication, HTTP failures and invalid JSON/data are not readiness
+    # delays. Retrying them would conceal a setup or application error.
+    if isinstance(error, urllib.error.HTTPError):
+        return False
+    if isinstance(error, urllib.error.URLError):
+        error = error.reason
+    return (isinstance(error, (TimeoutError, ConnectionError))
+            or isinstance(error, OSError) and error.errno in {
+                errno.ECONNREFUSED, errno.ETIMEDOUT, errno.ECONNRESET,
+                errno.ECONNABORTED, errno.EPIPE})
+
+
+def validate_startup_status(status):
+    """Reject malformed local responses without printing their contents."""
+    from . import __version__
+    from .config import DEFAULTS, validate
+
+    if (not isinstance(status, dict) or not isinstance(status.get("config"), dict)
+            or not isinstance(status.get("snapshot"), dict)
+            or not isinstance(status["snapshot"].get("flights"), list)):
+        raise ValueError("The local display service returned invalid startup data.")
+    config = status["config"]
+    if not {"demo", "timezone", "card_seconds"} <= config.keys():
+        raise ValueError("The local display service returned invalid startup settings.")
+    try:
+        for key, value in config.items():
+            if key in DEFAULTS:
+                validate(key, value)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        raise ValueError("The local display service returned invalid startup settings.") from None
+    if "version" in status and status["version"] != __version__:
+        raise ValueError("The local display service is running a different release. Launch Flight Wall from Ports again.")
+    return status
 
 
 class BackendConnection:
@@ -808,7 +861,66 @@ class DisplayScreen:
         pygame.display.flip()
 
 
-def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
+def wait_for_startup_status(connection, pygame, screen, config, *, initial_status=None, timeout=15):
+    """Wait for local data without freezing SDL or showing cached private cards.
+
+    A cold service can be busy beyond one HTTP request's two-second limit.
+    Keep only one request in flight, with a bounded overall wait. The daemon
+    request may finish after Escape; its result is never presented afterward.
+    """
+    from .render import _text, CYAN, MUTED, PANEL
+
+    if initial_status is not None:
+        return validate_startup_status(initial_status)
+    deadline = time.monotonic() + timeout
+    retry_at = time.monotonic()
+    pending = None
+    clock = pygame.time.Clock()
+    frame = Image.new("RGB", (512, 256), PANEL)
+    draw = ImageDraw.Draw(frame)
+    _text(draw, (32, 84), "STARTING FLIGHT WALL", CYAN)
+    _text(draw, (32, 116), "WAITING FOR LOCAL SERVICE", MUTED)
+    _text(draw, (32, 180), "ESC EXIT", MUTED)
+
+    def request_status():
+        ready, result = threading.Event(), []
+
+        def read():
+            try:
+                result.append((True, connection.status()))
+            except Exception as exc:
+                result.append((False, exc))
+            finally:
+                ready.set()
+
+        threading.Thread(target=read, name="flightwall-startup-status", daemon=True).start()
+        return ready, result
+
+    while True:
+        now = time.monotonic()
+        if now >= deadline:
+            raise TimeoutError("The local display service did not become ready.")
+        if pending is None and now >= retry_at:
+            pending = request_status()
+        # Fast ready responses do not consume the first display input event or
+        # add a loading frame to the normal presentation/health sequence.
+        if pending is not None and pending[0].wait(.01):
+            succeeded, value = pending[1][0]
+            if succeeded:
+                return validate_startup_status(value)
+            if not transient_backend_error(value):
+                raise value
+            pending = None
+            retry_at = time.monotonic() + .1
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return None
+        screen.draw(frame, config)
+        clock.tick(30)
+
+
+def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
+            initial_status=None, startup_config=None):
     import pygame
     from .render import _text, PANEL, CYAN, WHITE, AMBER, MUTED
 
@@ -820,8 +932,17 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None):
         joystick = pygame.joystick.Joystick(i)
         joystick.init()
         joysticks[joystick.get_instance_id()] = joystick
-    screen = DisplayScreen(pygame, (1280, 720) if windowed else (0, 0), not windowed)
-    status = connection.status()
+    try:
+        from .config import DEFAULTS
+        screen = DisplayScreen(pygame, (1280, 720) if windowed else (0, 0), not windowed)
+        status = wait_for_startup_status(connection, pygame, screen, startup_config or DEFAULTS,
+                                         initial_status=initial_status)
+        if status is None:
+            pygame.quit()
+            return {"frames": 0, "opengl": bool(screen.gl), "shader": False}
+    except BaseException:
+        pygame.quit()
+        raise
     config = dict(status["config"])
     initial_status = fresh_household_status(status, config, datetime.now(timezone.utc))
     entries = build_rotation(initial_status, config, datetime.now(timezone.utc))

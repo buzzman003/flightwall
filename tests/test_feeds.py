@@ -58,6 +58,11 @@ class FeedTests(unittest.TestCase):
         self.ticker = patch("flightwall.feeds.time.monotonic", return_value=10)
         self.ticker.start()
         self.addCleanup(self.ticker.stop)
+        # Snapshot normalization tests isolate the private cross-launch quota
+        # journal; its actual reservation/cooldown behavior has separate tests.
+        self.quota = patch("flightwall.feeds.FlightFeeds._reserve_nearby_request", return_value=0)
+        self.quota.start()
+        self.addCleanup(self.quota.stop)
 
     def poll_live(self, flights=None, observation=None, chosen=None):
         response = [{"flights": flights if flights is not None else [scheduled()]}, observation or position()]
@@ -186,7 +191,7 @@ class FeedTests(unittest.TestCase):
                 nearby_aircraft("abcde5", 0.5, alt_baro="ground")]
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot(rows)) as network:
             self.feed.poll(self.nearby_config(), None)
-        self.assertTrue(network.call_args.args[0].endswith("/0.0/0.0/5"))
+        self.assertTrue(network.call_args.args[0].endswith("/0.0/0.0/27"))
         self.assertEqual([row["hex"] for row in self.feed.nearby], ["abcde4", "abcde3", "abcde2"])
         unknown, known, edge = self.feed.nearby
         self.assertEqual(known["callsign"], "DAL123")
@@ -336,12 +341,12 @@ class FeedTests(unittest.TestCase):
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
         self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "ready")
-        with patch("flightwall.feeds.time.monotonic", return_value=71), \
+        with patch("flightwall.feeds.time.monotonic", return_value=191), \
                 patch("flightwall.feeds.request_json", side_effect=OSError("offline")):
             self.feed.poll(config, None)
         self.assertEqual(self.feed.nearby_for_config(config, NOW), [])
         self.assertEqual(self.feed.nearby_status_for_config(config, NOW), "stale")
-        with patch("flightwall.feeds.time.monotonic", return_value=132), \
+        with patch("flightwall.feeds.time.monotonic", return_value=372), \
                 patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft()])):
             self.feed.poll(config, None)
         self.assertEqual(len(self.feed.nearby_for_config(config, NOW)), 1)
@@ -356,7 +361,7 @@ class FeedTests(unittest.TestCase):
     def test_legacy_nautical_mile_radius_is_not_rounded_up_during_conversion(self):
         with patch("flightwall.feeds.request_json", return_value=nearby_snapshot([])) as network:
             self.feed.poll(self.nearby_config(nearby_radius_miles=None, nearby_radius_nm=7), None)
-        self.assertTrue(network.call_args.args[0].endswith("/0.0/0.0/7"))
+        self.assertTrue(network.call_args.args[0].endswith("/0.0/0.0/27"))
 
     def test_nearby_network_failure_clears_old_aircraft(self):
         self.feed.nearby = [{"flight": "old"}]

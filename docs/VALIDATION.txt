@@ -1,3 +1,30 @@
+0.4.22 STARTUP, NEARBY CONTEXT, AND SEPARATE LISA TRAVEL
+
+Windows checks cover transient startup failures, bounded readiness, responsive
+Escape, invalid/authentication failures and avoiding a duplicate Runtime.
+Native Linux, frozen graphics and genuine published 0.4.21 executable upgrade
+and rollback remain release gates. Repeated physical cold starts are a field
+check; the previous reboot's healthy filesystem cannot diagnose another boot.
+
+Nearby tests cover fresh-empty fallback, exact distances, identifier/type
+selection, source timestamps, private persistent request reservations and 429
+backoff. ADSB.lol's deployed OpenAPI checked November 17, 2026 publishes 500
+unkeyed metered requests/day/IP. Flight Wall reserves at most 480 per rolling
+24 hours and waits at least 180 seconds. Other clients sharing the IP can use
+that quota. Source observations expire normally, including between polls.
+One-second updates require a separately supported feed arrangement.
+https://api.adsb.lol/api/openapi.json
+
+Chris approved Gmail read-only consent on November 17. Profile identity and
+separate storage were verified without printing credentials. The first sync
+imported four supported past legs; five messages required review. No upcoming
+personal travel was fabricated. Lisa then approved her separate Gmail consent;
+mailbox identity, exact read-only scope and private storage were verified without
+changing Chris's credentials or enabling previews. Import activation follows
+the signed update. Real future tracking remains a separate check; synthetic
+tests and a saved reservation do not establish boarding.
+Keep all mailbox previews disabled unless independently requested.
+
 0.4.21 NEXT-DAY ACTIVITIES AND DELTA EMAIL IMPORT
 
 Synthetic tests cover activity coverage, final-event grace, later same-day

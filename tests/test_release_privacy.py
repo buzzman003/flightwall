@@ -36,7 +36,9 @@ class ReleasePrivacyTests(unittest.TestCase):
                  "openai.key", "flightaware.key", "personal.lock", "timers.lock", "flight-watches.lock",
                  "household-calendars.lock", "openai-usage.lock", "flightaware-usage.lock",
                  "trip-weather.json", "flight-environment.json", "national-radar.png", "national-radar-loop.png",
-                 "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock")
+                 "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock",
+                 "adsblol-usage.json", "adsblol-usage.lock", "personal-travel.json", "personal-travel.lock",
+                 "delta-travel-status.json", "delta-travel-lisa-status.json")
         for name in names:
             with self.subTest(name=name):
                 path = self.source / name

@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import webbrowser
 
 from .config import private_json
-from .messages import GmailClient, GMAIL_SCOPE, MessageError, TOKEN_URL
+from .messages import GmailClient, GMAIL_SCOPE, GMAIL_URL, MessageError, TOKEN_URL, _profile
 from .personal import PersonalStore
 
 
@@ -115,9 +115,31 @@ def _store_pair(account, client, token):
         raise MessageError("Gmail authorization could not be saved privately. Existing Calendar authorization is unchanged.") from None
 
 
+def check_gmail_profile(data_dir, expected_email, *, person="chris"):
+    """Compare the selected mailbox privately; never return its email address."""
+    person = _profile(person)
+    if (not isinstance(expected_email, str) or len(expected_email) > 254
+            or not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9.-]{1,180}\.[A-Za-z]{2,32}", expected_email)):
+        raise MessageError("Use the expected complete mailbox address for the profile check.")
+    client = GmailClient(Path(data_dir) / "accounts" / person)
+    try:
+        if set(client._token().get("scopes", [])) != {GMAIL_SCOPE}:
+            raise ValueError()
+        value = client._request("GET", GMAIL_URL + "/profile?fields=emailAddress", token=client._access_token())
+        actual = value.get("emailAddress") if isinstance(value, dict) else None
+        if (not isinstance(actual, str) or not actual or len(actual) > 254
+                or not actual.isascii()):
+            raise ValueError()
+        matched = hmac.compare_digest(actual.casefold(), expected_email.casefold())
+    except Exception:
+        raise MessageError("The Gmail profile could not be verified. Reconnect the selected person's Gmail and try again.") from None
+    return {"person": person, "matches": matched, "read_only": True}
+
+
 def authorize_gmail(data_dir, credentials_path, open_browser=True, *, callback_port=8766,
-                    timeout=300, on_url=print):
-    """Authorize Chris's Gmail only; never enable previews, travel or Calendar."""
+                    timeout=300, on_url=print, person="chris"):
+    """Authorize one person's Gmail; never enable previews, travel or Calendar."""
+    person = _profile(person)
     client = _desktop_client(credentials_path)
     if (type(callback_port) is not int or not 0 <= callback_port <= 65535
             or type(timeout) not in (int, float) or not 0 < timeout <= 3600 or not math.isfinite(timeout)):
@@ -200,7 +222,7 @@ def authorize_gmail(data_dir, credentials_path, open_browser=True, *, callback_p
             "redirect_uri": redirect, "grant_type": "authorization_code"}
     if client.get("client_secret"):
         form["client_secret"] = client["client_secret"]
-    account = Path(data_dir) / "accounts" / "chris"
+    account = Path(data_dir) / "accounts" / person
     try:
         response = GmailClient(account)._request("POST", TOKEN_URL, form=form)
     except MessageError:
@@ -209,5 +231,5 @@ def authorize_gmail(data_dir, credentials_path, open_browser=True, *, callback_p
         raise MessageError("Google could not complete Gmail authorization. Existing connections are unchanged.") from None
     token = _checked_token(response, client)
     _store_pair(account, client, token)
-    return {"authorized": True, "person": "chris", "scopes": [GMAIL_SCOPE],
+    return {"authorized": True, "person": person, "scopes": [GMAIL_SCOPE],
             "next_step": "Gmail consent is saved separately. Enable Delta booking imports in household setup when ready."}

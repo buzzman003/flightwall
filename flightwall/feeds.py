@@ -11,6 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 from .config import private_json
@@ -20,6 +21,7 @@ from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fli
                             match_operating_flight, normalize_operating_status, operating_ident,
                             stamp as status_stamp, valid_us_registration, within_tracking_window)
 from .personal import PersonalError, PersonalStore
+from .personal_tracking import PersonalFlightTracker
 
 
 PRICING_CHECKED = datetime(2026, 10, 31, tzinfo=timezone.utc).date()
@@ -114,6 +116,14 @@ def coordinates(latitude, longitude):
 
 NEARBY_MAX_AGE_SECONDS = 120
 NEARBY_MAX_ROWS = 40
+NEARBY_OUTER_RADIUS_MILES = 30
+NEARBY_OUTER_MAX_ROWS = 10
+# The deployed OpenAPI (reviewed 2026-11-17) limits unkeyed /v2 requests to
+# 500 per provider 24-hour bucket. One shared query every three minutes uses at
+# most 480/day; faster polling needs a separately configured source/tier.
+# https://api.adsb.lol/api/openapi.json
+NEARBY_POLL_SECONDS = 180
+NEARBY_BACKOFF_MAX_SECONDS = 1800
 METRES_PER_MILE = 1609.344
 METRES_PER_NAUTICAL_MILE = 1852
 
@@ -168,8 +178,8 @@ def _nearby_radius(config):
     return radius_miles, request_radius_nm
 
 
-def _nearby_aircraft(data, latitude, longitude, radius_miles, now):
-    """Normalize one bounded v2 snapshot, without guessing flight-route metadata."""
+def _nearby_snapshot_time(data, now):
+    """Use the provider's clock even for an empty or repeated snapshot."""
     if not isinstance(data, dict) or not isinstance(data.get("ac"), list) or len(data["ac"]) > 5000:
         raise ValueError("Invalid nearby traffic response")
     # v2 `now` is epoch milliseconds. seen_pos refers to that snapshot, not our
@@ -184,6 +194,13 @@ def _nearby_aircraft(data, latitude, longitude, radius_miles, now):
     snapshot_age = (now - observed_snapshot).total_seconds()
     if not 0 <= snapshot_age <= NEARBY_MAX_AGE_SECONDS:
         raise ValueError("Nearby traffic snapshot is stale")
+    return observed_snapshot
+
+
+def _nearby_aircraft(data, latitude, longitude, radius_miles, now):
+    """Normalize one bounded v2 snapshot, without guessing flight-route metadata."""
+    observed_snapshot = _nearby_snapshot_time(data, now)
+    snapshot_age = (now - observed_snapshot).total_seconds()
     aircraft = {}
     for item in data["ac"]:
         if not isinstance(item, dict):
@@ -220,6 +237,24 @@ def _nearby_aircraft(data, latitude, longitude, radius_miles, now):
                   key=lambda row: (row["distance_miles"], row["hex"]))[:NEARBY_MAX_ROWS]
 
 
+def _nearby_retry_seconds(error, now):
+    """Honor delta-seconds or HTTP-date Retry-After without logging a URL."""
+    if not isinstance(error, urllib.error.HTTPError):
+        return 0
+    value = error.headers.get("Retry-After") if error.headers else None
+    if not isinstance(value, str) or len(value) > 128:
+        return 0
+    try:
+        if re.fullmatch(r"[0-9]{1,10}", value.strip()):
+            return min(int(value), 7 * 86400)
+        stamp = parsedate_to_datetime(value)
+        if stamp.tzinfo is not None:
+            return min(max(0, (stamp - now).total_seconds()), 7 * 86400)
+    except (ValueError, OverflowError, TypeError):
+        pass
+    return 0
+
+
 class FlightFeeds:
     def __init__(self, data_dir):
         self.data_dir = Path(data_dir)
@@ -229,10 +264,17 @@ class FlightFeeds:
         self.watch_results = {}
         self._watch_cache = {}
         self._watch_cursor = 0
+        self.personal_tracking = PersonalFlightTracker(lambda path, config: self._flightaware(path, config), self.data_dir)
         self._last_nearby = -math.inf
         self._nearby_query = None
         self._nearby_completed = (None, [])
+        self._nearby_outer_completed = (None, [])
         self._nearby_receipt = (None, None, False)
+        self._nearby_retry_at = -math.inf
+        self._nearby_failures = 0
+        self._nearby_usage_path = self.data_dir / "adsblol-usage.json"
+        self._nearby_usage_storage = PersonalStore(self.data_dir, lambda: {})
+        self._nearby_usage_storage.lock_path = self.data_dir / "adsblol-usage.lock"
         self._last_live = -math.inf
         self._live_id = None
         self._selected = None
@@ -246,7 +288,7 @@ class FlightFeeds:
         self._operating_terminal = None
         self._nearby_route_cache = {}
         self._last_nearby_route = -math.inf
-        self._lock = threading.Lock()
+        self._nearby_lock = threading.Lock()
 
     def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
@@ -404,6 +446,29 @@ class FlightFeeds:
                     row["route"] = route
         return result
 
+    def nearby_outer_for_config(self, config, now=None):
+        """Fresh surrounding context is never evidence of an empty/stale ring."""
+        now = now or utcnow()
+        if not isinstance(config, dict) or self.nearby_status_for_config(config, now) != "ready":
+            return []
+        radius, _ = _nearby_radius(config)
+        query = (config.get("home_latitude"), config.get("home_longitude"), radius)
+        inner_query, inner_rows = self._nearby_completed
+        outer_query, rows = self._nearby_outer_completed
+        # A nonempty accepted snapshot whose positions later expire must not
+        # turn into an allegedly observed empty sky while the card is paused.
+        if inner_query != query or inner_rows or outer_query != query:
+            return []
+        result = copy.deepcopy([row for row in rows if _nearby_fresh(row, now)
+                                and radius < row["distance_miles"] <= NEARBY_OUTER_RADIUS_MILES + 1e-7])
+        if config.get("nearby_enrichment_enabled") is True and tracking_available(self.data_dir, config):
+            for row in result:
+                entry = self._nearby_route_cache.get(self._nearby_route_identity(row), {})
+                route = fresh_nearby_route(dict(row, route=entry.get("route")), now)
+                if route:
+                    row["route"] = route
+        return result[:NEARBY_OUTER_MAX_ROWS]
+
     def nearby_status_for_config(self, config, now):
         if config.get("demo") or not config.get("nearby_enabled"):
             return "off"
@@ -415,8 +480,67 @@ class FlightFeeds:
         query, checked, accepted = self._nearby_receipt
         if not coordinates(lat, lon) or query != (lat, lon, radius) or checked is None:
             return "unavailable"
+        inner_query, inner_rows = self._nearby_completed
+        if accepted and inner_query == query and inner_rows and not any(_nearby_fresh(row, now) for row in inner_rows):
+            # Expired known positions are not a successful empty-sky observation.
+            return "stale"
         return ("ready" if accepted and timedelta(0) <= now - checked <= timedelta(seconds=NEARBY_MAX_AGE_SECONDS)
                 else "stale")
+
+    def _read_nearby_usage(self, now):
+        """Private request timestamps only; no home pin or aircraft history."""
+        try:
+            with self._nearby_usage_path.open(encoding="utf-8") as stream:
+                raw = stream.read(32769)
+            usage = json.loads(raw) if len(raw) <= 32768 else None
+        except FileNotFoundError:
+            return {"schema_version": 1, "requested_at": [], "retry_until": None}
+        if (not isinstance(usage, dict) or set(usage) != {"schema_version", "requested_at", "retry_until"}
+                or type(usage["schema_version"]) is not int or usage["schema_version"] != 1
+                or not isinstance(usage["requested_at"], list) or len(usage["requested_at"]) > 480):
+            raise ValueError("Nearby request allowance is unavailable")
+        stamps = [parse_time(value) for value in usage["requested_at"]]
+        if any(stamp > now for stamp in stamps) or stamps != sorted(set(stamps)):
+            raise ValueError("Nearby request allowance is unavailable")
+        retry = usage["retry_until"]
+        if retry is not None and parse_time(retry) > now + timedelta(days=7):
+            raise ValueError("Nearby retry clock is invalid")
+        usage["requested_at"] = [stamp.isoformat() for stamp in stamps if now - stamp < timedelta(days=1)]
+        return usage
+
+    def _reserve_nearby_request(self, now):
+        """A restart/config change cannot reset cadence or the daily allowance."""
+        with self._nearby_usage_storage._locked():
+            usage = self._read_nearby_usage(now)
+            waits = [0]
+            if usage["retry_until"] is not None:
+                waits.append((parse_time(usage["retry_until"]) - now).total_seconds())
+            stamps = usage["requested_at"]
+            if stamps:
+                waits.append(NEARBY_POLL_SECONDS - (now - parse_time(stamps[-1])).total_seconds())
+            if len(stamps) >= 480:
+                waits.append((parse_time(stamps[0]) + timedelta(days=1) - now).total_seconds())
+            wait = max(waits)
+            if wait > 0:
+                return wait
+            usage["requested_at"].append(now.isoformat())
+            usage["retry_until"] = None
+            # Reserve before the request, including errors/timeouts, just as
+            # the provider does. Fail closed if its private journal is corrupt.
+            private_json(self._nearby_usage_path, usage)
+            return 0
+
+    def _save_nearby_retry(self, now, seconds):
+        try:
+            with self._nearby_usage_storage._locked():
+                usage = self._read_nearby_usage(now)
+                until = now + timedelta(seconds=seconds)
+                if usage["retry_until"] is not None:
+                    until = max(until, parse_time(usage["retry_until"]))
+                usage["retry_until"] = until.isoformat()
+                private_json(self._nearby_usage_path, usage)
+        except (OSError, ValueError, TypeError, PersonalError):
+            pass  # Keep the in-memory cooldown; never overwrite invalid usage.
 
     @staticmethod
     def _nearby_route_identity(row):
@@ -458,7 +582,7 @@ class FlightFeeds:
                 pass  # Unknown route metadata must not disturb the owner's feed.
             break
 
-    def poll(self, config, selected, *, on_duty=False, watches=None):
+    def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None):
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
@@ -482,10 +606,20 @@ class FlightFeeds:
                 self.live = None
         # The operating flight always gets the first use of the existing shared
         # paid-request budget. Public requests never replace its live position.
+        self.personal_tracking.poll(config, personal_flights or [], now, time.monotonic())
         self._poll_watches(config, watches or [], now)
+        if not self._nearby_lock.acquire(blocking=False):
+            return
+        try:
+            self._poll_nearby(config, now, on_duty=on_duty)
+        finally:
+            self._nearby_lock.release()
+
+    def _poll_nearby(self, config, now, *, on_duty=False):
         if config["demo"] or not config["nearby_enabled"]:
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_outer_completed = (None, [])
             self._nearby_receipt = (None, None, False)
             self._last_nearby = -math.inf
             return
@@ -493,38 +627,63 @@ class FlightFeeds:
         if not coordinates(lat, lon):
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_outer_completed = (None, [])
             return
         try:
             radius_miles, request_radius_nm = _nearby_radius(config)
         except ValueError:
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_outer_completed = (None, [])
             self.error = "Nearby traffic radius is invalid."
             return
         query = (lat, lon, radius_miles)
         if query != self._nearby_query:
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_outer_completed = (None, [])
             self._nearby_query = query
             self._last_nearby = -math.inf
         self.nearby = [row for row in self.nearby if _nearby_fresh(row, now)]
-        if time.monotonic() - self._last_nearby < 60:
+        tick = time.monotonic()
+        if tick - self._last_nearby < NEARBY_POLL_SECONDS or tick < self._nearby_retry_at:
             if not on_duty:
                 self._poll_nearby_routes(config, now)
             return
-        self._last_nearby = time.monotonic()
         try:
+            wait = self._reserve_nearby_request(now)
+            if wait > 0:
+                self._nearby_retry_at = tick + wait
+                return
+            self._last_nearby = tick
             # The community ADS-B feed is optional and has no availability guarantee.
+            # One circle supplies both areas without an extra metered request.
+            request_radius_nm = max(request_radius_nm, math.ceil(NEARBY_OUTER_RADIUS_MILES *
+                                                                METRES_PER_MILE / METRES_PER_NAUTICAL_MILE))
             data = request_json(f"https://api.adsb.lol/v2/point/{lat}/{lon}/{request_radius_nm}")
             checked = utcnow()
-            self.nearby = _nearby_aircraft(data, lat, lon, radius_miles, checked)
+            snapshot_time = _nearby_snapshot_time(data, checked)
+            rows = _nearby_aircraft(data, lat, lon, max(radius_miles, NEARBY_OUTER_RADIUS_MILES), checked)
+            self.nearby = [row for row in rows if row["distance_miles"] <= radius_miles + 1e-7]
+            outer = [row for row in rows if radius_miles < row["distance_miles"] <= NEARBY_OUTER_RADIUS_MILES + 1e-7]
             self._nearby_completed = (query, copy.deepcopy(self.nearby))
-            self._nearby_receipt = (query, checked, True)
-        except (ValueError, OSError, urllib.error.URLError, TypeError, AttributeError):
+            self._nearby_outer_completed = (query, copy.deepcopy(outer[:NEARBY_OUTER_MAX_ROWS]))
+            self._nearby_receipt = (query, snapshot_time, True)
+            self._nearby_failures = 0
+            self._nearby_retry_at = -math.inf
+        except (ValueError, OSError, urllib.error.URLError, TypeError, AttributeError, PersonalError) as error:
             self.nearby = []
             self._nearby_completed = (None, [])
+            self._nearby_outer_completed = (None, [])
             previous_query, checked, _ = self._nearby_receipt
             self._nearby_receipt = (query, checked if previous_query == query else None, False)
+            self._nearby_failures = min(self._nearby_failures + 1, 5)
+            backoff = min(NEARBY_BACKOFF_MAX_SECONDS, NEARBY_POLL_SECONDS * 2 ** (self._nearby_failures - 1))
+            if isinstance(error, urllib.error.HTTPError) and 400 <= error.code < 500 and error.code not in {408, 429}:
+                backoff = NEARBY_BACKOFF_MAX_SECONDS
+            backoff = max(backoff, _nearby_retry_seconds(error, now))
+            self._nearby_retry_at = time.monotonic() + backoff
+            self._save_nearby_retry(utcnow(), backoff)
             self.error = "Nearby traffic feed unavailable."
         if not on_duty:
             self._poll_nearby_routes(config, utcnow())

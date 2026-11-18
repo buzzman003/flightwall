@@ -6,10 +6,13 @@ TIMING_LABELS = {
     'nearby': 'Nearby aircraft', 'trip_summary': 'Trip schedule', 'trip_map': 'Trip map',
     'flight_status': 'Live flight', 'flight_brief': 'Flight brief', 'custody_outlook': 'Family outlook',
     'today_activities': 'Today activities', 'dinner_options': 'Dinner ideas', 'dinner': 'Dinner menu',
+    'personal_travel': 'Personal Delta travel',
 }
 
 
 def duration_override(view, config, item=None):
+    if view == 'personal_tracking':
+        view = 'personal_travel'
     if view == 'personal' and isinstance(item, dict) and item.get('kind') == 'dinner':
         view = 'dinner'
     try:
@@ -45,7 +48,7 @@ VIEW_FIELDS = {
     'today_activities': 'custody_card_visible',
     'local_visit': 'local_visit_cards_visible', 'flight_watch': 'flight_watch_cards_visible',
     'dinner_options': 'dinner_options_card_visible',
-    'personal_travel': 'personal_travel_cards_visible',
+    'personal_travel': 'personal_travel_cards_visible', 'personal_tracking': 'personal_travel_cards_visible',
 }
 
 

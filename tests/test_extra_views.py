@@ -280,33 +280,31 @@ class WeatherViewTests(unittest.TestCase):
 class NearbyViewTests(unittest.TestCase):
     config = {"nearby_enabled": True, "nearby_radius_miles": 5, "demo": False}
 
-    def test_three_nearest_are_numbered_and_unknown_metadata_is_explicit(self):
+    def test_three_nearest_prioritize_registration_and_unknown_metadata_is_explicit(self):
         rows = [aircraft("333333", east=3, north=0, registration="TEST03"),
                 aircraft("222222", east=2, north=0, registration="TEST02"),
                 aircraft("111111", east=1, north=0),
                 aircraft("444444", east=4, north=0, registration="TEST04")]
         labels, _ = capture(render_nearby, {"nearby": rows}, self.config)
-        self.assertIn("1 TST101", labels)
-        self.assertIn("2 TST101", labels)
-        self.assertIn("3 TST101", labels)
-        self.assertLess(labels.index("TRK N/A / TEST01"), labels.index("TRK N/A / TEST02"))
-        self.assertLess(labels.index("TRK N/A / TEST02"), labels.index("TRK N/A / TEST03"))
-        self.assertNotIn("TRK N/A / TEST04", labels)
+        self.assertLess(labels.index("TEST01"), labels.index("TEST02"))
+        self.assertLess(labels.index("TEST02"), labels.index("TEST03"))
+        self.assertNotIn("TEST04", labels)
+        self.assertNotIn("TST101", labels)  # unverified received callsign cannot displace the tail
         self.assertIn("4 FRESH / ADSB.LOL", labels)
         self.assertNotIn("NEAREST 3 / ROUTES ONLY WHEN VERIFIED", labels)
         self.assertNotIn("ADSB.LOL / RECEIVED POSITIONS / NOT ALL TRAFFIC", labels)
         unknown = aircraft(registration=None, callsign=None, aircraft_type=None, altitude=None, groundspeed=None)
         labels, _ = capture(render_nearby, {"nearby": [unknown]}, self.config)
-        for value in ("1 ID UNAVAIL", "1.4 MI", "ALT N/A / GS N/A", "TRK N/A"):
+        for value in ("HEX 111111", "1.4 MI", "ALT N/A", "GS N/A / TRK N/A"):
             self.assertIn(value, labels)
 
     def test_registration_type_and_reported_track_show_for_private_aircraft(self):
         row = aircraft(registration="N123AB", callsign="GENERAL", aircraft_type="B350", track=78)
         labels, _ = capture(render_nearby, {"nearby": [row]}, self.config)
-        self.assertIn("1 N123AB", labels)
+        self.assertIn("N123AB", labels)
         self.assertIn("B350", labels)
-        self.assertIn("TRK 078", labels)
-        self.assertNotIn("1 GENERAL", labels)
+        self.assertIn("GS 110KT / TRK 078", labels)
+        self.assertNotIn("GENERAL", labels)
 
     def test_only_a_fresh_verified_route_is_shown_and_attributed(self):
         from flightwall.flight_alerts import SOURCE
@@ -316,11 +314,15 @@ class NearbyViewTests(unittest.TestCase):
                         "fetched_at": NOW.isoformat(), "actual_off": (NOW - timedelta(minutes=20)).isoformat()}
         config = self.config | {"nearby_enrichment_enabled": True}
         labels, _ = capture(render_nearby, {"nearby": [row]}, config)
-        self.assertIn("ATL > VPS / 1.4 MI", labels)
+        self.assertIn("ATL>VPS 1.4 MI", labels)
+        self.assertIn("TST101", labels)
+        self.assertNotIn("TEST01", labels)
         self.assertIn("1 FRESH / ADSB.LOL / FLIGHTAWARE", labels)
         row["route"]["aircraft_hex"] = "222222"
         labels, _ = capture(render_nearby, {"nearby": [row]}, config)
-        self.assertNotIn("ATL > VPS / 1.4 MI", labels)
+        self.assertNotIn("ATL>VPS 1.4 MI", labels)
+        self.assertIn("TEST01", labels)
+        self.assertNotIn("TST101", labels)
         self.assertIn("1 FRESH / ADSB.LOL", labels)
 
     def test_future_missing_old_and_outside_positions_are_hidden_every_frame(self):
@@ -369,6 +371,89 @@ class NearbyViewTests(unittest.TestCase):
         labels, _ = capture(render_nearby, state | {"demo": True}, self.config)
         self.assertIn("0 FRESH / ADSB.LOL", labels)
         self.assertNotIn("1 TEST01", labels)
+
+    def test_callsign_and_hex_fallbacks_are_labeled_without_inventing_type(self):
+        row = aircraft(registration=None, aircraft_type="CITATION XL")
+        labels, _ = capture(render_nearby, {"nearby": [row]}, self.config)
+        self.assertIn("CALL TST101", labels)
+        self.assertNotIn("CITATION", " ".join(labels))
+        row["callsign"] = None
+        self.assertIn("HEX 111111", capture(render_nearby, {"nearby": [row]}, self.config)[0])
+
+    def test_legacy_received_flight_is_a_labeled_callsign_not_a_verified_service(self):
+        row = aircraft(registration=None, callsign=None, flight="DAL123")
+        labels, _ = capture(render_nearby, {"nearby": [row]}, self.config)
+        self.assertIn("CALL DAL123", labels)
+        self.assertNotIn("DAL123", labels)
+        self.assertIn("1 FRESH / ADSB.LOL", labels)
+        for value in ("111111", "INVALID/FLIGHT", "DAL123\nsecret", "A" * 13):
+            with self.subTest(value=value):
+                row["flight"] = value
+                labels, _ = capture(render_nearby, {"nearby": [row]}, self.config)
+                self.assertIn("HEX 111111", labels)
+                self.assertFalse(any(value.startswith("CALL ") for value in labels))
+
+    def test_fresh_empty_inner_ring_shows_nearest_ten_outer_in_one_card(self):
+        rows = [aircraft(f"{index:06x}", east=6+index, north=0,
+                         registration=f"N{index:03d}AB") for index in range(13, 0, -1)]
+        rows += [deepcopy(rows[-1]), aircraft("ffffff", east=31, north=0)]
+        state = {"nearby": [], "nearby_outer": rows, "nearby_status": "ready"}
+        original = deepcopy(state)
+        labels, image = capture(render_nearby, state, self.config)
+        self.assertIn("5-30 MI / NEAREST 10", labels)
+        self.assertIn("NO AIRCRAFT INSIDE 5 MI", labels)
+        self.assertIn("10 OUTSIDE / ADSB.LOL", labels)
+        self.assertLess(labels.index("N001AB"), labels.index("N002AB"))
+        self.assertIn("N010AB", labels)
+        self.assertNotIn("N011AB", labels)
+        self.assertEqual(state, original)
+        self.assertEqual(image.size, (512, 256))
+
+    def test_outer_context_requires_fresh_empty_inner_not_outage_or_stale_sky(self):
+        base = {"nearby": [], "nearby_outer": [aircraft(east=8, north=0)], "nearby_status": "ready"}
+        self.assertIn("1 OUTSIDE / ADSB.LOL", capture(render_nearby, base, self.config)[0])
+        for changes in ({"nearby_status": "stale"}, {"nearby_status": "unavailable"},
+                        {"nearby_status": None}, {"backend_available": False}, {"demo": True},
+                        {"nearby": [aircraft()]}, {"nearby": [aircraft(age=121)]}):
+            with self.subTest(changes=changes):
+                labels, _ = capture(render_nearby, base | changes, self.config)
+                self.assertNotIn("1 OUTSIDE / ADSB.LOL", labels)
+        self.assertNotIn("1 OUTSIDE / ADSB.LOL", capture(render_nearby, base, self.config,
+                                                       NOW + timedelta(seconds=121))[0])
+
+    def test_outer_band_rechecks_actual_distance_and_newest_identity_each_frame(self):
+        from flightwall.extra_views import _nearby_outer_rows
+        rows = [aircraft("111111", east=5, north=0),
+                aircraft("222222", east=30, north=0),
+                aircraft("333333", east=30.01, north=0, distance_miles=1),
+                aircraft("444444", east=8, north=0, age=1),
+                aircraft("444444", east=4, north=0)]
+        state = {"nearby": [], "nearby_outer": rows, "nearby_status": "ready"}
+        self.assertEqual([row["hex"] for _, row in _nearby_outer_rows(state, self.config, NOW, 5)], ["222222"])
+        self.assertEqual(_nearby_outer_rows(state, self.config, NOW, 30), [])
+
+    def test_type_thumbnail_follows_current_received_type_without_wrong_type_carryover(self):
+        from flightwall.aircraft_icons import thumbnail
+        self.assertIsNone(thumbnail("UNKNOWN"))
+        self.assertIsNone(thumbnail(None))
+        pixels = []
+        for code in ("C172", "B350", "D328", "A359"):
+            icon = thumbnail(code)
+            self.assertEqual(icon.mode, "RGBA")
+            self.assertEqual(icon.size, (38, 30))
+            self.assertEqual(icon.getpixel((0, 0))[3], 0)
+            self.assertIsNotNone(icon.getbbox())
+            pixels.append(icon.tobytes())
+        self.assertEqual(len(set(pixels)), 4)
+        known = {"nearby": [aircraft(aircraft_type="B350")]}
+        unknown = {"nearby": [aircraft(aircraft_type="ZZZZ")]}
+        _, first = capture(render_nearby, known, self.config)
+        _, second = capture(render_nearby, unknown, self.config)
+        empty = {"nearby": []}
+        _, blank = capture(render_nearby, empty, self.config)
+        # An image from the preceding aircraft cannot survive a metadata change.
+        self.assertNotEqual(first.crop((454, 80, 492, 110)).tobytes(), second.crop((454, 80, 492, 110)).tobytes())
+        self.assertEqual(second.crop((454, 80, 492, 110)).tobytes(), blank.crop((454, 80, 492, 110)).tobytes())
 
 
 if __name__ == "__main__":

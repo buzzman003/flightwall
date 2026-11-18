@@ -1,5 +1,53 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Reviewed November 12, 2026 Central
+Reviewed November 17, 2026 Central
+
+CURRENT FOLLOW-UP THROUGH 0.4.22
+
+The owner's November 17 instruction authorized work on the actionable backlog,
+including the previously recorded nearby-aircraft layout. The 0.4.22 candidate
+adds bounded startup recovery, fresh-empty nearest-ten fallback, identifiers,
+types and small supported silhouettes. It does not provide one-second updates:
+the current unkeyed provider allowance is 500 requests/day/IP. Flight Wall's
+private reservation journal limits its own use to 480 with 180-second spacing.
+Do not shorten cadence without a supported new feed arrangement.
+
+0.4.20 restored imprecise/stale OwnTracks queue handling and verified roster
+title support. 0.4.21 added tomorrow activities after the final grace period,
+separate Gmail Delta listing imports, and an explicit owner VPS leave plan.
+Chris's read-only Gmail consent and import were verified November 17. Four
+past legs imported; unsupported messages remain review-needed, not guessed.
+Lisa's separately consented mailbox and optional exact-leg tracking are new
+0.4.22 work. Keep connection, source tests and real future airborne checks
+distinct in the final installation receipt.
+
+REMAINING PRACTICAL CHECKS AND EXTERNAL SETUP
+
+* Verify signed Linux acceptance, activation and private-file preservation for
+  each new release. Repeated cold starts and failed-mount diagnosis require
+  evidence from the affected boot; do not repair a mounted filesystem blindly.
+* Verify a fresh Chris OwnTracks Home report and a normal background outing.
+  Lisa's iPhone onboarding waits for her separate presence consent. Gmail
+  sign-in does not enable phone location. See LISA-PHONE-INVITE.txt.
+* Verify a real future imported reservation and, within the existing shared
+  allowance, exact-leg provider tracking. LISTED never proves boarding.
+  The November 17 runtime reported its monthly allowance exhausted; do not
+  raise the $5 cap to hide that condition or call planned routes live.
+* Verify richer today/tomorrow dinner, recipe delivery and displayed timers on
+  the physical Echo. Keep these independent of native Echo timers.
+* Native Echo timer mirroring still requires a supported external source/host.
+  No Home Assistant host has been installed. Alexa+ MCP preview access remains
+  unverified. Do not claim either is provisioned from an account login.
+* Native Alexa shopping-list import and store-arrival SMS remain paused. Lisa's
+  location consent, a supported list source and sending service are prerequisites.
+  The separate Flight Wall shopping list/ticker remains available.
+* Broader Delta booking/change/cancellation templates require source review;
+  current parsing intentionally rejects unsupported email rather than inventing
+  or cancelling travel. No personal message body/locator belongs in a release.
+* Pantry/fridge ideas remain a future design note, not an active integration.
+
+The sections below preserve historical requirements and acceptance records.
+Their older "record only" nearby wording is superseded by the current status
+above; unresolved external integrations remain deferred.
 
 0.4.19 MAINTENANCE ACCEPTANCE
 

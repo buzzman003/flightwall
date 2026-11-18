@@ -36,10 +36,14 @@ def parser():
     authorize.add_argument("--no-browser", action="store_true")
     authorize.add_argument("--callback-port", type=int, default=8766)
     authorize.add_argument("--person", choices=["chris", "lisa"], help="Use this person's separate account; omitted keeps the legacy Chris setup")
-    gmail = commands.add_parser("gmail-authorize", help="Connect Chris's separate read-only Gmail for Delta listings")
+    gmail = commands.add_parser("gmail-authorize", help="Connect a person's separate read-only Gmail for Delta listings")
     gmail.add_argument("--credentials", required=True, type=Path)
     gmail.add_argument("--no-browser", action="store_true")
     gmail.add_argument("--callback-port", type=int, default=8766)
+    gmail.add_argument("--person", choices=["chris", "lisa"], default="chris")
+    gmail_profile = commands.add_parser("gmail-profile-check", help="Privately verify the selected Gmail account identity")
+    gmail_profile.add_argument("--person", choices=["chris", "lisa"], default="chris")
+    gmail_profile.add_argument("--expected-email", required=True)
     calendars = commands.add_parser("calendars", help="List actual calendars visible to the selected Google account")
     calendars.add_argument("--person", choices=["chris", "lisa"], help="Select a separate household account")
     select = commands.add_parser("select-calendar", help="Assign a flight, MiCrew rotation or family calendar role")
@@ -264,7 +268,13 @@ def main(argv=None):
         elif command == "gmail-authorize":
             from .gmail_oauth import authorize_gmail
             emit(authorize_gmail(args.data_dir, args.credentials, open_browser=not args.no_browser,
-                                 callback_port=args.callback_port))
+                                 callback_port=args.callback_port, person=args.person))
+        elif command == "gmail-profile-check":
+            from .gmail_oauth import check_gmail_profile
+            result = check_gmail_profile(args.data_dir, args.expected_email, person=args.person)
+            emit(result)
+            if not result["matches"]:
+                return 1
         elif command == "calendars":
             if args.person:
                 from .household_calendar import HouseholdCalendars
@@ -481,7 +491,8 @@ def main(argv=None):
             emit({"output": str(args.output), "width": frame.width, "height": frame.height, "demo": True})
         elif command in {"gui", "service"}:
             from .backend import Runtime
-            from .display import BackendConnection, run_gui
+            from .display import (BackendConnection, backend_connection_refused, run_gui,
+                                  transient_backend_error, validate_startup_status)
             from .updater import mark_healthy
             runtime = None
             connection = BackendConnection(args.data_dir, store.get())
@@ -495,12 +506,21 @@ def main(argv=None):
                 finally:
                     runtime.stop()
             else:
+                initial_status = None
                 try:
                     existing = connection.status()
+                    validate_startup_status(existing)
                     if existing.get("version") != __version__:
                         raise ValueError("The background service is running a different release. Close the display, stop the Flight Wall service, and launch from Ports again.")
-                except OSError:
-                    runtime = Runtime(args.data_dir, args.install_dir).start()
+                    initial_status = existing
+                except OSError as exc:
+                    if backend_connection_refused(exc):
+                        runtime = Runtime(args.data_dir, args.install_dir).start()
+                    elif not transient_backend_error(exc):
+                        raise
+                    # A slow existing service is still the owner of the port.
+                    # Let the responsive GUI readiness wait retry it instead
+                    # of attempting to start a duplicate Runtime.
                 windowed, max_frames = getattr(args, "windowed", False), getattr(args, "frames", None)
                 foreground_stopped = threading.Event()
 
@@ -512,7 +532,8 @@ def main(argv=None):
                                          args=(args.install_dir, args.data_dir, foreground_stopped)).start()
 
                 try:
-                    result = run_gui(connection, windowed=windowed, max_frames=max_frames, on_healthy=first_frame)
+                    result = run_gui(connection, windowed=windowed, max_frames=max_frames, on_healthy=first_frame,
+                                     initial_status=initial_status, startup_config=store.get())
                     emit(result)
                 finally:
                     foreground_stopped.set()

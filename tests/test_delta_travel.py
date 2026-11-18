@@ -359,3 +359,106 @@ def test_unknown_mime_layout_cannot_request_attachment_sibling_body_data(tmp_pat
     feed, _ = enabled(tmp_path, [(metadata(), value)])
     assert feed.sync(NOW)["status"] == "review_needed"
     assert not any("body" in parameters.get("fields", "") for _, parameters in feed.client.calls)
+
+
+def lisa_enabled(tmp_path, passengers=None):
+    config = {"demo": False, "delta_travel_enabled": False, "delta_travel_lisa_mail_enabled": True,
+              "delta_travel_owner_names": json.dumps(NAMES), "delta_travel_lisa_names": '["CASEY TAYLOR"]'}
+    feed = DeltaTravel(tmp_path, lambda: config, person="lisa")
+    feed.client = Client([(metadata(), payload(passenger=passengers or ["CASEY TAYLOR"]))])
+    return feed, config
+
+
+def test_lisa_mail_profile_uses_separate_credentials_status_and_salt_paths(tmp_path):
+    chris = DeltaTravel(tmp_path, lambda: {})
+    lisa = DeltaTravel(tmp_path, lambda: {}, person="lisa")
+    assert chris.client.account_dir == tmp_path / "accounts/chris"
+    assert lisa.client.account_dir == tmp_path / "accounts/lisa"
+    assert chris.path == tmp_path / "delta-travel-status.json"
+    assert chris.key_path == tmp_path / "delta-travel-association.key"
+    assert lisa.path == tmp_path / "delta-travel-lisa-status.json"
+    assert lisa.key_path == tmp_path / "delta-travel-lisa-association.key"
+    assert chris.travel.storage.path == lisa.travel.storage.path
+
+
+def test_lisa_mail_imports_only_matching_lisa_passengers_even_on_shared_booking(tmp_path):
+    feed, config = lisa_enabled(tmp_path, ["ALEX R MORGAN", "CASEY TAYLOR", "OTHER TRAVELER"])
+    assert feed.sync(NOW)["status"] == "ready"
+    rows = feed.travel.list_records()
+    assert len(rows) == 2 and {row["traveler"] for row in rows} == {"lisa"}
+    assert all(row["source"] == "delta_email" and row["status"] == "listed" for row in rows)
+    assert visible_travel(rows, config, NOW)
+    assert visible_travel(rows, config | {"guest_mode": True}, NOW) == []
+    assert not (tmp_path / "delta-travel-status.json").exists()
+    assert not (tmp_path / "delta-travel-association.key").exists()
+    persisted = "\n".join(file.read_text() for file in tmp_path.rglob("*") if file.is_file())
+    for secret in ("CASEY", "TAYLOR", "ALEX", "OTHER TRAVELER", "ZXCV12", "123456789", "dress code", "fictional1"):
+        assert secret not in persisted
+
+
+def test_lisa_only_parser_needs_at_least_one_approved_alias_group():
+    parsed = parse_listing(payload(passenger="CASEY TAYLOR"), [], NOW, SALT, lisa_names=["CASEY TAYLOR"])
+    assert {row["traveler"] for row in parsed["records"]} == {"lisa"}
+    with pytest.raises(DeltaReview):
+        parse_listing(payload(), [], NOW, SALT)
+
+
+def test_lisa_mail_cannot_import_chris_or_unmatched_passengers(tmp_path):
+    feed, _ = lisa_enabled(tmp_path, ["ALEX R MORGAN", "OTHER TRAVELER"])
+    assert feed.sync(NOW)["status"] == "review_needed"
+    assert not feed.travel.storage.path.exists()
+
+
+def test_lisa_mail_opt_in_is_independent_and_does_not_enable_other_features(tmp_path):
+    feed, config = lisa_enabled(tmp_path)
+    config["delta_travel_lisa_mail_enabled"] = False
+    config["delta_travel_enabled"] = True
+    assert feed.sync(NOW)["status"] == "disabled"
+    assert not feed.client.calls and not feed.path.exists()
+    config["delta_travel_lisa_mail_enabled"] = True
+    config["delta_travel_enabled"] = False
+    assert feed.sync(NOW)["status"] == "ready"
+    for feature in ("messages_enabled", "lisa_gmail_enabled", "lisa_private_enabled", "presence_enabled", "lisa_flight_tracking_enabled"):
+        assert not config.get(feature)
+
+
+@pytest.mark.parametrize("change", ["consent", "aliases", "account"])
+def test_lisa_consent_or_selection_change_during_fetch_discards_pending_records(tmp_path, change):
+    feed, config = lisa_enabled(tmp_path)
+    original = feed.client.api
+
+    def api(path, parameters):
+        result = original(path, parameters)
+        if parameters.get("format") == "full":
+            if change == "consent":
+                config["delta_travel_lisa_mail_enabled"] = False
+            elif change == "aliases":
+                config["delta_travel_lisa_names"] = '["ANOTHER PERSON"]'
+            else:
+                feed.client._token = lambda: {"client_id": "fictional-client", "refresh_token": "different-mailbox"}
+        return result
+
+    feed.client.api = api
+    feed.sync(NOW)
+    assert not feed.travel.storage.path.exists()
+
+
+def test_mail_profiles_keep_existing_records_and_have_distinct_booking_associations(tmp_path):
+    chris, _ = enabled(tmp_path)
+    lisa, _ = lisa_enabled(tmp_path)
+    chris.sync(NOW)
+    lisa.sync(NOW)
+    assert {row["traveler"] for row in lisa.travel.list_records()} == {"chris", "lisa"}
+    document = json.loads(lisa.travel.storage.path.read_text())
+    assert len(document["bookings"]) == 2
+    assert chris.key_path.read_bytes() != lisa.key_path.read_bytes()
+
+
+@pytest.mark.parametrize("person", ["other", "../chris", "lisa/../../chris", None, []])
+def test_invalid_mail_profile_is_rejected_before_files_or_client_creation(tmp_path, person):
+    from unittest.mock import patch
+    with patch("flightwall.delta_travel.GmailClient") as client:
+        with pytest.raises(MessageError, match="Chris or Lisa"):
+            DeltaTravel(tmp_path / "not-created", lambda: {}, person=person)
+    client.assert_not_called()
+    assert not (tmp_path / "not-created").exists()
