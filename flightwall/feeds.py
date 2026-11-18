@@ -133,9 +133,11 @@ NEARBY_OUTER_MAX_ROWS = 10
 # https://api.adsb.lol/api/openapi.json
 NEARBY_POLL_SECONDS = 180
 NEARBY_BACKOFF_MAX_SECONDS = 1800
+NEARBY_ROUTE_FAILURE_COOLDOWN_SECONDS = 900
 NEARBY_ROUTE_DIAGNOSTIC_CODES = ("attempts", "matched", "empty_response", "no_verified_match", "ambiguous",
     "incomplete_response", "invalid_response", "unsupported_identity", "invalid_position", "stale_position",
-    "transport_error", "budget_stop", "configuration_error")
+    "http_400", "http_auth", "http_rate_limit", "http_upstream", "http_other", "transport_error",
+    "budget_stop", "configuration_error")
 METRES_PER_MILE = 1609.344
 METRES_PER_NAUTICAL_MILE = 1852
 
@@ -267,6 +269,15 @@ def _nearby_retry_seconds(error, now):
     return 0
 
 
+def _nearby_route_failure_reason(error):
+    if not isinstance(error, urllib.error.HTTPError):
+        return "transport_error"
+    if 500 <= error.code < 600:
+        return "http_upstream"
+    return {400: "http_400", 401: "http_auth", 403: "http_auth", 429: "http_rate_limit"}.get(
+        error.code, "http_other")
+
+
 class FlightFeeds:
     def __init__(self, data_dir):
         self.data_dir = Path(data_dir)
@@ -300,6 +311,7 @@ class FlightFeeds:
         self._operating_terminal = None
         self._nearby_route_cache = {}
         self._last_nearby_route = -math.inf
+        self._nearby_route_retry_at = -math.inf
         self._nearby_route_diagnostic_counts = {key: 0 for key in NEARBY_ROUTE_DIAGNOSTIC_CODES}
         self._nearby_diagnostics_lock = threading.Lock()
         self._nearby_request_started = False
@@ -615,7 +627,7 @@ class FlightFeeds:
         # Bound in-memory cache only; no aircraft/history/provider JSON files.
         self._nearby_route_cache = {key: value for key, value in self._nearby_route_cache.items()
                                    if 0 <= tick - value["checked_at"] <= 1800}
-        if tick - self._last_nearby_route < 300:
+        if tick - self._last_nearby_route < 300 or tick < self._nearby_route_retry_at:
             return
         closest = sorted((row for row in self.nearby if _nearby_fresh(row, now)),
                          key=lambda row: (row["distance_miles"], row["hex"]))[:3]
@@ -631,8 +643,11 @@ class FlightFeeds:
             entry = {"checked_at": tick, "route": None}
             self._nearby_request_started = False
             try:
-                params = urllib.parse.urlencode({"start": (now - timedelta(hours=24)).isoformat(),
-                                                 "end": now.isoformat(), "ident_type": ident_type, "max_pages": 1})
+                utc = now.astimezone(timezone.utc)
+                stamp_format = "%Y-%m-%dT%H:%M:%SZ"
+                params = urllib.parse.urlencode({"start": (utc - timedelta(hours=24)).strftime(stamp_format),
+                                                 "end": utc.strftime(stamp_format), "ident_type": ident_type,
+                                                 "max_pages": 1})
                 response = self._flightaware("/flights/" + ident + "?" + params, config, purpose="nearby")
                 entry["route"], reason = nearby_route_result(response, row, utcnow())
                 if self._nearby_request_started:
@@ -641,8 +656,12 @@ class FlightFeeds:
                 break
             except PaidLimitError:
                 self._record_nearby_route_diagnostic("budget_stop")
-            except (OSError, urllib.error.URLError):
-                self._record_nearby_route_diagnostic("transport_error" if self._nearby_request_started else "configuration_error")
+            except (OSError, urllib.error.URLError) as error:
+                reason = _nearby_route_failure_reason(error) if self._nearby_request_started else "configuration_error"
+                self._record_nearby_route_diagnostic(reason)
+                if reason not in {"http_other", "configuration_error"}:
+                    delay = max(NEARBY_ROUTE_FAILURE_COOLDOWN_SECONDS, _nearby_retry_seconds(error, utcnow()))
+                    self._nearby_route_retry_at = time.monotonic() + delay
             except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
                 self._record_nearby_route_diagnostic("invalid_response" if self._nearby_request_started else "configuration_error")
             self._last_nearby_route = tick

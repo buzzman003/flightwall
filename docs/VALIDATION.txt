@@ -1,3 +1,13 @@
+0.4.27 NEARBY AEROAPI REQUEST FORMAT AND FAILURE DIAGNOSTICS
+
+The free FlightAware usage endpoint rejected fractional seconds with HTTP 400
+and accepted whole-second timestamps. This reproduces the format difference
+without issuing a paid flight request. It does not prove an older lookup's
+exact error or a live aircraft match. Check whole-second UTC request bounds,
+single-page routing, anonymous error counts, bounded cooldowns and the
+previously reserved allowance with synthetic responses. Verify the native
+upgrade and rollback from the signed 0.4.26 installer.
+
 0.4.26 FLIGHTAWARE QUIET HOURS
 
 Exercise 21:00 and 09:00 boundaries using the configured board timezone,

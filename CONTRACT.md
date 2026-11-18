@@ -1,3 +1,11 @@
+0.4.27 NEARBY FLIGHTAWARE REQUEST FORMAT
+
+Serialize paid nearby request bounds in whole-second UTC with trailing Z and
+keep the one-page limit. Count HTTP rejection categories without recording
+identities, request content, API keys or provider responses. Apply bounded
+cooldowns to paid nearby requests after systemic errors. Keep exact route
+verification, the free aircraft feed and existing spending reservations intact.
+
 0.4.26 FLIGHTAWARE QUIET HOURS
 
 An opt-in local-only switch pauses all FlightAware requests from 21:00 through

@@ -2,6 +2,8 @@
 from datetime import datetime, timedelta, timezone
 import json
 from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -75,6 +77,59 @@ def test_budget_stop_is_not_a_provider_attempt_and_preserves_reserved_budget(tmp
     assert counts["budget_stop"] == 1 and counts["attempts"] == 0
     ledger = json.loads((tmp_path / "flightaware-usage.json").read_text())
     assert ledger["reserved_milliusd"] == 0 and ledger["nearby_reserved_milliusd"] == 0
+
+
+def test_nearby_query_uses_provider_utc_example_and_one_result_set(tmp_path):
+    feed = setup(tmp_path)
+    fractional = NOW.replace(microsecond=123456)
+    local = fractional.astimezone(timezone(timedelta(hours=-6)))
+    with (patch("flightwall.feeds.utcnow", return_value=fractional),
+          patch("flightwall.feeds.request_json", return_value=response()) as network):
+        feed._poll_nearby_routes(CONFIG, local, visible=True)
+    network.assert_called_once()
+    url = urlsplit(network.call_args.args[0])
+    assert url.path == "/aeroapi/flights/DAL123"
+    assert parse_qs(url.query) == {"start": ["2026-11-16T18:00:00Z"], "end": ["2026-11-17T18:00:00Z"],
+                                   "ident_type": ["designator"], "max_pages": ["1"]}
+    assert feed.nearby_route_diagnostics()["matched"] == 1
+
+
+@pytest.mark.parametrize(("error", "reason", "wait"), [
+    (HTTPError("https://example.invalid/PRIVATE", 400, "PRIVATE", {}, None), "http_400", 900),
+    (HTTPError("https://example.invalid/PRIVATE", 401, "PRIVATE", {}, None), "http_auth", 900),
+    (HTTPError("https://example.invalid/PRIVATE", 403, "PRIVATE", {}, None), "http_auth", 900),
+    (HTTPError("https://example.invalid/PRIVATE", 429, "PRIVATE", {"Retry-After": "3600"}, None),
+     "http_rate_limit", 3600),
+    (HTTPError("https://example.invalid/PRIVATE", 503, "PRIVATE", {}, None), "http_upstream", 900),
+    (HTTPError("https://example.invalid/PRIVATE", 404, "PRIVATE", {}, None), "http_other", 300),
+    (OSError("PRIVATE"), "transport_error", 900),
+])
+def test_provider_failure_reasons_and_cooldown_have_no_extra_spend(tmp_path, error, reason, wait):
+    feed = setup(tmp_path)
+    another = response([provider(ident="DAL124")])
+    with (patch("flightwall.feeds.utcnow", return_value=NOW) as clock,
+          patch("flightwall.feeds.time.monotonic", return_value=1000) as tick,
+          patch("flightwall.feeds.request_json", side_effect=[error, another]) as network):
+        feed._poll_nearby_routes(CONFIG, NOW, visible=True)
+        usage = tmp_path / "flightaware-usage.json"
+        before = usage.read_bytes()
+        assert feed.nearby_route_diagnostics()[reason] == 1
+        assert json.loads(before)["nearby_reserved_milliusd"] == 5
+
+        for elapsed in (wait - 1, wait):
+            tick.return_value = 1000 + elapsed
+            clock.return_value = NOW + timedelta(seconds=elapsed)
+            feed.nearby = [dict(aircraft(), hex="abc124", callsign="DAL124",
+                                observed_at=clock.return_value.isoformat())]
+            feed._poll_nearby_routes(CONFIG, clock.return_value, visible=True)
+            if elapsed == wait - 1:
+                network.assert_called_once()
+                assert usage.read_bytes() == before
+        assert network.call_count == 2
+        assert json.loads(usage.read_text())["nearby_reserved_milliusd"] == 10
+    counts = feed.nearby_route_diagnostics()
+    assert counts["attempts"] == 2 and counts["matched"] == counts[reason] == 1
+    assert "PRIVATE" not in json.dumps(counts)
 
 
 def test_permitted_transport_error_counts_attempt_without_retaining_error_or_resetting_spend(tmp_path):

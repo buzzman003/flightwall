@@ -1,3 +1,12 @@
+FLIGHT WALL 0.4.27
+
+Nearby FlightAware route lookups use whole-second UTC timestamps. Setup's
+anonymous counters distinguish HTTP rejection from connection errors. The app
+waits after systemic errors before starting another paid nearby lookup.
+The current aircraft's airport pair appears only when a fresh, unique match
+is verified. The existing one-page, monthly, daily, viewing and quiet-hours
+limits still apply.
+
 FLIGHT WALL 0.4.26
 
 Optional FlightAware quiet hours allow the device owner to pause billed API
