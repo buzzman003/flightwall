@@ -48,6 +48,56 @@ def test_higher_limit_is_explicit_bounded_and_local_only(tmp_path):
     assert ConfigStore(tmp_path).get()[setting] == 15
 
 
+def test_quiet_hours_are_opt_in_and_local_only(tmp_path):
+    setting = "flightaware_quiet_hours_enabled"
+    store = ConfigStore(tmp_path)
+    assert store.get()[setting] is False
+    assert setting not in store.public()
+    with pytest.raises(ValueError, match="local CLI"):
+        store.update({setting: True}, remote=True)
+    store.update({setting: True})
+    assert ConfigStore(tmp_path).get()[setting] is True
+
+
+@pytest.mark.parametrize(("utc", "paused"), [
+    ("2026-10-31T01:59:59+00:00", False),  # 8:59 PM CDT
+    ("2026-10-31T02:00:00+00:00", True),   # 9 PM CDT
+    ("2026-11-01T06:30:00+00:00", True),   # First 1:30 AM when clocks fall back
+    ("2026-11-01T07:30:00+00:00", True),   # Second 1:30 AM
+    ("2026-11-01T14:59:59+00:00", True),   # 8:59 AM CST
+    ("2026-11-01T15:00:00+00:00", False),  # 9 AM CST
+])
+def test_quiet_hours_follow_local_clock_across_dst(tmp_path, utc, paused):
+    feed = FlightFeeds(tmp_path)
+    settings = config(timezone="America/Chicago", flightaware_quiet_hours_enabled=True)
+    now = datetime.fromisoformat(utc)
+    assert feed.paid_paused(settings, now) is paused
+    assert feed.paid_paused(settings | {"flightaware_quiet_hours_enabled": False}, now) is False
+
+
+def test_quiet_hours_block_both_request_types_and_leave_paid_ledger_untouched(tmp_path):
+    feed = FlightFeeds(tmp_path)
+    settings = config(timezone="America/Chicago", flightaware_quiet_hours_enabled=True)
+    (tmp_path / "flightaware.key").write_text("synthetic-key")
+    quiet = datetime(2026, 11, 2, 3, tzinfo=timezone.utc)  # 9 PM CST the day before.
+    with patch("flightwall.feeds.utcnow", return_value=quiet - timedelta(seconds=1)) as clock, patch("flightwall.feeds.request_json") as network:
+        feed._allow_paid_request(settings, LOOKUP)
+        before = (tmp_path / "flightaware-usage.json").read_bytes()
+        clock.return_value = quiet
+        for path, purpose in ((LOOKUP, "operating"), (POSITION, "operating"), (LOOKUP, "nearby")):
+            with pytest.raises(PaidRequestsPaused) as error:
+                feed._flightaware(path, settings, purpose=purpose)
+            assert error.value.reason == "quiet_hours"
+        with pytest.raises(PaidRequestsPaused):
+            feed._allow_paid_request(settings, LOOKUP)
+        network.assert_not_called()
+        assert (tmp_path / "flightaware-usage.json").read_bytes() == before
+        clock.return_value = quiet + timedelta(hours=12)
+        feed._flightaware(LOOKUP, settings)
+        network.assert_called_once()
+    assert read(tmp_path)["reserved_milliusd"] == 10
+
+
 @pytest.mark.parametrize("limit", [10, 15])
 def test_approved_higher_limit_reuses_current_month_reservations(tmp_path, limit):
     previous = {"schema_version": 2, "day": "2026-10-31", "month": "2026-10", "count": 2,
@@ -91,7 +141,7 @@ def test_both_away_blocks_shared_provider_and_preserves_existing_usage(tmp_path)
         presence.update(person, {"state": "away", "observed_at": NOW.isoformat()}, NOW)
     (tmp_path / "flightaware.key").write_text("synthetic-key")
     with patch("flightwall.feeds.utcnow", return_value=NOW) as clock, patch("flightwall.feeds.request_json") as network:
-        feed._allow_paid_request(settings, LOOKUP)
+        feed._allow_paid_request(settings | {"presence_enabled": False}, LOOKUP)
         before = read(tmp_path)
         for path, purpose in ((LOOKUP, "operating"), (POSITION, "operating"), (LOOKUP, "nearby")):
             with pytest.raises(PaidRequestsPaused):

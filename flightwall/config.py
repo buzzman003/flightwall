@@ -29,7 +29,7 @@ DEFAULTS = {
     "national_radar_scope": "national", "national_radar_flight_only": True,
     "nearby_enrichment_enabled": False, "nearby_enrichment_monthly_limit_usd": 1.0,
     "flightaware_poll_seconds": 120, "flightaware_daily_limit": 240,
-    "flightaware_monthly_limit_usd": 5,
+    "flightaware_monthly_limit_usd": 5, "flightaware_quiet_hours_enabled": False,
     "updates_enabled": False, "update_manifest_url": "", "update_public_key": "",
     "update_interval_minutes": 15, "public_url": "", "control_port": 8765,
     "personal_enabled": True, "appointment_duration_minutes": 60,

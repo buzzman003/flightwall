@@ -1,3 +1,13 @@
+0.4.26 FLIGHTAWARE QUIET HOURS
+
+Exercise 21:00 and 09:00 boundaries using the configured board timezone,
+including DST, coexistence with the two-phone Away pause, the default-disabled
+setting, free ADSB.lol polling and deferred commute scheduling. Synthetic
+requests should show no overnight paid traffic or spending reservations.
+Require native upgrade and rollback from the signed 0.4.25 installer while
+preserving the original recovery helper and private settings. The first real
+overnight interval remains a device check.
+
 0.4.25 PAID LOOKUPS WHILE BOTH ADULTS ARE AWAY
 
 Use isolated presence and provider fixtures to check that two fresh Away

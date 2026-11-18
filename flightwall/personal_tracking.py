@@ -298,7 +298,7 @@ class PersonalFlightTracker:
                     entry["next"] = "status"
             except (ValueError, OSError, urllib.error.URLError, TypeError, KeyError, AttributeError, OverflowError) as error:
                 reason = getattr(error, "reason", None)
-                if reason == "household_away":
+                if reason in ("household_away", "quiet_hours"):
                     return
                 provider = fresh_status(entry["result"].get("provider"), now, backend_available=False)
                 reason = reason if isinstance(reason, str) and reason in {

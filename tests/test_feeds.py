@@ -103,6 +103,25 @@ class FeedTests(unittest.TestCase):
         self.assertEqual(self.feed.operating_status_for_config(config, selected(), NOW)["status"], "fresh")
         self.assertIsNotNone(self.feed.live)
 
+    def test_quiet_hours_keep_adsb_and_resume_paid_poll_at_nine_local(self):
+        config = self.config | {"timezone": "America/Denver", "flightaware_quiet_hours_enabled": True,
+                                "nearby_enabled": True, "nearby_enrichment_enabled": True,
+                                "home_latitude": 0.0, "home_longitude": 0.0, "nearby_radius_miles": 5}
+        quiet = NOW - timedelta(seconds=1)  # 8:59:59 in Denver.
+        with patch("flightwall.feeds.utcnow", return_value=quiet), patch("flightwall.feeds.request_json",
+                return_value=nearby_snapshot([nearby_aircraft(flight="DAL123")], quiet)) as network:
+            self.feed.poll(config, selected(), nearby_visible=True)
+            network.assert_called_once()
+            self.assertTrue(network.call_args.args[0].startswith("https://api.adsb.lol/"))
+        status = self.feed.operating_status_for_config(config, selected(), quiet)
+        self.assertEqual((status["status"], status["reason"]), ("paused_quiet_hours", "quiet_hours"))
+        self.assertEqual(len(self.feed.nearby_for_config(config, quiet)), 1)
+        self.assertFalse((self.directory / "flightaware-usage.json").exists())
+        with patch("flightwall.feeds.request_json", side_effect=[{"flights": [scheduled()]}, position()]) as network:
+            self.feed.poll(config, selected(), on_duty=True)
+            self.assertEqual(network.call_count, 2)
+        self.assertEqual(self.feed.operating_status_for_config(config, selected(), NOW)["status"], "fresh")
+
     def test_first_poll_after_boot_matches_unique_dated_route_and_units(self):
         call = self.poll_live([scheduled("yesterday", -1440), scheduled("correct", 0),
                                scheduled("wrong-route", destination={"code_iata": "LAX"})])

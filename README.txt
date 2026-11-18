@@ -1,3 +1,13 @@
+FLIGHT WALL 0.4.26
+
+Optional FlightAware quiet hours allow the device owner to pause billed API
+requests from 9 p.m. until 9 a.m. in the board's configured timezone, even
+while Flight Wall is running. Set `flightaware_quiet_hours_enabled` to `true`
+in local configuration to enable it. After 9 a.m., normal request rules apply,
+including the existing two-phone Away pause. Free ADSB.lol data and calendar
+schedules continue during quiet hours. The outer nearest-aircraft list uses
+free positions and starts no paid route lookups.
+
 FLIGHT WALL 0.4.25
 
 While Chris and Lisa both have fresh Away reports, Flight Wall pauses paid

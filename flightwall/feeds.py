@@ -13,6 +13,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .config import DEFAULTS, FLIGHTAWARE_MAX_MONTHLY_LIMIT_USD, private_json
 from .flight_watches import FlightWatchStore, day_bounds, tracking_available
@@ -39,12 +40,12 @@ class PaidLimitError(ValueError):
                           "daily_limit": "FlightAware daily request limit reached",
                           "nearby_limit": "Nearby metadata allowance reserved for operating flights",
                           "household_away": "FlightAware requests are paused while both adults are away",
+                          "quiet_hours": "FlightAware requests are paused from 9 PM to 9 AM in the board timezone",
                           "usage_unknown": "Cannot verify the local FlightAware usage limit"}[reason])
 
 
 class PaidRequestsPaused(PaidLimitError):
-    def __init__(self):
-        super().__init__("household_away")
+    """A temporary policy pause, distinct from usage limits or provider errors."""
 
 
 def _paid_path(path, *, allow_registration=False):
@@ -304,19 +305,25 @@ class FlightFeeds:
         self._nearby_request_started = False
         self._nearby_lock = threading.Lock()
 
+    def _paid_pause_reason(self, config, now=None):
+        now = now or utcnow()
+        if config.get("flightaware_quiet_hours_enabled") is True:
+            hour = now.astimezone(ZoneInfo(config.get("timezone", "UTC"))).hour
+            if hour >= 21 or hour < 9:
+                return "quiet_hours"
+        if (config.get("presence_enabled") is True
+                and both_adults_away(PresenceStore(self.data_dir, lambda: config).snapshot(now))):
+            return "household_away"
+        return None
+
     def paid_paused(self, config, now=None):
-        return (config.get("presence_enabled") is True
-                and both_adults_away(PresenceStore(self.data_dir, lambda: config).snapshot(now or utcnow())))
+        return self._paid_pause_reason(config, now) is not None
 
     def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
         _, fee = _paid_path(path, allow_registration=purpose == "nearby")
         if purpose not in {"operating", "nearby"} or purpose == "nearby" and fee != 5:
             raise ValueError("Unsupported paid request purpose")
-        today = utcnow().astimezone(timezone.utc).date()
-        if not PRICING_CHECKED <= today <= PRICING_CHECKED + timedelta(days=PRICING_MAX_AGE_DAYS):
-            raise PaidLimitError("pricing_expired")
-        day, month = today.isoformat(), today.strftime("%Y-%m")
         try:
             configured_limit = config.get("flightaware_monthly_limit_usd", DEFAULTS["flightaware_monthly_limit_usd"])
             limit = Decimal(str(configured_limit))
@@ -333,6 +340,13 @@ class FlightFeeds:
             if type(daily) is not int or daily < 0:
                 raise ValueError("Invalid daily app budget")
             with self._budget_storage._locked():
+                now = utcnow()
+                if reason := self._paid_pause_reason(config, now):
+                    raise PaidRequestsPaused(reason)
+                today = now.astimezone(timezone.utc).date()
+                if not PRICING_CHECKED <= today <= PRICING_CHECKED + timedelta(days=PRICING_MAX_AGE_DAYS):
+                    raise PaidLimitError("pricing_expired")
+                day, month = today.isoformat(), today.strftime("%Y-%m")
                 try:
                     with self._budget_path.open(encoding="utf-8") as stream:
                         raw = stream.read(8193)
@@ -407,8 +421,8 @@ class FlightFeeds:
     def _flightaware(self, path, config, *, purpose="operating"):
         path, _ = _paid_path(path, allow_registration=purpose == "nearby")
         # Recheck for each request, including each call in a batch and the CLI.
-        if self.paid_paused(config):
-            raise PaidRequestsPaused()
+        if reason := self._paid_pause_reason(config):
+            raise PaidRequestsPaused(reason)
         key_path = self.data_dir / "flightaware.key"
         try:
             with key_path.open(encoding="utf-8") as stream:
@@ -446,8 +460,10 @@ class FlightFeeds:
             return {**base, "status": "outside_window"}
         identity, result = self._operating_completed
         selected = flight_identity(flight, config)
-        if (identity != selected or self._operating_terminal != selected) and self.paid_paused(config, now):
-            return {**base, "status": "paused_away", "reason": "household_away"}
+        if identity != selected or self._operating_terminal != selected:
+            if reason := self._paid_pause_reason(config, now):
+                status = "paused_quiet_hours" if reason == "quiet_hours" else "paused_away"
+                return {**base, "status": status, "reason": reason}
         if identity != selected:
             return {**base, "status": "pending"}
         return fresh_status(result, now)

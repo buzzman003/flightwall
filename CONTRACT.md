@@ -1,3 +1,13 @@
+0.4.26 FLIGHTAWARE QUIET HOURS
+
+An opt-in local-only switch pauses all FlightAware requests from 21:00 through
+08:59 in the configured display timezone. It applies before recording usage
+or starting provider I/O, including paid aircraft enrichment, watches,
+personal and operating flight status/position, and commute schedules. Resume
+standard polling at 09:00 subject to existing Away and budget policies. Do not
+change the free aircraft feed, calendar schedules, dinner generation, lighting
+or credentials for the overnight policy. Outer fallback rows remain free.
+
 0.4.24 NEARBY ROTATION AND FLIGHTAWARE ALLOWANCE
 
 Skip stale or unavailable Nearby Aircraft slots during automatic selection.

@@ -131,6 +131,21 @@ def test_empty_ids_or_unknown_presence_make_no_files_and_no_paid_calls(tmp_path)
     feeds._flightaware.assert_not_called()
 
 
+def test_quiet_hours_do_not_consume_automatic_schedule_attempt(tmp_path):
+    store, feeds = CommuteStore(tmp_path), FlightFeeds(tmp_path)
+    config = CONFIG | {"flightaware_quiet_hours_enabled": True}
+    quiet = NOW.replace(hour=14, minute=59)  # 8:59 CST.
+    snapshot = SNAPSHOT | {"last_sync": quiet.isoformat()}
+    home = {"chris": HOME["chris"] | {"last_seen": quiet.isoformat()}}
+    with patch.object(feeds, "_flightaware", side_effect=lambda path, settings: provider(path.split("/")[-1].split("?")[0])) as paid:
+        assert store.poll(snapshot, config, feeds, quiet, presence=home)["status"] == "unconfigured"
+        paid.assert_not_called()
+        assert not store.usage.exists()
+        assert store.poll(snapshot, config, feeds, quiet + timedelta(minutes=1), presence=home)["status"] == "ready"
+        assert paid.call_count == 3
+    assert store.usage.is_file()
+
+
 def test_same_day_verified_manual_plan_avoids_redundant_paid_refresh(tmp_path):
     store, feeds = CommuteStore(tmp_path), Mock()
     store.save(candidates(), report_leg(SNAPSHOT, "2026-11-06", NOW), NOW)

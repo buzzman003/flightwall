@@ -233,6 +233,8 @@ class CommuteStore:
         idents = schedule_idents(config.get("commute_schedule_idents", []))
         if not idents or config.get("flightaware_enabled") is not True:
             return self.status(snapshot, config, now)
+        if feeds.paid_paused(config, now) is True:
+            return self.status(snapshot, config, now)
         day = now.astimezone(ZONE).date()
         current = self.status(snapshot, config, now)
         if (current.get("status") == "ready"
