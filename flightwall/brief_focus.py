@@ -5,6 +5,7 @@ import json
 
 from .config import private_json
 from .dinner_options import request_json
+from .household_policy import both_adults_away
 
 
 FOCUS_CODES = frozenset({"airport_delay", "arrival_change", "departure_change", "weather", "leave_time"})
@@ -52,11 +53,12 @@ def _parse(response, codes):
 
 
 class BriefFocus:
-    def __init__(self, data_dir, config_getter, private_lock, read_key):
+    def __init__(self, data_dir, config_getter, private_lock, read_key, *, presence_getter=None):
         self.path = data_dir / "brief-focus-usage.json"
         self.config_getter = config_getter
         self.private_lock = private_lock
         self.read_key = read_key
+        self.presence_getter = presence_getter
         self._decisions = {}
 
     def enabled(self):
@@ -98,6 +100,8 @@ class BriefFocus:
         self._decisions = {key: choice for key, choice in self._decisions.items() if key[0] == day}
         try:
             key = self.read_key()
+            if self.presence_getter and both_adults_away(self.presence_getter()):
+                return
             if not self._reserve(day, codes) or not self.enabled():
                 return
             choice = _parse(request_json("/v1/responses", key, _payload(codes)), codes)

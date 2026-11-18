@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from flightwall.config import DEFAULTS
 from flightwall.feeds import FlightFeeds, nearby_distance_miles, request_json
+from flightwall.presence import PresenceStore
 
 
 NOW = datetime(2026, 10, 31, 15, 0, tzinfo=timezone.utc)
@@ -77,6 +78,30 @@ class FeedTests(unittest.TestCase):
             self.feed.poll(self.config | {"demo": True}, selected())
             network.assert_not_called()
         self.assertIsNone(self.feed.live)
+
+    def test_both_away_keeps_free_adsb_and_resumes_paid_poll_after_home(self):
+        config = self.config | {"presence_enabled": True, "nearby_enabled": True,
+                                "nearby_enrichment_enabled": True, "home_latitude": 0.0,
+                                "home_longitude": 0.0, "nearby_radius_miles": 5}
+        presence = PresenceStore(self.directory, lambda: config)
+        for person in ("chris", "lisa"):
+            presence.rotate(person)
+            presence.update(person, {"state": "away", "observed_at": NOW.isoformat()}, NOW)
+        with patch("flightwall.feeds.request_json", return_value=nearby_snapshot([nearby_aircraft(flight="DAL123")])) as network:
+            self.feed.poll(config, selected(), nearby_visible=True)
+            network.assert_called_once()
+            self.assertTrue(network.call_args.args[0].startswith("https://api.adsb.lol/"))
+        self.assertEqual(self.feed.operating_status_for_config(config, selected(), NOW)["status"], "paused_away")
+        self.assertEqual(len(self.feed.nearby_for_config(config, NOW)), 1)
+        self.assertFalse((self.directory / "flightaware-usage.json").exists())
+
+        home = NOW + timedelta(seconds=1)
+        presence.update("lisa", {"state": "home", "observed_at": home.isoformat()}, home)
+        with patch("flightwall.feeds.request_json", side_effect=[{"flights": [scheduled()]}, position()]) as network:
+            self.feed.poll(config, selected(), on_duty=True)
+            self.assertEqual(network.call_count, 2)
+        self.assertEqual(self.feed.operating_status_for_config(config, selected(), NOW)["status"], "fresh")
+        self.assertIsNotNone(self.feed.live)
 
     def test_first_poll_after_boot_matches_unique_dated_route_and_units(self):
         call = self.poll_live([scheduled("yesterday", -1440), scheduled("correct", 0),

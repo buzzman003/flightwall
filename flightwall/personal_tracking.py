@@ -264,8 +264,6 @@ class PersonalFlightTracker:
             if entry.get("terminal") or tick < entry["retry_at"]:
                 continue
             current_index = targets.index(flight)
-            self._cursor = current_index
-            self._last_request = tick
             try:
                 old = entry["result"]
                 provider = old.get("provider", {})
@@ -299,13 +297,16 @@ class PersonalFlightTracker:
                         entry["result"]["live"] = live
                     entry["next"] = "status"
             except (ValueError, OSError, urllib.error.URLError, TypeError, KeyError, AttributeError, OverflowError) as error:
-                provider = fresh_status(entry["result"].get("provider"), now, backend_available=False)
                 reason = getattr(error, "reason", None)
+                if reason == "household_away":
+                    return
+                provider = fresh_status(entry["result"].get("provider"), now, backend_available=False)
                 reason = reason if isinstance(reason, str) and reason in {
                     "monthly_limit", "daily_limit", "pricing_expired", "usage_unknown"} else "provider_unavailable"
                 entry["result"] = {"status": "stale" if provider.get("fetched_at") else "unavailable",
                                    "provider": provider, "reason": reason}
                 entry["next"], entry["retry_at"] = "status", tick + 300
-            if entry["next"] != "position" or entry.get("terminal"):
-                self._cursor = (current_index + 1) % len(targets)
+            self._last_request = tick
+            self._cursor = (current_index + 1) % len(targets) if (
+                entry["next"] != "position" or entry.get("terminal")) else current_index
             break

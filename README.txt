@@ -1,3 +1,12 @@
+FLIGHT WALL 0.4.25
+
+While Chris and Lisa both have fresh Away reports, Flight Wall pauses paid
+FlightAware lookups and OpenAI dinner generation and flight-brief ordering.
+When either phone reports Home, eligible requests resume within their usual
+schedule and budget. Missing or expired reports become Unknown and lift the
+pause. Saved cards, calendar schedules and free nearby aircraft data remain
+available, including when the display is left running.
+
 FLIGHT WALL 0.4.24
 
 The automatic rotation passes over Nearby Aircraft while the feed is stale

@@ -35,6 +35,11 @@ def _known(record, state):
     return isinstance(record, dict) and record.get("stale") is False and record.get("state") == state
 
 
+def both_adults_away(presence):
+    """Pause paid lookups only when both records in a fresh snapshot say Away."""
+    return isinstance(presence, dict) and all(_known(presence.get(person), "away") for person in ("chris", "lisa"))
+
+
 def _flights(status, config):
     snapshot = status.get("snapshot") or {}
     if not isinstance(snapshot, dict) or snapshot.get("demo"):

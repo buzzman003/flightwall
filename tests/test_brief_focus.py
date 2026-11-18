@@ -64,6 +64,21 @@ def test_request_cap_is_shared_across_instances_and_failures_are_charged(tmp_pat
         assert call.call_count == 5
 
 
+def test_both_away_skips_focus_spend_without_using_the_daily_attempt(tmp_path):
+    config = {"brief_focus_enabled": True, "demo": False, "guest_mode": False, "flight_cards_visible": True}
+    presence = {person: {"state": "away", "stale": False} for person in ("chris", "lisa")}
+    focus = BriefFocus(tmp_path, lambda: config, nullcontext, lambda: "example-key", presence_getter=lambda: presence)
+    codes = ("arrival_change", "leave_time")
+    with patch("flightwall.brief_focus.request_json", return_value=_response("leave_time")) as call:
+        focus.poll(codes, "2026-11-04")
+        call.assert_not_called()
+        assert not focus.path.exists()
+        presence["lisa"]["state"] = "home"
+        focus.poll(codes, "2026-11-04")
+        call.assert_called_once()
+        assert focus.selection(codes, "2026-11-04") == "leave_time"
+
+
 def test_parse_rejects_refusal_and_unavailable_choices():
     codes = ("weather", "airport_delay")
     assert _parse(_response("weather"), codes) == "weather"

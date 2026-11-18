@@ -95,6 +95,49 @@ def test_ready_has_four_sanitized_images_safe_fields_and_private_recipe_detail(s
     assert usage["reserved_cents"] == 10 and len(usage["attempts"]) == 1
 
 
+@pytest.mark.parametrize("returning", ["chris", "lisa"])
+def test_both_away_defers_dinner_generation_until_an_adult_returns(setup, returning):
+    feed, _, calls, _ = setup
+    presence = {person: {"state": "away", "last_seen": NOW.isoformat(), "stale": False}
+                for person in ("chris", "lisa")}
+    feed.presence_getter = lambda now: presence
+    assert feed.poll(kids(), NOW)["status"] == "paused_away"
+    assert not feed.usage_path.exists() and not feed.path.exists()
+    calls.assert_not_called()
+
+    presence[returning]["state"] = "home"
+    result = feed.poll(kids(), NOW)
+    assert result["status"] == "ready"
+    assert calls.call_count == 2
+    presence[returning]["state"] = "away"
+    assert feed.poll(kids(), NOW) == result
+    assert calls.call_count == 2
+
+
+def test_dinner_text_is_kept_if_both_adults_leave_before_photo_request(setup, monkeypatch):
+    feed, _, calls, _ = setup
+    initial = {"chris": {"state": "away", "last_seen": NOW.isoformat(), "stale": False},
+               "lisa": {"state": "home", "last_seen": NOW.isoformat(), "stale": False}}
+    left_at = NOW + timedelta(seconds=10)
+    both_away = {**initial, "lisa": {"state": "away", "last_seen": left_at.isoformat(), "stale": False}}
+    elapsed = 0
+    monkeypatch.setattr(meals.time, "monotonic", lambda: elapsed)
+    feed.presence_getter = lambda now: both_away if now >= left_at else initial
+
+    def provider(path, *_):
+        nonlocal elapsed
+        assert path == "/v1/responses"
+        elapsed = 15
+        return response()
+
+    calls.side_effect = provider
+    result = feed.poll(kids(), NOW)
+    assert result["status"] == "ready" and len(result["options"]) == 4
+    assert all(option["image_data"] is None for option in result["options"])
+    assert calls.call_count == 1
+    assert json.loads(feed.usage_path.read_text())["reserved_cents"] == 10
+
+
 def test_select_projects_saved_picture_and_notifies_only_after_creating_dinner(setup):
     feed, _, calls, _ = setup
     ready = feed.poll(kids(), NOW)
@@ -167,6 +210,23 @@ def test_custom_dinner_picture_is_private_persistent_and_bound_to_exact_meal(set
     assert again.picture_for(item, NOW) == picture
     assert again.picture_for(item | {"sides": "Salad"}, NOW) is None
     assert again.picture_for(item | {"cancelled": True}, NOW) is None
+
+
+def test_both_away_defers_custom_picture_without_blocking_manual_dinner(setup):
+    feed, _, calls, personal = setup
+    presence = {person: {"state": "away", "last_seen": NOW.isoformat(), "stale": False}
+                for person in ("chris", "lisa")}
+    feed.presence_getter = lambda now: presence
+    item = personal.create({"kind": "dinner", "title": "Lasagna", "date": "2026-11-01"})["item"]
+    assert not feed.poll_picture(kids(), NOW)
+    assert not feed.usage_path.exists()
+    assert personal.list_items(NOW) == [item] and feed.picture_for(item, NOW) is None
+    calls.assert_not_called()
+
+    presence["lisa"] = {"state": "unknown", "last_seen": None, "stale": True}
+    assert feed.poll_picture(kids(), NOW)
+    assert feed.picture_for(item, NOW)
+    calls.assert_called_once()
 
 
 @pytest.mark.parametrize("changes,kids_change", [

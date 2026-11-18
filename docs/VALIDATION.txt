@@ -1,3 +1,13 @@
+0.4.25 PAID LOOKUPS WHILE BOTH ADULTS ARE AWAY
+
+Use isolated presence and provider fixtures to check that two fresh Away
+reports block paid FlightAware requests, dinner text and images, and optional
+OpenAI brief ordering without using their allowances. Check Home, missing and
+expired reports, preserved cached data and uninterrupted free nearby updates.
+Verify the native upgrade and rollback with the published 0.4.24 executable
+and the original pinned recovery helper. A locked-phone outing and subsequent
+return remain physical checks. Synthetic tests need no provider credentials.
+
 0.4.24 NEARBY ROTATION AND FLIGHTAWARE ALLOWANCE
 
 Verify stale and unavailable Nearby Aircraft slots are skipped in automatic

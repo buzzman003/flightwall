@@ -8,7 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from flightwall.config import ConfigStore, DEFAULTS
-from flightwall.feeds import FlightFeeds, PaidLimitError, PRICING_CHECKED, PRICING_MAX_AGE_DAYS
+from flightwall.feeds import FlightFeeds, PaidLimitError, PaidRequestsPaused, PRICING_CHECKED, PRICING_MAX_AGE_DAYS
+from flightwall.presence import PresenceStore
 
 NOW = datetime(2026, 10, 31, 18, tzinfo=timezone.utc)
 LOOKUP = "/flights/DAL123?max_pages=1"
@@ -79,6 +80,30 @@ def test_unknown_unbounded_or_unpriced_endpoints_never_reach_network(tmp_path):
                 feed._flightaware(path, config())
         network.assert_not_called()
     assert not (tmp_path / "flightaware-usage.json").exists()
+
+
+def test_both_away_blocks_shared_provider_and_preserves_existing_usage(tmp_path):
+    feed = FlightFeeds(tmp_path)
+    settings = config(presence_enabled=True)
+    presence = PresenceStore(tmp_path, lambda: settings)
+    for person in ("chris", "lisa"):
+        presence.rotate(person)
+        presence.update(person, {"state": "away", "observed_at": NOW.isoformat()}, NOW)
+    (tmp_path / "flightaware.key").write_text("synthetic-key")
+    with patch("flightwall.feeds.utcnow", return_value=NOW) as clock, patch("flightwall.feeds.request_json") as network:
+        feed._allow_paid_request(settings, LOOKUP)
+        before = read(tmp_path)
+        for path, purpose in ((LOOKUP, "operating"), (POSITION, "operating"), (LOOKUP, "nearby")):
+            with pytest.raises(PaidRequestsPaused):
+                feed._flightaware(path, settings, purpose=purpose)
+        network.assert_not_called()
+        assert read(tmp_path) == before
+
+        # Missing current evidence is Unknown. Do not keep pausing until a Home report arrives.
+        clock.return_value = NOW + timedelta(minutes=settings["presence_ttl_minutes"])
+        feed._flightaware(LOOKUP, settings)
+        network.assert_called_once()
+    assert read(tmp_path)["reserved_milliusd"] == before["reserved_milliusd"] + 5
 
 
 def test_daily_rollover_preserves_month_spend_and_month_rollover_resets_both(tmp_path):

@@ -104,6 +104,7 @@ def render_operating(draw, image, state, config, now):
                  "unconfigured": "AEROAPI KEY NOT CONFIGURED", "pending": "WAITING FOR FLIGHT STATUS",
                  "outside_window": "OUTSIDE STATUS CHECK WINDOW", "idle": "NO OPERATING FLIGHT TO CHECK",
                  "not_found": "NO MATCHING PROVIDER FLIGHT", "ambiguous": "FLIGHT MATCH AMBIGUOUS",
+                 "paused_away": "LIVE UPDATES PAUSED",
                  "stale": "PROVIDER UPDATE STALE"}.get(mode, "STATUS UPDATE UNAVAILABLE")
         title = {"monthly_limit": "MONTHLY APP BUDGET REACHED",
                  "daily_limit": "DAILY REQUEST LIMIT REACHED",

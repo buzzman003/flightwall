@@ -20,8 +20,10 @@ from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fli
                             fresh_nearby_route, nearby_route_result, nearby_lookup_identity,
                             match_operating_flight, normalize_operating_status, operating_ident,
                             stamp as status_stamp, valid_us_registration, within_tracking_window)
+from .household_policy import both_adults_away
 from .personal import PersonalError, PersonalStore
 from .personal_tracking import PersonalFlightTracker
+from .presence import PresenceStore
 
 
 PRICING_CHECKED = datetime(2026, 10, 31, tzinfo=timezone.utc).date()
@@ -36,7 +38,13 @@ class PaidLimitError(ValueError):
                           "monthly_limit": "FlightAware monthly app cost limit reached",
                           "daily_limit": "FlightAware daily request limit reached",
                           "nearby_limit": "Nearby metadata allowance reserved for operating flights",
+                          "household_away": "FlightAware requests are paused while both adults are away",
                           "usage_unknown": "Cannot verify the local FlightAware usage limit"}[reason])
+
+
+class PaidRequestsPaused(PaidLimitError):
+    def __init__(self):
+        super().__init__("household_away")
 
 
 def _paid_path(path, *, allow_registration=False):
@@ -296,6 +304,10 @@ class FlightFeeds:
         self._nearby_request_started = False
         self._nearby_lock = threading.Lock()
 
+    def paid_paused(self, config, now=None):
+        return (config.get("presence_enabled") is True
+                and both_adults_away(PresenceStore(self.data_dir, lambda: config).snapshot(now or utcnow())))
+
     def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
         _, fee = _paid_path(path, allow_registration=purpose == "nearby")
@@ -394,6 +406,9 @@ class FlightFeeds:
 
     def _flightaware(self, path, config, *, purpose="operating"):
         path, _ = _paid_path(path, allow_registration=purpose == "nearby")
+        # Recheck for each request, including each call in a batch and the CLI.
+        if self.paid_paused(config):
+            raise PaidRequestsPaused()
         key_path = self.data_dir / "flightaware.key"
         try:
             with key_path.open(encoding="utf-8") as stream:
@@ -430,7 +445,10 @@ class FlightFeeds:
         if not within_tracking_window(flight, now):
             return {**base, "status": "outside_window"}
         identity, result = self._operating_completed
-        if identity != flight_identity(flight, config):
+        selected = flight_identity(flight, config)
+        if (identity != selected or self._operating_terminal != selected) and self.paid_paused(config, now):
+            return {**base, "status": "paused_away", "reason": "household_away"}
+        if identity != selected:
             return {**base, "status": "pending"}
         return fresh_status(result, now)
 
@@ -575,7 +593,7 @@ class FlightFeeds:
     def _poll_nearby_routes(self, config, now, *, visible=False):
         """Last priority: one closest-aircraft metadata lookup per five minutes."""
         if (visible is not True or config.get("nearby_enrichment_enabled") is not True
-                or not tracking_available(self.data_dir, config)):
+                or not tracking_available(self.data_dir, config) or self.paid_paused(config, now)):
             return
         tick = time.monotonic()
         # Bound in-memory cache only; no aircraft/history/provider JSON files.
@@ -594,12 +612,7 @@ class FlightFeeds:
             entry = self._nearby_route_cache.get(identity)
             if entry and tick - entry["checked_at"] < (600 if entry.get("route") else 1800):
                 continue
-            self._last_nearby_route = tick
             entry = {"checked_at": tick, "route": None}
-            self._nearby_route_cache[identity] = entry
-            if len(self._nearby_route_cache) > 128:
-                oldest = min(self._nearby_route_cache, key=lambda key: self._nearby_route_cache[key]["checked_at"])
-                self._nearby_route_cache.pop(oldest)
             self._nearby_request_started = False
             try:
                 params = urllib.parse.urlencode({"start": (now - timedelta(hours=24)).isoformat(),
@@ -608,20 +621,31 @@ class FlightFeeds:
                 entry["route"], reason = nearby_route_result(response, row, utcnow())
                 if self._nearby_request_started:
                     self._record_nearby_route_diagnostic(reason)
+            except PaidRequestsPaused:
+                break
             except PaidLimitError:
                 self._record_nearby_route_diagnostic("budget_stop")
             except (OSError, urllib.error.URLError):
                 self._record_nearby_route_diagnostic("transport_error" if self._nearby_request_started else "configuration_error")
             except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
                 self._record_nearby_route_diagnostic("invalid_response" if self._nearby_request_started else "configuration_error")
+            self._last_nearby_route = tick
+            self._nearby_route_cache[identity] = entry
+            if len(self._nearby_route_cache) > 128:
+                oldest = min(self._nearby_route_cache, key=lambda key: self._nearby_route_cache[key]["checked_at"])
+                self._nearby_route_cache.pop(oldest)
             break
 
     def poll(self, config, selected, *, on_duty=False, watches=None, personal_flights=None, nearby_visible=False):
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
+        paused = self.paid_paused(config, now)
         try:
-            self._poll_live(config, selected, now)
+            if not paused:
+                self._poll_live(config, selected, now)
+        except PaidRequestsPaused:
+            paused = True
         except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError) as error:
             self.error = "Live flight lookup unavailable; showing the calendar schedule. Check your airline code, API key, account and request limit."
             previous = fresh_status(self.operating_status, now)
@@ -640,7 +664,8 @@ class FlightFeeds:
                 self.live = None
         # The operating flight always gets the first use of the existing shared
         # paid-request budget. Public requests never replace its live position.
-        self.personal_tracking.poll(config, personal_flights or [], now, time.monotonic())
+        if not paused:
+            self.personal_tracking.poll(config, personal_flights or [], now, time.monotonic())
         self._poll_watches(config, watches or [], now)
         if not self._nearby_lock.acquire(blocking=False):
             return
@@ -825,7 +850,8 @@ class FlightFeeds:
                     result["status"] = "scheduled"
         # At most one extra paid request per backend pass, round-robin among
         # at most five watches. Each still shares the normal persisted daily cap.
-        ordered = safe[self._watch_cursor % len(safe):] + safe[:self._watch_cursor % len(safe)] if safe else []
+        ordered = (safe[self._watch_cursor % len(safe):] + safe[:self._watch_cursor % len(safe)]
+                   if safe and not self.paid_paused(config, now) else [])
         for watch in ordered:
             entry = self._watch_cache[watch["id"]]
             lower, upper = day_bounds(watch)
@@ -841,10 +867,8 @@ class FlightFeeds:
                             and tick - entry["position_at"] >= config["flightaware_poll_seconds"])
             if not lookup_due and not position_due:
                 continue
-            self._watch_cursor = (safe.index(watch) + 1) % len(safe)
             try:
                 if lookup_due:
-                    entry["lookup_at"] = tick
                     params = urllib.parse.urlencode({"start": lower.isoformat(), "end": upper.isoformat(),
                                                      "ident_type": "designator", "max_pages": 1})
                     response = self._flightaware("/flights/" + urllib.parse.quote(watch["ident"], safe="") + "?" + params, config)
@@ -858,14 +882,17 @@ class FlightFeeds:
                         else:
                             entry["position_at"] = -math.inf
                 else:
-                    entry["position_at"] = tick
                     response = self._flightaware("/flights/" + urllib.parse.quote(flight["id"], safe="") + "/position", config)
                     live = self._watch_position(response, flight, now)
                     entry["result"] = {"status": "tracking" if live else "scheduled", "flight": flight}
                     if live:
                         entry["result"]["live"] = live
+            except PaidRequestsPaused:
+                break
             except (ValueError, OSError, urllib.error.URLError, KeyError, TypeError, AttributeError, OverflowError):
                 entry["result"] = {"status": "unavailable", **({"flight": flight} if flight else {})}
+            entry["lookup_at" if lookup_due else "position_at"] = tick
+            self._watch_cursor = (safe.index(watch) + 1) % len(safe)
             break
         self.watch_results = {watch["id"]: copy.deepcopy(self._watch_cache[watch["id"]]["result"]) for watch in safe}
 
@@ -905,17 +932,23 @@ class FlightFeeds:
             return
         if not self._live_id and tick - self._lookup_at < 300:
             return
+        previous_live_tick = self._last_live
         self._last_live = tick
         start = status_stamp(selected["start"])
         position_eligible = (self.operating_status.get("phase") != "landed"
                              and (start - timedelta(hours=1) <= now or self.operating_status.get("phase") in {"departed_gate", "airborne"}))
         first = self._live_id is None
         if first or self._operating_next == "status" or not position_eligible:
+            previous_lookup_tick = self._lookup_at
             self._lookup_at = tick
             params = urllib.parse.urlencode({"start": (start - timedelta(hours=6)).isoformat(),
                                              "end": (start + timedelta(hours=6)).isoformat(),
                                              "ident_type": "designator", "max_pages": 1})
-            data = self._flightaware("/flights/" + urllib.parse.quote(number, safe="") + "?" + params, config)
+            try:
+                data = self._flightaware("/flights/" + urllib.parse.quote(number, safe="") + "?" + params, config)
+            except PaidRequestsPaused:
+                self._last_live, self._lookup_at = previous_live_tick, previous_lookup_tick
+                raise
             outcome, matched = match_operating_flight(data, selected, config)
             if matched is None:
                 self._live_id, self.live = None, None
@@ -940,7 +973,14 @@ class FlightFeeds:
                 return
         # The initial association can buy one position immediately. Subsequent
         # passes alternate status/position, one request each poll interval.
+        previous_request_kind = self._operating_next
         self._operating_next = "status"
-        data = self._flightaware("/flights/" + urllib.parse.quote(self._live_id, safe="") + "/position", config)
+        try:
+            data = self._flightaware("/flights/" + urllib.parse.quote(self._live_id, safe="") + "/position", config)
+        except PaidRequestsPaused:
+            self._operating_next = previous_request_kind
+            if not first:
+                self._last_live = previous_live_tick
+            raise
         live = self._watch_position(data, {"id": self._live_id}, now)
         self.live = ({**live, "flight_id": selected["id"], "provider_flight_id": self._live_id} if live else None)

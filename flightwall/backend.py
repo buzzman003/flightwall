@@ -81,8 +81,11 @@ class Runtime:
         self.trip_weather = TripWeatherFeed(data_dir, self.config.get)
         self.environment = FlightEnvironmentFeed(data_dir, self.config.get)
         self.personal = PersonalStore(data_dir, self.config.get)
-        self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal)
-        self.brief_focus = BriefFocus(self.data_dir, self.config.get, self.personal._locked, self.dinner_options._key)
+        self.presence = PresenceStore(data_dir, self.config.get)
+        self.dinner_options = DinnerOptions(data_dir, self.config.get, self.personal,
+                                            presence_getter=self.presence.snapshot)
+        self.brief_focus = BriefFocus(self.data_dir, self.config.get, self.personal._locked, self.dinner_options._key,
+                                      presence_getter=self.presence.snapshot)
         self.commute = CommuteStore(self.data_dir)
         self.recipe_mail = RecipeMail(data_dir, self.personal._locked, enabled=self._recipe_mail_enabled)
         self.timers = TimerStore(data_dir, self.config.get)
@@ -93,7 +96,6 @@ class Runtime:
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
-        self.presence = PresenceStore(data_dir, self.config.get)
         self.messages = MessageFeeds(data_dir, self.config.get)
         self.content = SourceContent(data_dir, self.config.get)
         self.updater_status = {"status": "disabled"}

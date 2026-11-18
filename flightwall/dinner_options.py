@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 from PIL import Image
 
 from .config import private_json
+from .household_policy import both_adults_away
 from .personal import PersonalError, PersonalStore, dinner_meal_date
 
 UTC = timezone.utc
@@ -223,8 +224,9 @@ def parse_photos(response, *, grid=True):
 
 
 class DinnerOptions:
-    def __init__(self, data_dir, config_getter, personal_store):
+    def __init__(self, data_dir, config_getter, personal_store, *, presence_getter=None):
         self.data_dir, self.config_getter, self.personal = Path(data_dir), config_getter, personal_store
+        self.presence_getter = presence_getter
         self.path, self.usage_path = self.data_dir / "dinner-options.json", self.data_dir / "dinner-options-usage.json"
         self.picture_dir = self.data_dir / "dinner-pictures"
         self.storage = PersonalStore(data_dir, config_getter)
@@ -239,6 +241,9 @@ class DinnerOptions:
         if config.get("demo", True) is not False:
             return "demo"
         return "enabled" if config.get("dinner_options_enabled") is True and config.get("personal_enabled", True) is True else "off"
+
+    def _spend_paused(self, now):
+        return self.presence_getter is not None and both_adults_away(self.presence_getter(now))
 
     def _settings(self):
         config = self.config_getter()
@@ -385,6 +390,8 @@ class DinnerOptions:
                     return self.status(now)
                 if usage["reserved_cents"] + BATCH_CENTS > cap:
                     return self.status(now)
+                if self._spend_paused(later()):
+                    return self.status(later())
                 key = self._key()
                 generation = secrets.token_hex(12)
                 usage["attempts"][day] = {"generation": generation, "at": now.isoformat(), "month": usage["month"]}
@@ -411,7 +418,8 @@ class DinnerOptions:
                 options = _options(parse_text(response, servings, minutes), servings, minutes)
                 for option in options:
                     option["image_data"] = None
-                if self._still_allowed(kids, later(), day, key, usage["month"]):
+                if (self._still_allowed(kids, later(), day, key, usage["month"])
+                        and not self._spend_paused(later())):
                     try:
                         descriptions = [{"number": option["number"], "dish": option["title"], "sides": option["sides"]} for option in options]
                         image_prompt = ("Illustrative realistic food photography, one square image split into an exact2x2 grid. "
@@ -478,6 +486,8 @@ class DinnerOptions:
                 self._key()
             except (OSError, ValueError, UnicodeError):
                 return self._empty("unconfigured", now)
+            if self._spend_paused(now):
+                return self._empty("paused_away", now)
             return self._empty("pending", now)
         except (OSError, ValueError, TypeError, KeyError, OverflowError, InvalidOperation, RecursionError):
             return self._empty("unavailable", now)
@@ -605,7 +615,8 @@ class DinnerOptions:
                     if usage["reserved_cents"] + BATCH_CENTS > cap:
                         return False
                     key = self._key()
-                    if not self._picture_allowed(kids, now, picture_key, key, usage["month"]):
+                    if (not self._picture_allowed(kids, later(), picture_key, key, usage["month"])
+                            or self._spend_paused(later())):
                         return False
                     usage["attempts"][picture_key] = {"generation": secrets.token_hex(12),
                         "at": now.isoformat(), "month": usage["month"]}
