@@ -47,7 +47,8 @@ DEFAULTS = {
     "chris_phone_type": "unset", "lisa_phone_type": "unset",
     "flight_focus_seconds": 60, "flight_window_before_minutes": 60, "flight_window_after_minutes": 60,
     "flight_focus_only": False,
-    "lisa_private_enabled": False, "chris_agenda_enabled": False, "guest_mode": False,
+    "lisa_private_enabled": False, "chris_agenda_enabled": False, "visit_activity_enabled": False,
+    "guest_mode": False,
     "messages_enabled": False, "chris_gmail_enabled": False, "lisa_gmail_enabled": False,
     "delta_travel_enabled": False, "delta_travel_owner_names": "[]", "delta_travel_lisa_names": "[]",
     "delta_travel_lisa_mail_enabled": False, "lisa_flight_tracking_enabled": False,
@@ -88,7 +89,8 @@ REMOTE_SETTINGS = frozenset({
 })
 PUBLIC_FIELDS = (REMOTE_SETTINGS - {"home_latitude", "home_longitude"}) | {
     "demo", "calendar_name", "flightaware_enabled", "updates_enabled", "presence_enabled",
-    "kids_filter_enabled", "lisa_private_enabled", "chris_agenda_enabled", "health_enabled", "inspiration_enabled",
+    "kids_filter_enabled", "lisa_private_enabled", "chris_agenda_enabled", "visit_activity_enabled",
+    "health_enabled", "inspiration_enabled",
     "messages_enabled", "presence_ttl_minutes", "kids_stale_minutes", "health_max_age_hours", "hotel_details_enabled",
     "brief_leave_times_enabled",
     "trip_weather_enabled", "national_radar_enabled", "airport_alerts_enabled", "nearby_enrichment_enabled",

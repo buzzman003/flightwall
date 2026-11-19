@@ -158,11 +158,14 @@ def test_agenda_reauth_and_network_failure_remove_private_events_and_retain_task
     assert all(b"Private appointment" not in path.read_bytes() for path in tmp_path.iterdir() if path.is_file())
 
 
-def test_maintenance_status_never_discloses_agenda(tmp_path):
+def test_maintenance_status_never_discloses_agenda_or_visit_activity(tmp_path):
     runtime = Runtime(tmp_path, tmp_path / "install")
-    state = runtime.display_status(NOW) | {"chris_agenda": {"tasks": ["TEST SECRET"]}}
+    state = runtime.display_status(NOW) | {"chris_agenda": {"tasks": ["TEST SECRET"]},
+                                          "visit_activity": {"title": "Private visit activity"}}
     with patch.object(runtime, "display_status", return_value=state):
-        assert "TEST SECRET" not in json.dumps(runtime.status(NOW))
+        maintenance = runtime.status(NOW)
+    assert "chris_agenda" not in maintenance
+    assert "visit_activity" not in maintenance
 
 
 def test_earlier_calendar_outage_does_not_drop_google_tasks_and_paused_google_tasks_expire(tmp_path):

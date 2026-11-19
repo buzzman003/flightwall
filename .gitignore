@@ -33,6 +33,7 @@ messages-*.json
 personal.json
 personal-dinner-details.json
 family-agenda.json
+visit-activity.json
 recipe-mail.json
 recipe-outbox.json
 content.json

@@ -25,7 +25,8 @@ from .presence import PresenceStore
 from .messages import MessageFeeds
 from .content import SourceContent
 from .household_policy import household_context, filter_personal_items, card_visible
-from .chris_agenda import ChrisAgenda, permitted as chris_agenda_permitted
+from .chris_agenda import ChrisAgenda, calendar_enabled as chris_calendar_enabled, permitted as chris_agenda_permitted
+from .visit_activity import permitted as visit_activity_permitted
 from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip_preview
@@ -327,6 +328,10 @@ class Runtime:
                 status["chris_agenda"] = self.chris_agenda.snapshot(now)
             except (OSError, ValueError):
                 pass
+        if snapshot.get("demo") is False and visit_activity_permitted(config, context):
+            activity = self.chris_agenda.visit_activity(now)
+            if activity is not None:
+                status["visit_activity"] = activity
         status["personal_travel"] = []
         status["personal_tracking"] = []
         if (snapshot.get("demo") is False and config.get("guest_mode") is False
@@ -436,6 +441,7 @@ class Runtime:
         """Maintenance/MCP never receives Lisa's private cards or mailbox data."""
         status = self.display_status(now)
         status.pop("chris_agenda", None)
+        status.pop("visit_activity", None)
         status.pop("personal_travel", None)
         status.pop("personal_tracking", None)
         status["messages"]["lisa"] = []
@@ -643,7 +649,7 @@ class Runtime:
             tick = time.monotonic()
             if tick - last_sync >= 300 or self.refresh_event.is_set():
                 self.refresh_event.clear()
-                if config.get("chris_agenda_enabled") and (self._agenda_worker is None or not self._agenda_worker.is_alive()):
+                if chris_calendar_enabled(config) and (self._agenda_worker is None or not self._agenda_worker.is_alive()):
                     self._agenda_worker = threading.Thread(target=self.chris_agenda.refresh,
                                                            args=(datetime.now(timezone.utc),),
                                                            name="flightwall-chris-agenda", daemon=True)

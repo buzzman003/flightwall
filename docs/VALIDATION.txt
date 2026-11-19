@@ -1,3 +1,11 @@
+0.4.36 VISIT ACTIVITY
+
+Synthetic fixtures cover title aliases, cancellation and recurrence exclusion,
+read-only account binding, local midnight, stale data, and the private TV
+rotation, including when paused. Verify the live card with a real matching
+calendar entry on the prior local date and a fresh Home report. No voice
+or video playback integration is part of this card.
+
 0.4.35 PRIVATE AGENDA DATES
 
 Check local midnight on a paused card, including a daylight-saving change.

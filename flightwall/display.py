@@ -96,6 +96,11 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
     from .chris_agenda import permitted
     if not backend_available or not permitted(config, result["household_context"]):
         result.pop("chris_agenda", None)
+    if "visit_activity" in result:
+        from .visit_activity import permitted as visit_permitted, visible_activity
+        if (not backend_available or not visit_permitted(config, result["household_context"])
+                or not visible_activity(result["visit_activity"], now, config.get("timezone", "UTC"))):
+            result.pop("visit_activity")
     return result
 
 
@@ -150,6 +155,7 @@ def entry_render_state(status, config, entry, now=None):
              "timers": status.get("timers", []), "custody_outlook": status.get("custody_outlook", {}),
              "agenda_page": entry.get("agenda_page", 0),
              "chris_agenda": status.get("chris_agenda", {}) if view == "chris_agenda" else {},
+             "visit_activity": status.get("visit_activity") if view == "visit_activity" else None,
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
              "personal_tracking": status.get("personal_tracking", []),

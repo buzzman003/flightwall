@@ -35,11 +35,16 @@ def main():
     prefix = f"flightwall-batocera-{version}"
     installer = output / f"{prefix}.tar.gz"
     private_dirs = {"__pycache__", "couple-photos"}
+    private_files = {"visit-activity.json"}
     # Audit the frozen tree once, then preserve every runtime file verbatim.
     _source_files(release)
 
+    def private_path(path):
+        return (any(part.casefold() in private_dirs for part in path.parts)
+                or path.name.casefold() in private_files or path.suffix == ".pyc")
+
     def source_filter(entry):
-        return None if any(part.casefold() in private_dirs for part in Path(entry.name).parts) or entry.name.endswith(".pyc") else entry
+        return None if private_path(Path(entry.name)) else entry
 
     with tarfile.open(installer, "w:gz", compresslevel=6) as archive:
         archive.add(release, arcname=f"{prefix}/releases/{version}")
@@ -57,7 +62,7 @@ def main():
     source_paths.extend(ROOT / name for name in allowed_files if (ROOT / name).is_file())
     with zipfile.ZipFile(source, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path in sorted(source_paths):
-            if any(part.casefold() in private_dirs for part in path.relative_to(ROOT).parts) or path.suffix == ".pyc":
+            if private_path(path.relative_to(ROOT)):
                 continue
             # Explicit source inventory: never traverse a data directory, venv,
             # build output, credentials or signing key directory.

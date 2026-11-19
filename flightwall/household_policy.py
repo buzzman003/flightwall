@@ -414,6 +414,11 @@ def build_rotation(status, config, now=None):
         events, tasks = visible_rows(status.get("chris_agenda"), now, config.get("timezone", "UTC"))
         for page in range(math.ceil(max(len(events), len(tasks)) / PER_PAGE)):
             add("chris_agenda", f"chris_agenda:{page}", agenda_page=page)
+    from .visit_activity import permitted as visit_permitted, visible_activity
+    if (status.get("backend_available") is True and snapshot.get("demo") is False
+            and visit_permitted(config, context)
+            and visible_activity(status.get("visit_activity"), now, config.get("timezone", "UTC"))):
+        add("visit_activity")
     if config.get("custody_outlook_enabled", True) and outlook.get("days"):
         add("custody_outlook")
     if snapshot.get("demo") is not True and card_enabled("today_activities", config):

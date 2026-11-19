@@ -12,6 +12,7 @@ from .calendar_client import CalendarError
 from .config import private_json
 from .household_calendar import _event_versions, _iso, _stamp, event_bounds
 from .personal import PersonalStore
+from . import visit_activity
 
 MAX_TASKS = 40
 MAX_EVENTS = 30
@@ -25,6 +26,10 @@ def midnight_after_three_days(day, zone):
 
 def enabled(config):
     return config.get("demo") is False and config.get("chris_agenda_enabled") is True
+
+
+def calendar_enabled(config):
+    return enabled(config) or visit_activity.enabled(config)
 
 
 def permitted(config, context):
@@ -129,6 +134,7 @@ class ChrisAgenda:
         self.client = client_getter
         self.path = Path(data_dir) / "chris-tasks.json"
         self.display_dates_path = Path(data_dir) / "chris-task-display-days.json"
+        self.visit_profile_path = Path(data_dir) / visit_activity.PROFILE_FILE
         self.storage = PersonalStore(data_dir, config_getter)
         self.google_tasks = AgendaGoogleTasks(data_dir, config_getter)
         self._tasks_synced = None
@@ -145,36 +151,61 @@ class ChrisAgenda:
         return hashlib.sha256(grant.encode()).digest()
 
     def refresh(self, now):
-        if not enabled(self.config()):
+        config = self.config()
+        agenda_enabled = enabled(config)
+        visit_profile = visit_activity.load_profile(self.visit_profile_path) if visit_activity.enabled(config) else None
+        if not agenda_enabled and visit_profile is None:
             self._calendar = None
             self._tasks_synced = None
             return
         try:
             client = self.client()
             binding = self._binding(client)
-            zone = ZoneInfo(self.config()["timezone"])
+            zone = ZoneInfo(config["timezone"])
             end = midnight_after_three_days(now.astimezone(zone).date(), zone)
             result = client.get_events("primary", now, end, include_event_type=True)
-            rows = calendar_rows(result["items"], result.get("timezone"), now, end)
-            self._calendar = ((client, binding, _iso(now), rows)
-                              if enabled(self.config()) and self._binding(client) == binding else None)
+            items, calendar_zone = result["items"], result.get("timezone")
+            rows = calendar_rows(items, calendar_zone, now, end) if agenda_enabled else []
+            dates = visit_activity.matching_dates(items, calendar_zone, zone, visit_profile) if visit_profile else frozenset()
+            self._calendar = ((client, binding, _iso(now), rows, visit_profile, dates, zone)
+                              if calendar_enabled(self.config()) and self._binding(client) == binding else None)
         except (OSError, CalendarError, TypeError, ValueError, KeyError, OverflowError):
             self._calendar = None
-        self.google_tasks.refresh(now)
-        self._tasks_synced = _iso(now)
+        if enabled(self.config()):
+            self.google_tasks.refresh(now)
+            self._tasks_synced = _iso(now)
+        else:
+            self._tasks_synced = None
+
+    def _bound_calendar(self):
+        calendar = self._calendar
+        if calendar is not None:
+            try:
+                if self._binding(calendar[0]) == calendar[1]:
+                    return calendar
+            except (OSError, CalendarError):
+                pass
+        return None
+
+    def visit_activity(self, now):
+        config = self.config()
+        if not visit_activity.enabled(config):
+            return None
+        calendar = self._bound_calendar()
+        if calendar is None:
+            return None
+        _, _, synced, _, profile, dates, zone = calendar
+        visit_date = visit_activity.tomorrow(now, zone)
+        if (profile is not None and config.get("timezone") == zone.key and visit_date in dates
+                and profile == visit_activity.load_profile(self.visit_profile_path)):
+            return visit_activity.visible_activity(visit_activity.suggestion(profile, visit_date, synced), now, zone.key)
+        return None
 
     def snapshot(self, now):
         if not enabled(self.config()):
             return {}
-        calendar = self._calendar
-        events, synced = [], None
-        if calendar:
-            try:
-                client, binding, updated, rows = calendar
-                if self._binding(client) == binding:
-                    synced, events = updated, rows
-            except (OSError, CalendarError):
-                pass
+        calendar = self._bound_calendar()
+        synced, events = calendar[2:4] if calendar else (None, [])
         zone = ZoneInfo(self.config()["timezone"])
         today = now.astimezone(zone).date()
         tasks = []

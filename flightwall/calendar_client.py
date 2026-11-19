@@ -452,7 +452,7 @@ class CalendarClient:
         if include_descriptions:
             fields += ",description"
         if include_event_type:
-            fields += ",eventType"
+            fields += ",eventType,recurringEventId,originalStartTime"
         parameters = {"singleEvents": "true", "showDeleted": "false", "orderBy": "startTime", "maxResults": 2500,
                       "timeMin": _iso(start), "timeMax": _iso(end), "fields": f"nextPageToken,timeZone,items({fields})"}
         with self._lock:

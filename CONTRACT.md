@@ -507,6 +507,16 @@ Version 0.4.10 integration:
 
 ## Private agenda and reservation changes (0.4.33)
 
+### Visit Activity (0.4.36)
+
+An opt-in profile in the private data directory matches explicitly confirmed,
+one-off visits on Chris’s existing read-only primary calendar. The TV can show
+one preparation idea on the preceding local date while Chris is freshly Home
+and guest mode is off. A calendar error, stale snapshot, disabled setting or
+expired date removes it from the rotation, including during pause. Keep titles
+and the card out of maintenance/MCP/voice responses. Suggest locally from
+approved templates without exporting visit information.
+
 Chris separately opts in to a TV-only agenda from his primary calendar for
 today and the following two dates in the configured time zone. Google's
 date-only task deadlines use their printed calendar dates. Undated tasks

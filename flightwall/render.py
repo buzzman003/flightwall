@@ -5,7 +5,7 @@ optional final resize is nearest-neighbour, so the same layout works on a TV.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 import json
 import math
@@ -224,9 +224,7 @@ def _footer(draw, state, view, now, tz, personal_item=None):
         status, color = ("SCHEDULE UNAVAILABLE / UNKNOWN IS NOT AWAY", AMBER) if outlook.get("stale", True) else ("FAMILY PLAN / CALENDAR SCHEDULE", MUTED)
     elif view == "today_activities":
         status, color = "FAMILY CALENDAR / LOCAL TIME", MUTED
-    elif view == "chris_agenda":
-        status, color = "", MUTED
-    elif view == "couple_photos":
+    elif view in {"chris_agenda", "visit_activity", "couple_photos"}:
         status, color = "", MUTED
     elif view == "flight_watch":
         card = _selected_card(state, "flight_watch") or {}
@@ -1303,6 +1301,25 @@ def _custody_outlook(draw, state, config, now):
             _text(draw, (x + 45, y + 64), "BUZZ GONE", AMBER, align="center", max_width=82)
 
 
+def _visit_activity(draw, state, config, now):
+    from .display import fresh_household_status
+
+    if state.get("demo") is not False or state.get("backend_available") is not True:
+        return False
+    activity = fresh_household_status(state, config, now).get("visit_activity")
+    if not activity:
+        return False
+
+    visit_day = date.fromisoformat(activity["visit_date"])
+    _header(draw, state, now, activity["title"])
+    _text(draw, (15, 60), visit_day.strftime("TOMORROW / %a %m/%d"), CYAN, 2)
+    draw.rectangle((15, 87, 497, 175), fill=PANEL, outline=LINE)
+    _draw_title(draw, activity["idea"], (28, 94), 456, 74, scales=(2, 1))
+    _text(draw, (15, 191), "BRING", CYAN)
+    _paragraph(draw, activity["bring"], (15, 206), 482, lines=2, gap=4)
+    return True
+
+
 def _today_activities(draw, state, config, now):
     from .outlook import ACTIVITIES_PER_PAGE, activity_agenda, agenda_focus
 
@@ -1555,6 +1572,11 @@ def render_frame(state, config, size=BASE_SIZE):
             _home(draw, state, config, now)
         elif shown and state.get("defer_display_overlays"):
             image.info["agenda_shown_ids"] = shown
+    elif view == "visit_activity":
+        if not _visit_activity(draw, state, config, now):
+            view = "home"
+            state = dict(state, view="home")
+            _home(draw, state, config, now)
     elif view == "couple_photos":
         _header(draw, state, now, "TOGETHER")
     elif view == "local_visit":

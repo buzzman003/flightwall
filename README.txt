@@ -1,3 +1,11 @@
+FLIGHT WALL 0.4.36 — VISIT ACTIVITY
+
+The Visit Activity card suggests one low-prep activity and what to bring on
+the local day before a matching confirmed, one-off visit on Chris’s primary
+calendar. It requires a fresh Home report for Chris and guest mode off.
+The owner enables it with a matching profile in the private data directory.
+Suggestions come from local templates and require no new permissions.
+
 FLIGHT WALL 0.4.35 — THREE-DAY PRIVATE AGENDA
 
 Chris’s private card shows appointments and dated tasks for today and the
