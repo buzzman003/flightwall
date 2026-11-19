@@ -88,12 +88,12 @@ def test_tasks_desktop_consent_keeps_existing_calendar_and_mail_credentials(setu
     prior_token = account / "tasks-token.json"
     prior_token.write_text('{"prior":"tasks"}')
     on_url, query, _, threads = driver()
-    with (patch.object(TasksClient, "_request", return_value=response(scope=TasksClient.scope + " email")),
+    with (patch.object(TasksClient, "_request", return_value=response(scope=TasksClient.scope + " email openid")),
           patch("flightwall.agenda_google_tasks._GoogleAccountInfo._request", return_value=identity) as verify,
           patch("flightwall.agenda_google_tasks.CalendarClient._api", return_value={"id": "owner@example.test", "primary": True}) as primary):
         if expected:
             result = authorize_tasks(data, credentials, False, callback_port=0, timeout=3, on_url=on_url)
-            assert result["person"] == "chris" and result["scopes"] == list(TasksClient.scopes)
+            assert result["person"] == "chris" and result["scopes"] == [*TasksClient.scopes, "openid"]
             assert TasksClient(account).connected()
         else:
             with pytest.raises(MessageError, match="same Google account"):

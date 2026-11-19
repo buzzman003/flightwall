@@ -1,3 +1,10 @@
+0.4.34 GOOGLE TASKS SIGN-IN
+
+The desktop sign-in returned read-only Tasks, email and Google's OpenID
+identity marker together. Regression checks exercise that response through
+the loopback callback and reject missing permissions and unexpected scopes.
+End-to-end imports require the owner's live Google approval.
+
 0.4.33 AUDIT REPAIRS AND PRIVATE AGENDA
 
 The Windows recipe, timer, voice bridge, boot and weather regression run

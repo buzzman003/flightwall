@@ -64,8 +64,11 @@ def _checked_token(response, client, service=GmailClient):
             or not isinstance(kind, str) or kind.casefold() != "bearer"
             or type(lifetime) is not int or not 1 <= lifetime <= 86400):
         raise MessageError("Approve only the requested read-only permission and offline access. Try sign-in again.")
+    granted = list(getattr(service, "scopes", (service.scope,)))
+    if service is TasksClient and "openid" in scope.split():
+        granted.append("openid")
     return {"client_id": client["client_id"], "access_token": access, "refresh_token": refresh,
-            "expires_at": time.time() + lifetime, "scopes": list(getattr(service, "scopes", (service.scope,)))}
+            "expires_at": time.time() + lifetime, "scopes": granted}
 
 
 def _store_pair(account, client, token, prefix="gmail"):

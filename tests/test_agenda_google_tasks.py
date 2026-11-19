@@ -4,6 +4,15 @@ from urllib.parse import parse_qs, urlsplit
 from flightwall.agenda_google_tasks import AgendaGoogleTasks, TasksClient
 
 
+def test_openid_is_optional_and_cannot_replace_either_required_permission():
+    assert TasksClient.granted_scopes(list(TasksClient.scopes))
+    assert TasksClient.granted_scopes([*TasksClient.scopes, "openid"])
+    for scopes in (["openid", "email"], ["openid", TasksClient.scope],
+                   [*TasksClient.scopes, "openid", "profile"],
+                   [*TasksClient.scopes, "https://www.googleapis.com/auth/tasks"]):
+        assert not TasksClient.granted_scopes(scopes)
+
+
 def test_lists_only_open_items_and_only_requests_title_status_and_due(tmp_path, monkeypatch):
     client = TasksClient(tmp_path)
     requests = []

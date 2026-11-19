@@ -28,7 +28,10 @@ class TasksClient(GoogleReadClient):
     def granted_scopes(cls, scopes):
         if not isinstance(scopes, (list, tuple)) or not all(isinstance(scope, str) for scope in scopes):
             return False
-        return {cls.email_scope if scope == "email" else scope for scope in scopes} == set(cls.scopes)
+        granted = {cls.email_scope if scope == "email" else scope for scope in scopes}
+        # Google may add this identity marker to an approved email permission.
+        # Still require both requested scopes and reject every other addition.
+        return granted - {"openid"} == set(cls.scopes)
 
     def calendar_binding(self):
         """Changing Chris's Calendar grant invalidates the previously verified Tasks identity."""

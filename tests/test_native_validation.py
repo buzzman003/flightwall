@@ -56,9 +56,9 @@ class NativeGateTests(unittest.TestCase):
     def test_current_baseline_is_independently_pinned(self):
         path = self.root / "not-published-current.tar.gz"
         path.write_bytes(b"synthetic different current installer")
-        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.32")
+        self.assertEqual(gate.CURRENT_BASELINE_VERSION, "0.4.33")
         self.assertEqual(gate.CURRENT_BASELINE_SHA256,
-                         "dc7aadd8fa7d208a8d6b42f0b4e612f08c927aeebe46493161ae7b2e29a405df")
+                         "7c501048145151a6b4d21eda9ce362c859f2a2c4b7e81e8db5117c0c602ae231")
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             gate.verify_current_baseline(path)
 
@@ -66,9 +66,9 @@ class NativeGateTests(unittest.TestCase):
         workflow = (MODULE.parents[1] / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn("releases/tags/v" + gate.CURRENT_BASELINE_VERSION, workflow)
         self.assertIn("sha256:" + gate.CURRENT_BASELINE_SHA256, workflow)
-        self.assertIn("assets[0].get('size') != 52960778", workflow)
-        self.assertIn("assets[0].get('id') != 766192104", workflow)
-        self.assertIn("release.get('target_commitish') != 'df361e3f05f2d7dfc59e8ff52693c30ab29ac619'", workflow)
+        self.assertIn("assets[0].get('size') != 52995122", workflow)
+        self.assertIn("assets[0].get('id') != 766274706", workflow)
+        self.assertIn("release.get('target_commitish') != 'ccd535df4705021e31bb64f261dd7954c94bc15f'", workflow)
         reports = set(re.findall(r"native-validation-from-([0-9]+\.[0-9]+\.[0-9]+)\.json", workflow))
         self.assertEqual(reports, {gate.CURRENT_BASELINE_VERSION})
         self.assertNotIn("flightwall-batocera-0.4.6.tar.gz", workflow)

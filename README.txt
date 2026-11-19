@@ -1,3 +1,9 @@
+FLIGHT WALL 0.4.34 — GOOGLE TASKS SIGN-IN
+
+Chris’s private agenda accepts the standard OpenID identity marker Google
+can return along with read-only Tasks and verified email. Flight Wall still
+checks the selected account against his primary calendar before saving.
+
 FLIGHT WALL 0.4.33 — PRIVATE AGENDA AND HOUSEHOLD RELIABILITY
 
 Under household setup, Chris can enable his private agenda. The board shows
