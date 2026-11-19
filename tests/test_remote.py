@@ -102,6 +102,18 @@ class RemoteIntegrationTests(unittest.TestCase):
         self.assertEqual(self.request("/health")[2], {"ok": True, "service": "flightwall", "version": __version__})
         self.assertNotIn(self.key, json.dumps(body))
 
+    def test_private_agenda_display_receipt_is_admin_only_and_bounded_to_one_page(self):
+        route = "/api/v1/agenda-displayed"
+        self.callbacks["agenda_displayed"] = lambda ids, shown: self._record("seen", ids)
+        body = {"ids": ["2" * 32, "7" * 64], "shown_at": "2026-11-18T15:00:00Z"}
+        for token in (None, self.server._alexa_key, self.grant()["access_token"]):
+            self.assertEqual(self.request(route, "POST", body, token)[0], 401)
+        for ids in (["a"] * 4, ["7" * 32] * 5, []):
+            self.assertEqual(self.request(route, "POST", body | {"ids": ids}, self.key)[0], 400)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.request(route, "POST", body, self.key)[2], {"ok": True})
+        self.assertEqual(self.calls, [("seen", body["ids"])])
+
     def test_rejected_post_closes_before_a_pooled_client_sends_its_next_request(self):
         phone = self.server.presence.rotate("chris")
         self.config["presence_enabled"] = True

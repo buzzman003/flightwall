@@ -508,8 +508,12 @@ Version 0.4.10 integration:
 ## Private agenda and reservation changes (0.4.33)
 
 Chris separately opts in to a TV-only agenda from his primary calendar for
-the next seven days. Google Tasks requires a separate read-only grant under
-Chris's account. Only unfinished titles are read into memory. Flight Wall
+today and the following two dates in the configured time zone. Google's
+date-only task deadlines use their printed calendar dates. Undated tasks
+get a three-local-date display window beginning on first eligibility.
+Expiry on the TV cannot complete, remove or modify a source task.
+Google Tasks requires a separate read-only grant under Chris's account.
+Imported task titles stay in memory. Flight Wall
 checklist items live outside releases and may be completed in owner setup.
 The TV rechecks known Chris Home, Lisa Away and children Away on every frame.
 Guest mode, stale observations and an unavailable backend hide the agenda.

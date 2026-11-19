@@ -123,6 +123,20 @@ class CustodyRenderTests(unittest.TestCase):
         self.assertEqual(self.state, before)
         self.assertEqual(image.size, (512, 256))
 
+    def test_custody_parent_text_colors_and_private_trip_projection(self):
+        self.outlook["custody_trip_days"] = {"2026-10-31": {"parent": "Mom", "place": "North Cove"}}
+        labels, image = labels_for(self.state)
+        self.assertIn("WITH MOM", labels)
+        self.assertIn("NORTH COVE", labels)
+        self.assertNotIn("MOM'S HOUSE", labels)
+        self.assertIn((255, 116, 119), set(image.crop((15, 80, 105, 106)).getdata()))
+        self.assertIn((105, 169, 255), set(image.crop((113, 80, 203, 108)).getdata()))
+        for state, config in ((self.state, {"guest_mode": True}), (self.state, {"demo": True}),
+                              (self.state | {"backend_available": False}, {})):
+            self.assertNotIn("NORTH COVE", labels_for(state, **config)[0])
+        self.outlook["stale"] = True
+        self.assertNotIn("NORTH COVE", labels_for(self.state)[0])
+
     def test_stale_outlook_hides_previous_houses_and_change_times(self):
         self.outlook["stale"] = True
         labels, image = labels_for(self.state)

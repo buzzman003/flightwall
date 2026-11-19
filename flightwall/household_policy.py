@@ -411,7 +411,7 @@ def build_rotation(status, config, now=None):
     outlook = status.get("custody_outlook") or {}
     from .chris_agenda import PER_PAGE, permitted, visible_rows
     if status.get("backend_available", True) is True and snapshot.get("demo") is False and permitted(config, context):
-        events, tasks = visible_rows(status.get("chris_agenda"), now)
+        events, tasks = visible_rows(status.get("chris_agenda"), now, config.get("timezone", "UTC"))
         for page in range(math.ceil(max(len(events), len(tasks)) / PER_PAGE)):
             add("chris_agenda", f"chris_agenda:{page}", agenda_page=page)
     if config.get("custody_outlook_enabled", True) and outlook.get("days"):

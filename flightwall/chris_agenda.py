@@ -1,5 +1,5 @@
 """Chris's primary calendar in memory and his private, local unfinished tasks."""
-from datetime import timedelta
+from datetime import date, datetime, time, timedelta
 import hashlib
 import json
 from pathlib import Path
@@ -16,6 +16,11 @@ from .personal import PersonalStore
 MAX_TASKS = 40
 MAX_EVENTS = 30
 PER_PAGE = 4
+RENTAL_STAY_TITLE = re.compile(r"^stay at (?:homeaway|airbnb|vrbo)\b", re.IGNORECASE)
+
+
+def midnight_after_three_days(day, zone):
+    return datetime.combine(day + timedelta(days=3), time.min, zone)
 
 
 def enabled(config):
@@ -33,23 +38,27 @@ def text_label(value):
         ch.isprintable() or ch.isspace() for ch in value) else ""
 
 
-def calendar_rows(events, calendar_zone, now):
+def calendar_rows(events, calendar_zone, now, end_exclusive):
     result = []
     for event in _event_versions(events):
         title = text_label(event.get("summary"))
         if not title or event.get("status") == "cancelled":
             continue
+        # Gmail can put a guest's stay on a host's calendar as a self-organized
+        # event. That does not establish who is travelling.
+        if event.get("eventType") == "fromGmail" and RENTAL_STAY_TITLE.match(title):
+            continue
         bounds = event_bounds(event, calendar_zone)
         if bounds is None:
             continue
         start, end, all_day = bounds
-        if end > now and start < now + timedelta(days=7):
+        if end > now and start < end_exclusive:
             result.append({"title": title[:100], "start": _iso(start), "end": _iso(end),
                            "date": event["start"]["date"] if all_day else ""})
     return sorted(result, key=lambda row: (row["start"], row["title"]))[:MAX_EVENTS]
 
 
-def visible_rows(agenda, now):
+def visible_rows(agenda, now, zone_name="UTC"):
     """Expire appointments on the paused board independently of the next sync."""
     if not isinstance(agenda, dict):
         return [], []
@@ -61,18 +70,25 @@ def visible_rows(agenda, now):
             return False
 
     rows = agenda.get("events")
+    zone = ZoneInfo(zone_name)
+    end = midnight_after_three_days(now.astimezone(zone).date(), zone)
     for row in rows[:MAX_EVENTS] if fresh("synced") and isinstance(rows, list) else ():
         try:
-            if (_stamp(row["end"]) > now and _stamp(row["start"]) < _stamp(row["end"])
+            if (_stamp(row["end"]) > now and _stamp(row["start"]) < min(end, _stamp(row["end"]))
                     and isinstance(row["date"], str) and isinstance(row["title"], str) and row["title"]):
                 events.append(row)
         except (ValueError, TypeError, KeyError, OverflowError):
             continue
     for field in ("tasks", "google_tasks"):
-        titles = agenda.get(field)
-        if isinstance(titles, list) and (field == "tasks" or fresh("tasks_synced")):
-            tasks.extend(title for title in titles[:MAX_TASKS]
-                         if isinstance(title, str) and 0 < len(title) <= 100)
+        rows = agenda.get(field)
+        if not isinstance(rows, list) or field == "google_tasks" and not fresh("tasks_synced"):
+            continue
+        for row in rows[:MAX_TASKS]:
+            try:
+                if isinstance(row["title"], str) and 0 < len(row["title"]) <= 100 and now < _stamp(row["display_until"]):
+                    tasks.append(row)
+            except (TypeError, KeyError, ValueError, OverflowError):
+                continue
     return events, tasks
 
 
@@ -82,11 +98,11 @@ def draw_agenda(draw, state, config, now):
     from .time_format import format_time
     if (state.get("backend_available") is not True or state.get("demo") is not False
             or not permitted(config, fresh_household_status(state, config, now)["household_context"])):
-        return False
-    events, tasks = visible_rows(state.get("chris_agenda"), now)
+        return None
+    events, tasks = visible_rows(state.get("chris_agenda"), now, config.get("timezone", "UTC"))
     page = state.get("agenda_page", 0)
     if type(page) is not int or not 0 <= page * PER_PAGE < max(len(events), len(tasks)):
-        return False
+        return None
     _header(draw, state, now, "CHRIS / MY AGENDA")
     draw.line((258, 54, 258, 220), fill=LINE)
     _text(draw, (15, 53), "UPCOMING", CYAN)
@@ -99,11 +115,12 @@ def draw_agenda(draw, state, config, now):
                  format_time(_stamp(event["start"]).astimezone(zone), date_format="%a %m/%d"))
         _text(draw, (15, y), clock, MUTED, max_width=233)
         _text(draw, (15, y + 14), event["title"], WHITE, max_width=233)
-    for index, title in enumerate(tasks[start:start + PER_PAGE]):
+    shown = tasks[start:start + PER_PAGE]
+    for index, row in enumerate(shown):
         y = 79 + 38 * index
         draw.rectangle((272, y + 2, 278, y + 8), outline=CYAN)
-        _text(draw, (286, y), title, WHITE, max_width=211)
-    return True
+        _text(draw, (286, y), row["title"], WHITE, max_width=211)
+    return [row["display_id"] for row in shown if "display_id" in row]
 
 
 class ChrisAgenda:
@@ -111,6 +128,7 @@ class ChrisAgenda:
         self.config = config_getter
         self.client = client_getter
         self.path = Path(data_dir) / "chris-tasks.json"
+        self.display_dates_path = Path(data_dir) / "chris-task-display-days.json"
         self.storage = PersonalStore(data_dir, config_getter)
         self.google_tasks = AgendaGoogleTasks(data_dir, config_getter)
         self._tasks_synced = None
@@ -134,8 +152,10 @@ class ChrisAgenda:
         try:
             client = self.client()
             binding = self._binding(client)
-            result = client.get_events("primary", now, now + timedelta(days=7))
-            rows = calendar_rows(result["items"], result.get("timezone"), now)
+            zone = ZoneInfo(self.config()["timezone"])
+            end = midnight_after_three_days(now.astimezone(zone).date(), zone)
+            result = client.get_events("primary", now, end, include_event_type=True)
+            rows = calendar_rows(result["items"], result.get("timezone"), now, end)
             self._calendar = ((client, binding, _iso(now), rows)
                               if enabled(self.config()) and self._binding(client) == binding else None)
         except (OSError, CalendarError, TypeError, ValueError, KeyError, OverflowError):
@@ -155,14 +175,60 @@ class ChrisAgenda:
                     synced, events = updated, rows
             except (OSError, CalendarError):
                 pass
-        tasks = [task["title"] for task in self.tasks()]
+        zone = ZoneInfo(self.config()["timezone"])
+        today = now.astimezone(zone).date()
+        tasks = []
+        with self.storage._locked():
+            first_days = self._display_dates()
+            for task in self._read_tasks()["open"]:
+                first = first_days.get(task["id"])
+                start = date.fromisoformat(first) if first else today
+                until = midnight_after_three_days(start, zone)
+                if start <= today and now < until:
+                    row = {"title": task["title"], "display_until": _iso(until)}
+                    if first is None:
+                        row["display_id"] = task["id"]
+                    tasks.append(row)
         # Copy the last completed refresh timestamp first. A concurrent new
         # batch can expire early, but an old batch cannot gain another lease.
         tasks_synced = self._tasks_synced
         agenda = {"synced": synced, "events": events, "tasks": tasks, "tasks_synced": tasks_synced,
-                  "google_tasks": self.google_tasks.titles(now)}
-        agenda["events"], _ = visible_rows(agenda, now)
+                  "google_tasks": self.google_tasks.visible_tasks(now)}
+        agenda["events"], _ = visible_rows(agenda, now, zone.key)
         return agenda
+
+    def _display_dates(self):
+        try:
+            with self.display_dates_path.open("rb") as stream:
+                data = stream.read(8193)
+            state = json.loads(data) if len(data) <= 8192 else None
+            if not isinstance(state, dict) or len(state) > MAX_TASKS:
+                raise ValueError
+            for key, day in state.items():
+                if not re.fullmatch("[0-9a-f]{32}", key) or date.fromisoformat(day).isoformat() != day:
+                    raise ValueError
+            return state
+        except FileNotFoundError:
+            return {}
+        except (ValueError, TypeError, OSError):
+            raise ValueError("Chris’s task display dates could not be read.") from None
+
+    def mark_displayed(self, ids, now):
+        """Record only a first showing, never an inferred completion or TV history."""
+        local = {key for key in ids if len(key) == 32}
+        if local:
+            today = now.astimezone(ZoneInfo(self.config()["timezone"])).date().isoformat()
+            with self.storage._locked():
+                current_ids = {task["id"] for task in self._read_tasks()["open"]}
+                previous = self._display_dates()
+                days = {key: day for key, day in previous.items() if key in current_ids}
+                for key in local & current_ids:
+                    days.setdefault(key, today)
+                if days != previous:
+                    private_json(self.display_dates_path, days)
+        google = [key for key in ids if len(key) == 64]
+        if google:
+            self.google_tasks.mark_displayed(google, now)
 
     def _read_tasks(self):
         try:

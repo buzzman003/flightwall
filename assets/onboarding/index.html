@@ -8,7 +8,8 @@
 <section class="page" data-panel="google" hidden><div class="section-head"><p class="eyebrow">02 / YOUR GOOGLE ACCOUNTS</p><h2>Each person chooses what to share.</h2><p>Chris can connect the flight calendars he can read, including a shared family calendar. Lisa can connect her own calendar if it is needed. Calendar permission does not enable Gmail.</p></div><div class="card"><h3>One-time Google project setup</h3><p>Create a Google OAuth <strong>Web application</strong> client and add this exact authorized redirect URI. Enable Google Calendar API and, only if you choose Gmail, Gmail API. Each person must be allowed by your Google consent-screen settings.</p><code id="redirect-uri">Configure public HTTPS before browser Google sign-in.</code><p class="muted">Upload the downloaded Web client JSON below. Desktop client JSON belongs to the separate CLI sign-in method.</p></div><div id="google-accounts"></div>
 <form class="card" data-save data-owner="chris" id="chris-agenda-form">
 <h3>Chris’s private agenda</h3>
-<label class="check"><input name="chris_agenda_enabled" type="checkbox">Show my next seven days on my primary Google calendar and my unfinished tasks</label>
+<label class="check"><input name="chris_agenda_enabled" type="checkbox">Show my appointments and tasks for today and the next two days</label>
+<p>An undated task appears for three local dates starting when its page first shows on the TV. It stays on its original checklist until you complete it.</p>
 <p>The TV shows this card when Chris is Home, Lisa and the children are Away, and Guest mode is off.</p>
 <label class="check"><input name="_consent" type="checkbox">I’m Chris and approve this calendar and task display.</label><button>Save agenda settings</button>
 </form>

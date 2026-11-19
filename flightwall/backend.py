@@ -145,6 +145,19 @@ class Runtime:
             view, observed = self._nearby_activity
         return view if observed is not None and 0 <= time.monotonic() - observed < 6 else "other"
 
+    def note_agenda_display(self, ids, shown_at):
+        now = datetime.now(timezone.utc)
+        shown = flight_stamp(shown_at)
+        if not timedelta(0) <= now - shown < timedelta(seconds=10):
+            return
+        config = self.config.get()
+        if self.snapshot().get("demo") is not False:
+            return
+        context = household_context({"presence": self.presence.snapshot(now),
+                                     "kids": self.household.status(now=now)["kids"]}, config, now)
+        if chris_agenda_permitted(config, context):
+            self.chris_agenda.mark_displayed(ids, shown)
+
     def nearby_view_is_active(self):
         return self.nearby_view_activity() != "other"
 
@@ -221,6 +234,8 @@ class Runtime:
         household = self.household.status(now=now)
         status.update(presence=self.presence.snapshot(now), kids=household.get("kids", {}))
         outlook = dict(household.get("custody_outlook", {})) if config["family_calendar_id"] else {}
+        if config.get("guest_mode") or config.get("demo") or snapshot.get("demo") is not False:
+            outlook.pop("custody_trip_days", None)
         if outlook and not config.get("guest_mode"):
             plan = planned_buzz_days(snapshot, config, now)
             if plan:
@@ -429,7 +444,7 @@ class Runtime:
             item.pop("image_data", None)
         status["custody_outlook"] = {key: value for key, value in status.get("custody_outlook", {}).items()
                                      if key not in {"activities", "activity_last_sync", "buzz_plan", "roster_last_sync",
-                                                    "travel_labels"}}
+                                                    "travel_labels", "custody_trip_days"}}
         # Absolute aircraft positions plus home-relative offsets would reveal
         # the private home pin. Maintenance needs only the relative local view;
         # the separate admin TV route retains validated provider coordinates.
@@ -801,6 +816,7 @@ class Runtime:
     def start(self):
         self.remote = RemoteServer(self.data_dir, self.config.get, {
             "display_activity": self.note_display_activity,
+            "agenda_displayed": self.note_agenda_display,
             "get_status": self.status, "update_settings": self.update_settings,
             "refresh_calendar": self.refresh_calendar, "check_updates": self.check_updates,
             "create_personal_item": self.create_personal_item,

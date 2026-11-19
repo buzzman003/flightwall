@@ -1,9 +1,19 @@
+0.4.35 PRIVATE AGENDA DATES
+
+Check local midnight on a paused card, including a daylight-saving change.
+Dated tasks and timed or all-day appointments use today and the following
+two local dates. Check that an old undated task remains open in its source
+list after its three-day TV window, including across a restart.
+
 0.4.34 GOOGLE TASKS SIGN-IN
 
 The desktop sign-in returned read-only Tasks, email and Google's OpenID
 identity marker together. Regression checks exercise that response through
 the loopback callback and reject missing permissions and unexpected scopes.
-End-to-end imports require the owner's live Google approval.
+On the owner's Batocera device, 0.4.34 completed the Desktop sign-in,
+verified the primary calendar identity and loaded unfinished tasks. The
+private TV task count matched the provider's count. Maintenance status
+excluded their titles. No task was changed during this check.
 
 0.4.33 AUDIT REPAIRS AND PRIVATE AGENDA
 

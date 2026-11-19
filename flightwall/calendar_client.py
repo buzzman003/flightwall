@@ -431,7 +431,8 @@ class CalendarClient:
                                           "primary": item.get("primary") is True}
             return sorted(result.values(), key=lambda item: (item["name"].casefold(), item["id"]))
 
-    def get_events(self, calendar_id: str, time_min=None, time_max=None, *, include_descriptions=False) -> dict[str, Any]:
+    def get_events(self, calendar_id: str, time_min=None, time_max=None, *, include_descriptions=False,
+                   include_event_type=False) -> dict[str, Any]:
         """Read one bounded calendar; descriptions require explicit opt-in.
 
         Calendar-level timezone is retained so all-day household events use the
@@ -441,15 +442,19 @@ class CalendarClient:
             raise CalendarError("Select a valid Google calendar first.")
         if not isinstance(include_descriptions, bool):
             raise CalendarError("Description access must be explicitly enabled or disabled.")
+        if not isinstance(include_event_type, bool):
+            raise CalendarError("Event type access must be explicitly enabled or disabled.")
         now = _utc_now()
         start, end = time_min or now - timedelta(days=2), time_max or now + timedelta(days=45)
         if not isinstance(start, datetime) or not isinstance(end, datetime) or start.tzinfo is None or end.tzinfo is None or end <= start:
             raise CalendarError("Calendar event windows require ordered timezone-aware timestamps.")
-        parameters = {"singleEvents": "true", "showDeleted": "false", "orderBy": "startTime", "maxResults": 2500,
-                      "timeMin": _iso(start), "timeMax": _iso(end),
-                      "fields": "nextPageToken,timeZone,items(id,summary,status,start,end,updated)"}
+        fields = "id,summary,status,start,end,updated"
         if include_descriptions:
-            parameters["fields"] = "nextPageToken,timeZone,items(id,summary,status,start,end,updated,description)"
+            fields += ",description"
+        if include_event_type:
+            fields += ",eventType"
+        parameters = {"singleEvents": "true", "showDeleted": "false", "orderBy": "startTime", "maxResults": 2500,
+                      "timeMin": _iso(start), "timeMax": _iso(end), "fields": f"nextPageToken,timeZone,items({fields})"}
         with self._lock:
             items, seen, zone = [], set(), None
             for _ in range(100):

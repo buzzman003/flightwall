@@ -524,6 +524,18 @@ class RemoteServer:
                         if not self._auth(personal=True):
                             return
                         return self._personal_action(personal_routes[path], self._body())
+                    if path == "/api/v1/agenda-displayed":
+                        if not self._auth(static=True):
+                            return
+                        body = self._body()
+                        if (not isinstance(body, dict) or set(body) != {"ids", "shown_at"}
+                                or not isinstance(body["shown_at"], str) or len(body["shown_at"]) > 40
+                                or not isinstance(body["ids"], list) or not 1 <= len(body["ids"]) <= 4
+                                or not all(isinstance(key, str) and re.fullmatch(r"(?:[0-9a-f]{32}){1,2}", key)
+                                           for key in body["ids"])):
+                            raise ValueError("Invalid displayed task identifiers.")
+                        owner.callbacks["agenda_displayed"](body["ids"], body["shown_at"])
+                        return self._reply(200, {"ok": True})
                     if path == "/api/v1/display-activity":
                         if not self._auth(static=True):
                             return

@@ -414,6 +414,105 @@ def _binding(*values):
     return hashlib.sha256(json.dumps(values, ensure_ascii=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _trip_title(value):
+    if not isinstance(value, str) or len(value) > 160:
+        return ""
+    value = unicodedata.normalize("NFKC", value).casefold().replace("\u2019", "'").replace("\u2018", "'")
+    return " ".join(re.sub(r"\s*[-\u2010-\u2014]\s*", "-", value).split())
+
+
+def _custody_trip_rules(path, config):
+    """Return only explicit title matches for the currently selected calendar."""
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(16385)
+        if len(raw) > 16384:
+            raise ValueError
+        value = json.loads(raw)
+        if not isinstance(value, dict) or value.keys() != {"profile", "calendar_id", "rules"}:
+            raise ValueError
+        if (value["profile"] != config.get("family_calendar_profile", "chris")
+                or not value["calendar_id"] or value["calendar_id"] != config.get("family_calendar_id")):
+            return {}
+        rows = value["rules"]
+        if not isinstance(rows, list) or len(rows) > 32:
+            raise ValueError
+        result = {}
+        for row in rows:
+            if not isinstance(row, dict) or row.keys() != {"title", "parent", "place"}:
+                raise ValueError
+            title, parent, place = _trip_title(row["title"]), row["parent"], row["place"]
+            if (not title or parent not in ("Mom", "Dad") or not isinstance(place, str)
+                    or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 .'-]{0,12}", place)):
+                raise ValueError
+            key = _binding(title)
+            if key in result:
+                raise ValueError
+            result[key] = [parent, place]
+        return result
+    except FileNotFoundError:
+        return {}
+    except (ValueError, TypeError, OSError, RecursionError):
+        return None
+
+
+def _custody_trips(events, zone, rules):
+    trips = set()
+    for event in _event_versions(events):
+        title = _trip_title(event.get("summary"))
+        if not title or event.get("status") == "cancelled":
+            continue
+        key = _binding(title)
+        bounds = event_bounds(event, zone) if key in rules else None
+        if bounds and bounds[2]:
+            trips.add((key, _iso(bounds[0]), _iso(bounds[1]), event["start"]["date"], event["end"]["date"]))
+    return sorted(trips)
+
+
+def _apply_custody_trips(kids, outlook, intervals, cached, rules, scope, now, zone):
+    """A travel plan can label the family outlook. It never proves physical presence."""
+    def unknown():
+        kids.update(state="unknown", parent=None, until=None, error="Check the family travel schedule.")
+    if rules is None or (rules or scope) and scope != _binding(rules):
+        unknown()
+        outlook["stale"] = True
+        return
+    if not rules or outlook.get("stale") is not False:
+        return
+    try:
+        trips = []
+        for key, start, end, first, after in cached:
+            parent, place = rules[key]
+            first, after = date.fromisoformat(first), date.fromisoformat(after)
+            start, end = _stamp(start), _stamp(end)
+            if not first < after or not start < end:
+                raise ValueError
+            trips.append((parent, place, first, after))
+            if start <= now < end:
+                unknown()
+            elif kids.get("until") and now < start < _stamp(kids["until"]):
+                kids["until"] = _iso(start)
+        labels = {}
+        for row in outlook["days"]:
+            day = date.fromisoformat(row["date"])
+            matches = {(p, place) for p, place, first, after in trips if first <= day < after}
+            if not matches:
+                continue
+            start = datetime.combine(day, time(), zone).astimezone(UTC)
+            end = datetime.combine(day + timedelta(days=1), time(), zone).astimezone(UTC)
+            explicit = {i["parent"] for i in intervals if _stamp(i["start"]) < end and start < _stamp(i["end"])}
+            parent, place = next(iter(matches))
+            if len(matches) == 1 and explicit <= {parent}:
+                labels[row["date"]] = {"parent": parent, "place": place}
+            else:
+                row.update(state="unknown", segments=[])
+        if labels:
+            outlook["custody_trip_days"] = labels
+    except (TypeError, ValueError, KeyError, OverflowError):
+        unknown()
+        outlook["stale"] = True
+
+
 def _merge_flights(snapshots):
     flights = []
     for snapshot in snapshots:
@@ -458,6 +557,7 @@ class HouseholdCalendars:
         self.config_getter = config_getter
         self.path = self.data_dir / "household-calendars.json"
         self.agenda_path = self.data_dir / "family-agenda.json"
+        self.trip_rules_path = self.data_dir / "custody-travel.json"
         self.lock = threading.RLock()
         self._migrate_chris()
 
@@ -604,8 +704,15 @@ class HouseholdCalendars:
         result = self.client_for(profile).get_events(calendar_id)
         intervals = parse_kids_events(result["items"], result["timezone"])
         now = _now()
+        kids = kids_snapshot(intervals, _iso(now), now=now)
+        config = self.config_getter()
+        if profile == config.get("family_calendar_profile", "chris") and calendar_id == config.get("family_calendar_id"):
+            rules = _custody_trip_rules(self.trip_rules_path, config)
+            trips = _custody_trips(result["items"], result["timezone"], rules) if rules else []
+            _apply_custody_trips(kids, {"stale": False, "days": []}, intervals, trips, rules,
+                                 _binding(rules) if rules else None, now, ZoneInfo(config.get("timezone", "UTC")))
         return {"matching_events": len(intervals), "timezone": result["timezone"], "intervals": intervals,
-                "kids": kids_snapshot(intervals, _iso(now), now=now)}
+                "kids": kids}
 
     @staticmethod
     def _roles(config):
@@ -698,6 +805,12 @@ class HouseholdCalendars:
                         error=family.get("error") or "Select a family calendar and enable the kids schedule.")
         outlook = custody_outlook(family.get("intervals", []), family.get("last_sync"), config, now,
                                   failed=bool(family.get("error") or not config.get("family_calendar_id")))
+        if kids["enabled"]:
+            rules = _custody_trip_rules(self.trip_rules_path, config)
+            _apply_custody_trips(kids, outlook, family.get("intervals", []), family.get("custody_trips"),
+                                 rules, family.get("custody_trip_scope"), now, ZoneInfo(config.get("timezone", "UTC")))
+            if config.get("guest_mode") or config.get("demo"):
+                outlook.pop("custody_trip_days", None)
         if outlook.get("stale") is False and config.get("kids_filter_enabled") is True and not config.get("guest_mode"):
             children, activities, agenda_policy = _agenda_preferences(self.agenda_path)
             activity_sync = family.get("activity_last_sync")
@@ -824,6 +937,9 @@ class HouseholdCalendars:
                               activity_scope=_binding(children, activities, display_zone, agenda_policy),
                               activity_last_sync=_iso(now),
                               last_sync=_iso(now), error=None)
+                rules = _custody_trip_rules(self.trip_rules_path, config)
+                family["custody_trips"] = _custody_trips(result["items"], result["timezone"], rules) if rules else []
+                family["custody_trip_scope"] = _binding(rules) if rules else None
             except CalendarError as error:
                 errors[profile] = str(error)
                 family["error"] = str(error)

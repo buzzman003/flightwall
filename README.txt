@@ -1,3 +1,23 @@
+FLIGHT WALL 0.4.35 — THREE-DAY PRIVATE AGENDA
+
+Chris’s private card shows appointments and dated tasks for today and the
+next two local dates. Undated to-dos start a three-day window when eligible
+for his TV card. After that window they leave the card. Their source lists
+keep them open until Chris completes them.
+
+Google sometimes adds a rental guest's stay to the host's own calendar.
+The private agenda skips Gmail-created “Stay at HomeAway”, “Stay at Airbnb”
+and “Stay at Vrbo” entries. A guest and a host can receive the same title.
+For a personal stay with one of those titles, add an ordinary event to
+your Google Calendar to include it on the TV.
+
+On the ten-day family card, red marks time with Mom and blue marks time with
+Dad. An owner can match an exact all-day title on the selected custody
+calendar to a short travel destination. Keep those rules in custody-travel.json
+in the private data directory. The card shows the parent and destination
+on each trip date. Overlapping assignments to different parents show Unknown.
+An active trip keeps the children's physical presence Unknown for private cards.
+
 FLIGHT WALL 0.4.34 — GOOGLE TASKS SIGN-IN
 
 Chris’s private agenda accepts the standard OpenID identity marker Google

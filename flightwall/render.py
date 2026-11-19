@@ -1247,6 +1247,8 @@ def _custody_outlook(draw, state, config, now):
     private_outlook = (not config.get("guest_mode") and not config.get("demo") and not state.get("demo")
                        and state.get("backend_available") is not False)
     travel = travel if private_outlook and isinstance(travel, dict) else {}
+    custody_trips = outlook.get("custody_trip_days")
+    custody_trips = custody_trips if private_outlook and not stale and isinstance(custody_trips, dict) else {}
     planned_duty_fresh = (not config.get("guest_mode") and not state.get("demo")
                           and state.get("backend_available") is not False
                           and calendar_fresh(outlook.get("roster_last_sync"), now, config.get("kids_stale_minutes", 30)))
@@ -1254,7 +1256,7 @@ def _custody_outlook(draw, state, config, now):
         _text(draw, (497, 51), "BUZZ = PLANNED DUTY", MUTED, align="right", max_width=196)
     _text(draw, (497, 40), zone.key, MUTED, align="right", max_width=196)
     names = {"home": "MOM'S HOUSE", "away": "DAD'S HOUSE", "unknown": "UNKNOWN"}
-    colors = {"home": CYAN, "away": AMBER, "unknown": MUTED, "mixed": WHITE}
+    colors = {"home": (255, 116, 119), "away": (105, 169, 255), "unknown": MUTED, "mixed": WHITE}
     for index in range(10):
         date = first + timedelta(days=index)
         key = date.isoformat()
@@ -1263,11 +1265,19 @@ def _custody_outlook(draw, state, config, now):
         travel_label = travel_label if isinstance(travel_label, str) else ""
         kind = row.get("state") if not stale else "unknown"
         kind = kind if kind in colors else "unknown"
+        trip = custody_trips.get(key)
+        trip = trip if isinstance(trip, dict) else {}
         x, y = 15 + (index % 5) * 98, 60 + (index // 5) * 83
         draw.rectangle((x, y, x + 89, y + 74), fill=PANEL, outline=CYAN if index == 0 else LINE)
         _text(draw, (x + 6, y + 7), "TODAY" if index == 0 else date.strftime("%a"), WHITE)
         _text(draw, (x + 83, y + 7), date.strftime("%m/%d"), MUTED, align="right")
-        if kind != "mixed":
+        if (trip.get("parent") in ("Mom", "Dad") and isinstance(trip.get("place"), str)
+                and 1 <= len(trip["place"]) <= 13):
+            parent = trip["parent"]
+            color = colors["home" if parent == "Mom" else "away"]
+            _text(draw, (x + 45, y + 23), "WITH " + parent.upper(), color, align="center", max_width=82)
+            _text(draw, (x + 45, y + 37), trip["place"].upper(), color, align="center", max_width=82)
+        elif kind != "mixed":
             _text(draw, (x + 45, y + 30), names[kind], colors[kind], align="center", max_width=82, tracking=1)
         else:
             title_offset, segment_offset, segment_spacing = (17, 26, 9) if travel_label else (22, 33, 10)
@@ -1538,10 +1548,13 @@ def render_frame(state, config, size=BASE_SIZE):
         _today_activities(draw, state, config, now)
     elif view == "chris_agenda":
         from .chris_agenda import draw_agenda
-        if not draw_agenda(draw, state, config, now):
+        shown = draw_agenda(draw, state, config, now)
+        if shown is None:
             view = "home"
             state = dict(state, view="home")
             _home(draw, state, config, now)
+        elif shown and state.get("defer_display_overlays"):
+            image.info["agenda_shown_ids"] = shown
     elif view == "couple_photos":
         _header(draw, state, now, "TOGETHER")
     elif view == "local_visit":

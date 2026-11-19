@@ -70,6 +70,8 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
         except (ValueError, TypeError, KeyError, OverflowError):
             fresh = False
         result["custody_outlook"] = dict(outlook, stale=outlook.get("stale") is not False or not fresh)
+        if result["custody_outlook"]["stale"] or config.get("guest_mode") or config.get("demo") or status.get("demo"):
+            result["custody_outlook"].pop("custody_trip_days", None)
     if not backend_available:
         result["live"], result["nearby"], result["nearby_outer"] = None, [], []
         result["personal_tracking"] = []
@@ -1061,6 +1063,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
     settings_rows = GROUPS[settings_group][1]
     last_fetch, frames = time.monotonic(), 0
     activity_view, last_activity = "other", last_fetch
+    last_agenda_ids, last_agenda_report = (), float("-inf")
     clock = pygame.time.Clock()
     running, error, backend_available = True, None, True
     guest_hide_latch = False
@@ -1216,6 +1219,7 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             state["rotation_hold_seconds"] = max(0, math.ceil(cursor.hold_until - now))
             state["defer_display_overlays"] = True
             frame = render_frame(state, config)
+            agenda_shown_ids = tuple(frame.info.pop("agenda_shown_ids", ()))
             try:
                 focused = bool(pygame.display.get_active() and pygame.key.get_focused())
             except Exception:
@@ -1278,6 +1282,13 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
             if sleeping and not (settings_open or help_open):
                 frame = Image.new("RGB", frame.size)
             screen.draw(frame, config)
+            if (agenda_shown_ids and focused and backend_available and not (settings_open or help_open or sleeping or error)
+                    and (last_agenda_ids != agenda_shown_ids or now - last_agenda_report >= 2)):
+                last_agenda_ids, last_agenda_report = agenda_shown_ids, now
+                try:
+                    connection.request("agenda-displayed", {"ids": agenda_shown_ids, "shown_at": wall_now.isoformat()})
+                except (OSError, ValueError):
+                    pass  # The next eligible frame can retry the same IDs.
             if frames == 0 and on_healthy:
                 on_healthy()
             frames += 1

@@ -114,6 +114,7 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         household = self.runtime.household.status(now=NOW)
         household["custody_outlook"]["activities"] = [{"title": "Rory Dance", "start": iso(NOW),
                                                         "end": iso(NOW + timedelta(hours=1))}]
+        household["custody_outlook"]["custody_trip_days"] = {"2026-10-23": {"parent": "Mom", "place": "Cove"}}
         self.flight_snapshot["flights"] = [{"id": "test", "number": "DL111", "origin": "ATL", "destination": "MEM",
                                             "start": iso(NOW), "end": iso(NOW + timedelta(hours=1))}]
         with patch.object(self.runtime.household, "status", return_value=household):
@@ -122,7 +123,8 @@ class HouseholdRuntimeIntegrationTests(unittest.TestCase):
         self.assertEqual(visible["activities"][0]["title"], "Rory Dance")
         self.assertTrue(visible["buzz_plan"]["2026-10-22"]["gone"])
         self.assertEqual(visible["travel_labels"], {"2026-10-23": "Parker Chicago", "2026-10-24": "Parker Chicago"})
-        self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync", "travel_labels"}
+        self.assertIn("custody_trip_days", visible)
+        self.assertTrue({"activities", "activity_last_sync", "buzz_plan", "roster_last_sync", "travel_labels", "custody_trip_days"}
                         .isdisjoint(maintenance))
 
     def test_lisa_private_cards_require_all_three_fresh_household_conditions(self):

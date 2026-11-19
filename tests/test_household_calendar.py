@@ -354,6 +354,76 @@ class HouseholdManagerTests(unittest.TestCase):
         self.assertEqual(len(result["flight_snapshot"]["flights"]), 2)
         self.assertTrue(result["connected_profiles"]["chris"]["verified"])
 
+    def test_private_named_all_day_trips_are_calendar_bound_without_changing_presence(self):
+        rules = {"profile": "chris", "calendar_id": "family-shared", "rules": [
+            {"title": "Mom's trip - North Cove", "parent": "Mom", "place": "North Cove"}]}
+        private_json(self.manager.trip_rules_path, rules)
+        listing = all_day("  MOM’S TRIP—  North Cove ", end="2026-10-24", id="trip",
+                          updated="2026-10-20T12:00:00Z", description="unused-private-notes")
+        items = [listing, all_day("Medical trip", colorId="11"), all_day("Dad's House", start="2026-10-23", end="2026-10-24")]
+        def load(client, path, params):
+            if "family" in path:
+                self.assertNotIn("description", params["fields"])
+                return {"timeZone": "America/Chicago", "items": items}
+            return self.api(client, path, params)
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=load):
+            status = self.manager.sync()
+            self.assertEqual(status["kids"]["state"], "unknown")
+            outlook = status["custody_outlook"]
+            self.assertEqual(outlook["custody_trip_days"], {"2026-10-22": {"parent": "Mom", "place": "North Cove"}})
+            self.assertEqual(outlook["days"][1]["state"], "unknown")
+            self.assertNotIn("North Cove", self.manager.path.read_text())
+            self.assertNotIn("unused-private-notes", self.manager.path.read_text())
+            with patch.object(CalendarClient, "_api", side_effect=CalendarError("Unavailable")):
+                lost = self.manager.sync()
+            self.assertTrue(lost["custody_outlook"]["stale"])
+            self.assertNotIn("custody_trip_days", lost["custody_outlook"])
+            self.assertEqual(lost["kids"]["state"], "unknown")
+            self.assertIn("custody_trip_days", self.manager.sync()["custody_outlook"])
+            self.config["guest_mode"] = True
+            self.assertNotIn("custody_trip_days", self.manager.status()["custody_outlook"])
+            self.config["guest_mode"] = False
+            items.append({"id": "trip", "status": "cancelled", "updated": "2026-10-21T12:00:00Z"})
+            self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
+            items.pop()
+            items[:] = [all_day("Mom's trip - North Cove II", colorId="11"), event("Mom's trip - North Cove"),
+                        all_day("Blue appointment", colorId="9")]
+            self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
+            self.assertEqual(self.manager.status()["kids"]["state"], "unknown")
+            items[:] = [listing]
+            for wrong in ({"profile": "lisa"}, {"calendar_id": "another-calendar"}):
+                private_json(self.manager.trip_rules_path, rules | wrong)
+                self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
+            private_json(self.manager.trip_rules_path, rules)
+            self.assertTrue(self.manager.status()["custody_outlook"]["stale"])
+            items.clear()
+            empty = self.manager.sync()
+            self.assertFalse(empty["custody_outlook"]["stale"])
+            self.assertNotIn("custody_trip_days", empty["custody_outlook"])
+
+    def test_custody_travel_clips_physical_custody_at_exact_source_midnight(self):
+        private_json(self.manager.trip_rules_path, {"profile": "chris", "calendar_id": "family-shared",
+                     "rules": [{"title": "Cove weekend", "parent": "Mom", "place": "Cove"}]})
+        self.now = dt("2026-10-23T06:59:00Z")
+        items = [all_day("Dad", "2026-10-20", "2026-10-27"),
+                 all_day("Cove weekend", "2026-10-23", "2026-10-25")]
+        def load(client, path, params):
+            if "family" in path:
+                return {"timeZone": "America/Los_Angeles", "items": items}
+            return self.api(client, path, params)
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=load):
+            result = self.manager.sync()
+            self.assertEqual(result["kids"]["state"], "away")
+            self.assertEqual(dt(result["kids"]["until"]), dt("2026-10-23T07:00:00Z"))
+            self.now += timedelta(minutes=1)
+            result = self.manager.status()
+            self.assertEqual(result["kids"]["state"], "unknown")
+            self.assertEqual(result["custody_outlook"]["days"][0]["state"], "unknown")
+            items[:] = items[1:]
+            result = self.manager.sync()
+            self.assertEqual(set(result["custody_outlook"]["custody_trip_days"]), {"2026-10-23", "2026-10-24"})
+            self.assertEqual(result["kids"]["state"], "unknown")
+
     def test_shared_family_calendar_works_with_chris_only_and_flights_deduplicate(self):
         with self.patched_api():
             result = self.manager.sync()
