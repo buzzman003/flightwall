@@ -54,6 +54,17 @@ def test_requires_single_day_rotation_and_selected_carrier_and_respects_cancella
     assert parse_mycrew_events([event, event | {"status": "cancelled"}], "DL") == []
 
 
+def test_inactive_rotation_wins_a_tied_update_for_both_legs_and_trip_days():
+    active = duty() | {"updated": "2026-01-01T00:00:00Z"}
+    inactive = active | {"summary": "X321 [Inactive]"}
+    for events in ([active, inactive], [inactive, active]):
+        assert parse_mycrew_events(events, "DL") == []
+        assert parse_mycrew_trip_days(events) == []
+    resumed = active | {"updated": "2026-01-02T00:00:00Z"}
+    assert parse_mycrew_events([resumed, inactive], "DL") == parse_mycrew_events([active], "DL")
+    assert parse_mycrew_trip_days([resumed, inactive]) == parse_mycrew_trip_days([active])
+
+
 def test_numeric_rotation_with_single_digit_suffix_preserves_flights_dates_and_privacy():
     event = duty() | {"summary": "4321-2"}
     flights = parse_mycrew_events([event], "DL")

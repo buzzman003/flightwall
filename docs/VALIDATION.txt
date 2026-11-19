@@ -1,3 +1,9 @@
+0.4.37 CANCELED CALENDAR ENTRIES
+
+Synthetic schedule and agenda fixtures cover provider cancellation and
+explicit labels in titles, including canceled events still marked confirmed
+by the provider. Verify real calendar filtering through a read-only refresh.
+
 0.4.36 VISIT ACTIVITY
 
 Synthetic fixtures cover title aliases, cancellation and recurrence exclusion,

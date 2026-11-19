@@ -10,6 +10,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from .calendar_client import _event_time
+from .calendar_visibility import event_is_inactive
 
 UTC = timezone.utc
 _ZONE = ZoneInfo("America/Chicago")
@@ -178,7 +179,9 @@ def _latest(events):
         key = event.get("id")
         if isinstance(key, str) and key:
             previous = unique.get(key)
-            if previous is None or updated(event) > updated(previous) or (updated(event) == updated(previous) and event.get("status") == "cancelled"):
+            if previous is None or (updated(event), event_is_inactive(event)) > (
+                updated(previous), event_is_inactive(previous)
+            ):
                 unique[key] = event
         else:
             anonymous.append(event)
@@ -191,7 +194,7 @@ def parse_brief_leave_notes(events, timezone_name):
         return []
     rows = []
     for event in _latest(events):
-        if event.get("status") == "cancelled":
+        if event_is_inactive(event):
             continue
         title = event.get("summary")
         title_match = _TITLE.fullmatch(title.strip().upper()) if isinstance(title, str) else None

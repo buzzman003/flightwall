@@ -102,6 +102,18 @@ class ParserTests(unittest.TestCase):
         self.assertEqual([item["number"] for item in result], ["456", "456"])
         self.assertNotEqual(result[0]["id"], result[1]["id"])
 
+    def test_inactive_report_does_not_attach_to_an_active_flight(self):
+        report = event("Report: 1219L", "2026-11-06T17:19:00Z", "2026-11-07T05:49:00Z",
+                       id="report", updated="2026-11-01T00:00:00Z")
+        inactive = report | {"summary": "Report: 1219L [Inactive]"}
+        leg = event("123: ATL-MEM")
+        for reports in ([report, inactive], [inactive, report]):
+            result = parse_events([leg, *reports])
+            self.assertEqual(len(result), 1)
+            self.assertNotIn("report", result[0])
+        active = report | {"updated": "2026-11-02T00:00:00Z"}
+        self.assertEqual(parse_events([leg, active, inactive])[0]["report"], "2026-11-06T17:19:00+00:00")
+
     def test_report_does_not_attach_across_duties(self):
         result = parse_events([
             event("Report: 0600L", "2026-11-06T11:00:00Z", "2026-11-06T15:00:00Z"),

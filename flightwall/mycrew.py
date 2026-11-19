@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .brief import _latest, _note_text
 from .calendar_client import _event_time
+from .calendar_visibility import event_is_inactive
 
 SOURCE = "MiCrew rotations"
 STATION_LOCAL = "station-local"
@@ -89,7 +90,7 @@ def parse_mycrew_trip_days(events):
     spans = []
     for event in _latest(events):
         title = event.get("summary")
-        if (event.get("status") == "cancelled" or not isinstance(title, str)
+        if (event_is_inactive(event) or not isinstance(title, str)
                 or len(title) > 150 or not _ROTATION.fullmatch(" ".join(title.upper().split()))):
             continue
         try:
@@ -178,7 +179,7 @@ def parse_mycrew_events(events, airline):
     flights, conflicts = {}, set()
     for event in _latest(events):
         title = event.get("summary")
-        if (event.get("status") == "cancelled" or not isinstance(title, str)
+        if (event_is_inactive(event) or not isinstance(title, str)
                 or len(title) > 150 or not _ROTATION.fullmatch(" ".join(title.upper().split()))):
             continue
         try:

@@ -29,6 +29,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 import webbrowser
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .calendar_visibility import event_is_inactive
+
 
 SCOPES = (
     "https://www.googleapis.com/auth/calendar.events.readonly",
@@ -161,12 +163,14 @@ def parse_events(events: list[dict[str, Any]], source: str = "FC View") -> list[
         event_id = event.get("id")
         if isinstance(event_id, str) and event_id:
             previous = unique.get(event_id)
-            if previous is None or str(event.get("updated", "")) >= str(previous.get("updated", "")):
+            if previous is None or (str(event.get("updated", "")), event_is_inactive(event)) >= (
+                str(previous.get("updated", "")), event_is_inactive(previous)
+            ):
                 unique[event_id] = event
         else:
             anonymous.append(event)
     for event in [*unique.values(), *anonymous]:
-        if event.get("status") == "cancelled":
+        if event_is_inactive(event):
             continue
         title = event.get("summary", "")
         if not isinstance(title, str) or len(title) > 1000:

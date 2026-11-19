@@ -5,12 +5,13 @@ import json
 import re
 from zoneinfo import ZoneInfo
 
+from .calendar_visibility import event_is_inactive
 from .household_calendar import _event_versions, _stamp, event_bounds
 
 
 PROFILE_FILE = "visit-activity.json"
 _CLOCK = r"(?:[01]?[0-9]|2[0-3])[0-5][0-9]"
-_CANCELLED = re.compile(r"\b(?:cancelled|canceled)\b", re.IGNORECASE)
+_CANCELLED = re.compile(r"\bcancell?ed\b", re.IGNORECASE)
 _IDEAS = (
     ("Build a tower together and let her knock it down. Take turns making a taller one.",
      "Pack a few large blocks or make a tower with paper cups."),
@@ -72,13 +73,15 @@ def load_profile(path):
         if not title or not isinstance(exact, list) or not 1 <= len(exact) <= 16:
             return None
         aliases = frozenset(_label(item, 160).casefold() for item in exact)
-        if "" in aliases or any(_CANCELLED.search(item) for item in aliases):
+        if "" in aliases or any(_CANCELLED.search(item) or event_is_inactive({"summary": item}) for item in aliases):
             return None
         timed_title = None
         if "timed_prefix" in settings or "timed_suffix" in settings:
             prefix = _label(settings.get("timed_prefix"), 64).casefold()
             suffix = _label(settings.get("timed_suffix"), 64).casefold()
-            if not prefix or not suffix or _CANCELLED.search(prefix) or _CANCELLED.search(suffix):
+            if not prefix or not suffix or any(
+                _CANCELLED.search(part) or event_is_inactive({"summary": part}) for part in (prefix, suffix)
+            ):
                 return None
             timed_title = re.compile(rf"{re.escape(prefix)} {_CLOCK} to {_CLOCK}m? {re.escape(suffix)}")
         return VisitProfile(title, aliases, timed_title)
@@ -90,7 +93,7 @@ def matching_dates(events, calendar_zone, board_zone, profile):
     """Project confirmed one-off events to civil dates without retaining event data."""
     days = set()
     for event in _event_versions(events):
-        if (event.get("status") != "confirmed" or event.get("eventType", "default") != "default"
+        if (event.get("status") != "confirmed" or event_is_inactive(event) or event.get("eventType", "default") != "default"
                 or not isinstance(event.get("id"), str) or not event["id"]
                 or any(field in event for field in ("recurringEventId", "originalStartTime", "recurrence"))):
             continue

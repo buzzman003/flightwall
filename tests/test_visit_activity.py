@@ -37,6 +37,7 @@ def configured_path(tmp_path):
     {"eventType": "fromGmail"}, {"recurringEventId": "series"}, {"originalStartTime": {"date": "2026-11-01"}},
     {"recurrence": ["RRULE:FREQ=WEEKLY"]}, {"summary": "Visit With Community Center - Cancelled"},
     {"summary": "Canceled visit arrive 945 to 1050m Community Center"}, {"summary": "Automatic visitation"},
+    {"summary": "🚫 INACTIVE — Visit With Community Center"}, {"status": "inactive"},
     {"summary": "Another child Visit With Community Center"},
     {"summary": "Visit arrive 915 to 2445m Community Center"},
     {"summary": "Visit arrive 915 to 1045m Community Center - placeholder"},
@@ -56,6 +57,8 @@ def test_exact_timed_alias_and_date_use_local_civil_time(tmp_path):
     assert {day.isoformat() for day in days} == {"2026-11-01"}
     cancelled = {"id": "fake-event", "status": "cancelled"}
     assert not matching_dates([cancelled, event_pair[0]], ZONE.key, ZONE, profile)
+    inactive = dict(event_pair[0], summary="🚫 INACTIVE — Visit With Community Center")
+    assert not matching_dates([event_pair[0], inactive], ZONE.key, ZONE, profile)
     all_day = appointment(start={"date": "2026-11-01"}, end={"date": "2026-11-02"})
     assert matching_dates([all_day], "Asia/Tokyo", ZONE, profile) == days
 

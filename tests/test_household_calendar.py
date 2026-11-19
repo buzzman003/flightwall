@@ -37,6 +37,18 @@ def all_day(summary="Mom", start="2026-10-22", end="2026-10-23", zone=None, **ex
 
 
 class KidsParserTests(unittest.TestCase):
+    def test_tagged_activities_are_suppressed_even_with_confirmed_metadata_and_tied_updates(self):
+        updated = "2026-10-21T12:00:00Z"
+        active = event("Rory Dance", id="dance", status="confirmed", updated=updated)
+        inactive = dict(active, summary="🚫 INACTIVE — Rory Dance")
+        cancelled = event("Cancelled Rory Gymnastics", status="confirmed")
+        allowed = event("Rory Soccer Game", status="confirmed")
+        for pair in ([active, inactive], [inactive, active]):
+            rows = parse_kids_activities([*pair, cancelled, allowed], {"rory": "Rory"},
+                                        {"Dance": ("dance",), "Gymnastics": ("gymnastics",),
+                                         "Soccer": ("soccer game",)}, NOW)
+            self.assertEqual([row["title"] for row in rows], ["Rory Soccer Game"])
+
     def test_tomorrow_activity_projection_uses_civil_date_across_dst(self):
         now = dt("2026-11-01T05:30:00Z")  # 00:30 before the 25-hour local day.
         rows = parse_kids_activities([
@@ -79,6 +91,8 @@ class KidsParserTests(unittest.TestCase):
         self.assertEqual(parse_kids_events([
             event("Mom", status="cancelled"),
             event("Dad", status="cancelled"),
+            event("Dad", status="inactive"),
+            event("🚫 INACTIVE — Mom's House", status="confirmed"),
             event("Vacation", description="Mom"),
             {"description": "Dad", "start": {"dateTime": "2026-10-22T12:00:00Z"},
              "end": {"dateTime": "2026-10-22T20:00:00Z"}},
@@ -386,6 +400,9 @@ class HouseholdManagerTests(unittest.TestCase):
             items.append({"id": "trip", "status": "cancelled", "updated": "2026-10-21T12:00:00Z"})
             self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
             items.pop()
+            items[0] = dict(listing, status="inactive")
+            self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
+            self.assertEqual(self.manager.status()["kids"]["state"], "unknown")
             items[:] = [all_day("Mom's trip - North Cove II", colorId="11"), event("Mom's trip - North Cove"),
                         all_day("Blue appointment", colorId="9")]
             self.assertNotIn("custody_trip_days", self.manager.sync()["custody_outlook"])
@@ -804,6 +821,7 @@ class LabelledHotelTests(unittest.TestCase):
         self.assertEqual(parse_labelled_layovers([valid])[0]["airport"], "MEM")
         cancelled = {"id": "hotel-event", "status": "cancelled", "updated": "2026-10-21T00:00:00Z"}
         self.assertEqual(parse_labelled_layovers([valid, cancelled]), [])
+        self.assertEqual(parse_labelled_layovers([dict(valid, status="inactive")]), [])
 
 
 if __name__ == "__main__":

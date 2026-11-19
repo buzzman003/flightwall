@@ -107,6 +107,25 @@ def test_events_keep_in_progress_and_upcoming_including_all_day_without_bodies_o
     assert all(set(row) == {"title", "start", "end", "date"} for row in rows)
 
 
+def test_calendar_agenda_hides_explicit_labels_even_when_provider_marks_confirmed():
+    candidates = [
+        ("🚫 INACTIVE — Example trip", "confirmed"),
+        ("Cancelled Example visit", "confirmed"),
+        ("[CANCELED] Example meeting", "confirmed"),
+        ("Example visit (inactive)", "confirmed"),
+        ("Example visit – Canceled", "confirmed"),
+        ("Example visit", "cancelled"),
+        ("Another trip", "inactive"),
+        ("Inactive Duty Training", "confirmed"),
+        ("Discuss the canceled permit", "confirmed"),
+        ("Canceled? Confirm plans with the organizer", "confirmed"),
+    ]
+    end = NOW + timedelta(days=1)
+    rows = calendar_rows([event(title, NOW, end) | {"id": str(index), "status": status}
+                          for index, (title, status) in enumerate(candidates)], BOARD_ZONE.key, NOW, end)
+    assert titles(rows) == sorted(title for title, _ in candidates[-3:])
+
+
 def test_private_agenda_keeps_personal_travel_and_excludes_gmail_rental_stays(tmp_path):
     client = CalendarClient(tmp_path, CFG)
     imported = {"eventType": "fromGmail", "organizer": {"self": True}, "attendees": [{"self": True}]}

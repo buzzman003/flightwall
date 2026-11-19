@@ -1,3 +1,9 @@
+FLIGHT WALL 0.4.37 — CANCELED CALENDAR ENTRIES
+
+The board skips calendar entries marked canceled or inactive, including
+explicit title labels that Google can still return as confirmed events.
+Calendar access remains read-only.
+
 FLIGHT WALL 0.4.36 — VISIT ACTIVITY
 
 The Visit Activity card suggests one low-prep activity and what to bring on

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from .agenda_google_tasks import AgendaGoogleTasks
 from .calendar_client import CalendarError
+from .calendar_visibility import event_is_inactive
 from .config import private_json
 from .household_calendar import _event_versions, _iso, _stamp, event_bounds
 from .personal import PersonalStore
@@ -47,7 +48,7 @@ def calendar_rows(events, calendar_zone, now, end_exclusive):
     result = []
     for event in _event_versions(events):
         title = text_label(event.get("summary"))
-        if not title or event.get("status") == "cancelled":
+        if not title or event_is_inactive(event):
             continue
         # Gmail can put a guest's stay on a host's calendar as a self-organized
         # event. That does not establish who is travelling.

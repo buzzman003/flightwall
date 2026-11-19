@@ -14,6 +14,7 @@ import unicodedata
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .calendar_client import CalendarClient, CalendarError, parse_events, _event_time
+from .calendar_visibility import event_is_inactive
 from .brief import (attach_brief_leaves, clean_brief_leaves, clean_brief_leave_warnings, parse_brief_leave_notes,
                     strictly_matched_brief_leaves, unmatched_brief_leave_warnings)
 from .config import private_json
@@ -160,7 +161,8 @@ def _event_versions(events):
         event_id = event.get("id")
         if isinstance(event_id, str) and event_id:
             previous = unique.get(event_id)
-            if previous is None or updated(event) > updated(previous) or (updated(event) == updated(previous) and event.get("status") == "cancelled"):
+            if (previous is None or updated(event) > updated(previous)
+                    or (updated(event) == updated(previous) and event_is_inactive(event))):
                 unique[event_id] = event
         else:
             anonymous.append(event)
@@ -195,7 +197,7 @@ def parse_kids_events(events, default_timezone="UTC"):
         title = event.get("summary")
         normalized = title.strip().casefold().replace("\u2019", "'") if isinstance(title, str) else ""
         parent = {"mom": "Mom", "mom's house": "Mom", "dad": "Dad", "dad's house": "Dad"}.get(normalized)
-        if parent is None or event.get("status") == "cancelled":
+        if parent is None or event_is_inactive(event):
             continue
         bounds = event_bounds(event, default_timezone)
         if bounds is None:
@@ -223,7 +225,7 @@ def parse_kids_activities(events, children, activities, now, display_timezone="U
     display_labels = {}
     for event in _event_versions(events):
         summary = event.get("summary")
-        if event.get("status") == "cancelled" or not isinstance(summary, str) or len(summary) > 256:
+        if not isinstance(summary, str) or len(summary) > 256 or event_is_inactive(event):
             continue
         normalized = _agenda_words(summary)
         words = f" {normalized} "
@@ -364,7 +366,7 @@ def parse_labelled_layovers(events, source_label="Flight calendar"):
     result, seen = [], set()
     source_label = "".join(char for char in str(source_label) if ord(char) >= 32)[:120]
     for event in _event_versions(events):
-        if not isinstance(event, dict) or event.get("status") == "cancelled":
+        if event_is_inactive(event):
             continue
         title = event.get("summary", "")
         if not isinstance(title, str):
@@ -460,7 +462,7 @@ def _custody_trips(events, zone, rules):
     trips = set()
     for event in _event_versions(events):
         title = _trip_title(event.get("summary"))
-        if not title or event.get("status") == "cancelled":
+        if not title or event_is_inactive(event):
             continue
         key = _binding(title)
         bounds = event_bounds(event, zone) if key in rules else None

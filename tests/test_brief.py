@@ -149,6 +149,13 @@ def test_latest_cancellation_or_edit_resolves_before_note_parse():
     assert parse_brief_leave_notes([edit, old, cancel], "America/Chicago")[0]["report_safe_at"] == "2027-01-13T13:10:00+00:00"
 
 
+def test_inactive_title_wins_tied_update_before_note_parse():
+    active = overnight(id="same", updated="2027-01-01T00:00:00Z")
+    inactive = active | {"summary": f"{active['summary']} [Inactive]"}
+    for events in ([active, inactive], [inactive, active]):
+        assert parse_brief_leave_notes(events, "America/Chicago") == []
+
+
 def test_dst_ambiguous_and_nonexistent_clocks_are_not_guessed():
     for title, start, end in [
         ("Buzz Flight Brief — VPS Home Overnight (Oct 31–Nov 1)", "2026-10-31T20:00:00-05:00", "2026-11-01T03:00:00-06:00"),
