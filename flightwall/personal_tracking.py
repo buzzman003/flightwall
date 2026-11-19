@@ -1,4 +1,4 @@
-"""Opt-in Lisa flight observations, separate from duty and phone presence.
+"""Opt-in household reservation observations, separate from duty and presence.
 
 Only narrowed personal-travel records enter this module. A matching aircraft
 never proves that a listed or confirmed traveler boarded it.
@@ -14,7 +14,7 @@ import re
 import urllib.error
 import urllib.parse
 
-from .flight_alerts import SOURCE, fresh_status, normalize_operating_status, stamp
+from .flight_alerts import SOURCE, fresh_status, gate_follow_window, normalize_operating_status, operating_ident, stamp
 from .flight_watches import tracking_available
 from .mycrew import airport_zone
 from .personal_travel import MAX_RECORDS, _reservation, reservation_schedule
@@ -29,31 +29,36 @@ _TARGET_FIELDS = {"id", "number", "origin", "destination", "start", "end", "dead
 _PROVIDER_ID = re.compile(r"[A-Za-z0-9_.:-]{1,200}")
 
 
-def _enabled(config):
+def personal_tracking_enabled(config, traveler=None):
+    if traveler is None:
+        return any(personal_tracking_enabled(config, who) for who in ("chris", "lisa"))
     return (isinstance(config, dict) and config.get("demo", True) is False
             and config.get("guest_mode", False) is False
             and config.get("personal_travel_cards_visible", True) is True
             and config.get("flightaware_enabled", False) is True
-            and config.get("lisa_flight_tracking_enabled", False) is True)
+            and ((traveler == "lisa" and config.get("lisa_flight_tracking_enabled") is True)
+                 or (traveler == "chris" and config.get("flightaware_household_gate_tracking_enabled") is True)))
 
 
 def _target_id(flight):
-    identity = ["lisa", *(flight[key] for key in ("number", "origin", "destination", "start", "end"))]
+    identity = [flight["traveler"], *(flight[key] for key in ("number", "origin", "destination", "start", "end"))]
     return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()[:24]
 
 
-def personal_tracking_targets(records):
-    """Reject full messages/unknown formats; project only exact Lisa legs."""
+def personal_tracking_targets(records, travelers=("lisa",)):
+    """Reject full messages and unknown formats; project only opted-in legs."""
     if not isinstance(records, list) or len(records) > MAX_RECORDS:
         return []
     targets, conflicts = {}, set()
     for record in records:
         try:
             row = _reservation(record)
-            if row.get("traveler", "chris") != "lisa" or row["status"] not in _RESERVATION_STATUSES:
+            traveler = row.get("traveler", "chris")
+            if traveler not in travelers or traveler not in {"chris", "lisa"} or row["status"] not in _RESERVATION_STATUSES:
                 continue
             target = {key: row[key] for key in ("number", "origin", "destination", "start", "end")}
-            target.update(id=_target_id(target), traveler="lisa", reservation_status=row["status"],
+            target["traveler"] = traveler
+            target.update(id=_target_id(target), reservation_status=row["status"],
                           source="personal_travel", deadhead=False)
             old = targets.get(target["id"])
             if old is not None and old != target:
@@ -70,7 +75,7 @@ def _safe_target(value):
         return None
     try:
         start, end = reservation_schedule(value)
-        if (value["traveler"] == "lisa" and value["reservation_status"] in _RESERVATION_STATUSES
+        if (value["traveler"] in {"lisa", "chris"} and value["reservation_status"] in _RESERVATION_STATUSES
                 and value["source"] == "personal_travel" and value["deadhead"] is False
                 and value["start"] == start.isoformat() and value["end"] == end.isoformat()
                 and value["id"] == _target_id(value)):
@@ -80,12 +85,14 @@ def _safe_target(value):
         return None
 
 
-def personal_tracking_window(flight, now, provider=None):
-    """One hour around the schedule; observed delays have a two-hour hard cap."""
+def personal_tracking_window(flight, now, provider=None, *, follow_gate=False):
+    """Keep following a matched delayed flight when gate tracking is enabled."""
     try:
         if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
             return False
         start, end = stamp(flight["start"]), stamp(flight["end"])
+        if follow_gate and gate_follow_window(flight, now, provider):
+            return True
         last = end + timedelta(hours=1)
         current = fresh_status(provider, now)
         observed = stamp(current["fetched_at"]) if current.get("fetched_at") else None
@@ -108,7 +115,7 @@ def personal_tracking_window(flight, now, provider=None):
         return False
 
 
-def match_personal_flight(data, flight):
+def match_personal_flight(data, flight, *, provider_id=None):
     """Number, both airports and exact scheduled departure must all agree."""
     if not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
         raise ValueError("Invalid personal flight response")
@@ -132,13 +139,15 @@ def match_personal_flight(data, flight):
                 or (origin.get("code_iata"), destination.get("code_iata")) != (flight["origin"], flight["destination"])):
             continue
         try:
-            if stamp(item.get("scheduled_out") or item.get("scheduled_off")) != stamp(flight["start"]):
+            departure = stamp(item.get("scheduled_out") or item.get("scheduled_off"))
+            if provider_id is None and departure != stamp(flight["start"]):
                 continue
         except (ValueError, TypeError, OverflowError):
             continue
         if not isinstance(item.get("fa_flight_id"), str) or not _PROVIDER_ID.fullmatch(item["fa_flight_id"]):
             continue
-        matches.append(item)
+        if provider_id is None or provider_id == item["fa_flight_id"]:
+            matches.append(item)
     if len(matches) != 1:
         return "ambiguous" if matches else "not_found", None
     return "matched", matches[0]
@@ -170,7 +179,7 @@ def _live_position(data, flight, provider, now):
 
 def fresh_personal_tracking(rows, config, now, backend_available=True):
     """Recheck privacy, identity, window and observation age on every frame."""
-    if not backend_available or not _enabled(config) or not isinstance(rows, list) or len(rows) > MAX_TARGETS:
+    if not backend_available or not personal_tracking_enabled(config) or not isinstance(rows, list) or len(rows) > MAX_TARGETS:
         return []
     result, seen = [], set()
     for value in rows:
@@ -178,7 +187,8 @@ def fresh_personal_tracking(rows, config, now, backend_available=True):
             continue
         flight = _safe_target(value.get("flight"))
         if (not flight or value.get("id") != flight["id"] or flight["id"] in seen
-                or value.get("traveler") != "lisa" or value.get("reservation_status") != flight["reservation_status"]):
+                or value.get("traveler") != flight["traveler"] or not personal_tracking_enabled(config, flight["traveler"])
+                or value.get("reservation_status") != flight["reservation_status"]):
             continue
         raw_provider = value.get("provider")
         provider = fresh_status(raw_provider, now) if isinstance(raw_provider, dict) else {}
@@ -188,9 +198,10 @@ def fresh_personal_tracking(rows, config, now, backend_available=True):
                 or not isinstance(provider.get("provider_flight_id"), str)
                 or not _PROVIDER_ID.fullmatch(provider["provider_flight_id"])):
             provider = {}
-        if not personal_tracking_window(flight, now, provider):
+        if not personal_tracking_window(flight, now, provider,
+                                        follow_gate=config.get("flightaware_household_gate_tracking_enabled") is True):
             continue
-        row = {"id": flight["id"], "traveler": "lisa", "reservation_status": flight["reservation_status"],
+        row = {"id": flight["id"], "traveler": flight["traveler"], "reservation_status": flight["reservation_status"],
                "ident": flight["number"], "date": stamp(flight["start"]).astimezone(airport_zone(flight["origin"])).date().isoformat(),
                "flight": flight, "provider": provider,
                "status": value.get("status") if value.get("status") in {
@@ -230,35 +241,85 @@ class PersonalFlightTracker:
     def __init__(self, request, data_dir):
         self.request, self.data_dir = request, data_dir
         self._cache = {}
+        self._operating_observation = (None, {})
         self._cursor = 0
         self._last_request = -math.inf
 
-    def snapshot(self, config, records, now):
-        if not _enabled(config):
+    @staticmethod
+    def _leg(flight):
+        return flight["number"], flight["origin"], flight["destination"], stamp(flight["start"])
+
+    def share_operating(self, config, operating, provider, live):
+        """A passenger on the operating flight can reuse its verified observations."""
+        observation = (None, {})
+        if (config.get("flightaware_household_gate_tracking_enabled") is True and isinstance(operating, dict)
+                and isinstance(provider, dict) and provider.get("source") == SOURCE and provider.get("provider_flight_id")
+                and provider.get("status") in {"fresh", "stale"} and provider.get("flight_id") == operating.get("id")
+                and all(provider.get(key) == operating.get(key) for key in ("number", "origin", "destination"))):
+            try:
+                number = operating_ident(operating, config.get("airline", ""))
+                times = provider["times"]
+                departure = stamp(times.get("scheduled_out") or times.get("scheduled_off"))
+                key = number, operating["origin"], operating["destination"], departure
+                result = {"status": "scheduled", "provider": dict(provider, number=number)}
+                if (isinstance(live, dict) and live.get("flight_id") == operating["id"]
+                        and live.get("provider_flight_id") == provider["provider_flight_id"]):
+                    result.update(status="tracking", live=dict(live, source=SOURCE))
+                observation = (key, result)
+            except (KeyError, TypeError, ValueError, OverflowError):
+                pass
+        self._operating_observation = observation
+
+    def _shared_result(self, flight):
+        # Multiple household members may book the same physical aircraft.
+        # Reuse its observations while giving each card its own traveler ID.
+        key = self._leg(flight)
+        duty, operating = self._operating_observation
+        entry = self._cache.get(key, {})
+        result = copy.deepcopy(operating if duty == key else entry.get("result", {}))
+        for field in ("provider", "live"):
+            if field in result and result[field].get("flight_id"):
+                result[field]["flight_id"] = flight["id"]
+        return result
+
+    def _targets(self, config, records, now, operating):
+        travelers = [who for who in ("chris", "lisa") if personal_tracking_enabled(config, who)]
+        follow_gate = config.get("flightaware_household_gate_tracking_enabled") is True
+        try:
+            duty = (operating_ident(operating, config.get("airline", "")), operating["origin"],
+                    operating["destination"], stamp(operating["start"])) if operating and not operating.get("deadhead") else None
+        except (ValueError, TypeError, KeyError):
+            duty = None
+        for flight in personal_tracking_targets(records, travelers):
+            if (flight["traveler"] == "chris"
+                    and self._leg(flight) == duty):
+                continue
+            provider = self._shared_result(flight).get("provider")
+            if personal_tracking_window(flight, now, provider, follow_gate=follow_gate):
+                yield flight
+
+    def snapshot(self, config, records, now, *, operating=None):
+        if not personal_tracking_enabled(config):
             return []
         rows = []
         available = tracking_available(self.data_dir, config)
-        for flight in personal_tracking_targets(records):
-            entry = self._cache.get(flight["id"], {})
-            result = entry.get("result", {}) if entry.get("flight") == flight else {}
-            if personal_tracking_window(flight, now, result.get("provider")):
-                rows.append({**copy.deepcopy(result), "id": flight["id"], "traveler": "lisa",
-                             "reservation_status": flight["reservation_status"], "flight": flight,
-                             "status": result.get("status", "pending" if available else "unconfigured")})
+        for flight in self._targets(config, records, now, operating):
+            result = self._shared_result(flight)
+            rows.append({**result, "id": flight["id"], "traveler": flight["traveler"],
+                         "reservation_status": flight["reservation_status"], "flight": flight,
+                         "status": result.get("status", "pending" if available else "unconfigured")})
         return fresh_personal_tracking(rows[:MAX_TARGETS], config, now)
 
-    def poll(self, config, records, now, tick):
-        if not _enabled(config) or not tracking_available(self.data_dir, config):
+    def poll(self, config, records, now, tick, *, operating=None):
+        if not personal_tracking_enabled(config) or not tracking_available(self.data_dir, config):
             self._cache.clear()
             return
-        targets = []
-        for flight in personal_tracking_targets(records):
-            entry = self._cache.get(flight["id"], {})
-            provider = entry.get("result", {}).get("provider") if entry.get("flight") == flight else None
-            if personal_tracking_window(flight, now, provider):
-                targets.append(flight)
-        targets = targets[:MAX_TARGETS]
-        self._cache = {key: value for key, value in self._cache.items() if key in {flight["id"] for flight in targets}}
+        duty, _ = self._operating_observation
+        by_leg = {self._leg(flight): flight for flight in self._targets(config, records, now, operating)
+                  if self._leg(flight) != duty}
+        targets = list(by_leg.values())[:MAX_TARGETS]
+        keys = {self._leg(flight) for flight in targets}
+        self._cache = {key: value for key, value in self._cache.items() if key in keys}
         if not targets:
             return
         interval = config.get("flightaware_poll_seconds", 120)
@@ -266,9 +327,13 @@ class PersonalFlightTracker:
             return
         ordered = targets[self._cursor % len(targets):] + targets[:self._cursor % len(targets)]
         for flight in ordered:
-            entry = self._cache.get(flight["id"])
-            if entry is None or entry["flight"] != flight:
-                entry = self._cache[flight["id"]] = {"flight": flight, "result": {}, "next": "status", "retry_at": -math.inf}
+            key = self._leg(flight)
+            entry = self._cache.get(key)
+            if entry is None:
+                entry = self._cache[key] = {"flight": flight, "result": {}, "next": "status", "retry_at": -math.inf}
+            elif entry["flight"] != flight:
+                entry["result"] = self._shared_result(flight)
+                entry["flight"] = flight
             if entry.get("terminal") or tick < entry["retry_at"]:
                 continue
             current_index = targets.index(flight)
@@ -282,12 +347,16 @@ class PersonalFlightTracker:
                                                      "end": (start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                                      "ident_type": "designator", "max_pages": 1})
                     response = self.request("/flights/" + flight["number"] + "?" + params, config)
-                    outcome, match = match_personal_flight(response, flight)
+                    outcome, match = match_personal_flight(response, flight, provider_id=entry.get("provider_id"))
                     if match is None:
-                        entry["result"] = {"status": outcome}
+                        if entry.get("provider_id") and provider.get("fetched_at"):
+                            entry["result"] = {"status": "stale", "provider": fresh_status(provider, now, False)}
+                        else:
+                            entry["result"] = {"status": outcome}
                         entry["retry_at"] = tick + 300
                     else:
                         provider = normalize_operating_status(match, flight, now)
+                        entry["provider_id"] = provider["provider_flight_id"]
                         entry["result"] = {"status": "scheduled", "provider": provider}
                         if (old.get("live", {}).get("provider_flight_id") == provider["provider_flight_id"]
                                 and old.get("live")):
@@ -296,7 +365,10 @@ class PersonalFlightTracker:
                         if entry["terminal"]:
                             entry["result"].pop("live", None)
                             entry["result"]["status"] = "scheduled"
-                        entry["next"] = "status" if provider["phase"] == "landed" else "position"
+                        status_only = (provider["phase"] == "landed" or
+                                       config.get("flightaware_household_gate_tracking_enabled") is True
+                                       and provider["phase"] == "scheduled")
+                        entry["next"] = "status" if status_only else "position"
                 else:
                     response = self.request("/flights/" + urllib.parse.quote(provider["provider_flight_id"], safe="") + "/position", config)
                     live = _live_position(response, flight, provider, now)

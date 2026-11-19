@@ -1,3 +1,13 @@
+0.4.32 HOUSEHOLD FLIGHTS AFTER 9 PM
+
+Check both adults' Home/Away/Unknown combinations, report expiry and the
+local quiet-hours boundary. Exercise the operating and reservation trackers
+with synthetic provider responses for scheduled, airborne, touchdown,
+gate arrival, delayed service and stopped tracking. Check the paid allowance
+at each outbound request and ensure nearby enrichment and general watches
+stay paused overnight. A real future gate timestamp and the airline's time
+of publication require observation during the flight.
+
 0.4.31 PERSONAL AIRLINE RESERVATIONS
 
 Synthetic regression tests cover passenger-matched structured booking markup,

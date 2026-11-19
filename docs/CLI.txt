@@ -34,6 +34,15 @@ by lisa_flight_tracking_enabled and shares the existing FlightAware cap. These
 settings do not enable presence or private mail previews. Unsupported templates
 need review. No saved listing proves that its passenger boarded the flight.
 
+In local configuration, flightaware_household_gate_tracking_enabled enables
+Chris's dated reservation tracking and the household quiet-hours exception.
+With 9 p.m.–9 a.m. quiet hours on, this exception requires a current Home
+report from either adult. It follows Chris's operating flights and eligible
+personal bookings, plus Lisa's bookings when her separate tracking is on.
+Public watches, nearby route lookups and commute schedule searches still pause.
+Touchdown switches to status checks until an actual gate time is reported.
+The same daily and monthly spending limits apply throughout.
+
 Review the airline reservation, listing or cancellation in your own mail
 before importing. A calendar copy, listing, jumpseat request or check-in notice
 alone cannot prove a confirmed seat or actual travel. Compare with the primary

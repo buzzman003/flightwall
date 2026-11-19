@@ -90,7 +90,7 @@ def render_personal_tracking(draw, image, state, config, now):
     live = live if isinstance(live, dict) else None
     map_state = dict(state, live=live)
     zone = _tz(config)
-    label = "LISA / " + flight["number"] + " / " + row["reservation_status"].upper()
+    label = row["traveler"].upper() + " / " + flight["number"] + " / " + row["reservation_status"].upper()
     plotted = _map(draw, image, map_state, config, now, flight, zone, page=label)
     # The shared map caption is replaced with this card's schedule/observation
     # distinction. Its geography and crisp LED composition are left untouched.

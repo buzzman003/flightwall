@@ -313,7 +313,7 @@ def test_feed_operating_lookup_precedes_lisa_and_existing_shared_cap_blocks_netw
     feed = FlightFeeds(tmp_path)
     order = []
     with (patch.object(feed, "_poll_live", side_effect=lambda *a: order.append("operating")),
-          patch.object(feed.personal_tracking, "poll", side_effect=lambda *a: order.append("lisa")),
+          patch.object(feed.personal_tracking, "poll", side_effect=lambda *a, **kw: order.append("lisa")),
           patch.object(feed, "_poll_watches", side_effect=lambda *a: order.append("watches"))):
         feed.poll(CONFIG, None, personal_flights=[record()])
     assert order == ["operating", "lisa", "watches"]
@@ -323,3 +323,162 @@ def test_feed_operating_lookup_precedes_lisa_and_existing_shared_cap_blocks_netw
         network.assert_not_called()
     result = feed.personal_tracking.snapshot(config, [record()], NOW)[0]
     assert result["reason"] == "monthly_limit" and result["status"] == "unavailable"
+
+
+GATE = CONFIG | {"flightaware_household_gate_tracking_enabled": True, "flightaware_quiet_hours_enabled": True,
+                 "timezone": "America/Chicago", "presence_enabled": True, "airline": "DL"}
+NIGHT = datetime(2026, 11, 19, 3, 0, tzinfo=timezone.utc)  # 9 p.m. Central
+
+
+def night_home(directory, who="chris", when=NIGHT):
+    from flightwall.presence import PresenceStore
+    presence = PresenceStore(directory, lambda: GATE)
+    presence.rotate(who)
+    presence.update(who, {"state": "home", "observed_at": when.isoformat()}, when)
+    return presence
+
+
+@pytest.mark.parametrize("person", ["chris", "lisa"])
+def test_night_gate_tracking_requires_one_fresh_home_and_preserves_all_limits(tmp_path, person):
+    from flightwall.feeds import PaidLimitError, PaidRequestsPaused
+    feed = FlightFeeds(tmp_path)
+    path = "/flights/DL123?max_pages=1"
+    with patch("flightwall.feeds.utcnow", return_value=NIGHT):
+        for when in (NIGHT - timedelta(days=1), NIGHT):
+            night_home(tmp_path, person, when)
+            if when < NIGHT:
+                with pytest.raises(PaidRequestsPaused):
+                    feed._allow_paid_request(GATE, path, purpose="household")
+        for config, purpose in ((GATE, "operating"), (GATE, "nearby"),
+                                (GATE | {"presence_enabled": False}, "household"),
+                                (GATE | {"flightaware_household_gate_tracking_enabled": False}, "household")):
+            with pytest.raises(PaidRequestsPaused):
+                feed._allow_paid_request(config, path, purpose=purpose)
+        usage_file = tmp_path / "flightaware-usage.json"
+        assert not usage_file.exists()
+        with pytest.raises(PaidLimitError, match="monthly app cost limit"):
+            feed._allow_paid_request(GATE | {"flightaware_monthly_limit_usd": 0}, path, purpose="household")
+        feed._allow_paid_request(GATE, path, purpose="household")
+        assert json.loads(usage_file.read_text())["reserved_milliusd"] == 5
+        with pytest.raises(PaidLimitError, match="daily request limit"):
+            feed._allow_paid_request(GATE | {"flightaware_daily_limit": 1}, path, purpose="household")
+
+
+def test_overnight_personal_touchdown_keeps_polling_until_exact_gate_then_stops(tmp_path):
+    from flightwall.personal_tracking_view import _arrival_clock
+    feed = FlightFeeds(tmp_path)
+    (tmp_path / "flightaware.key").write_text("fixture")
+    night_home(tmp_path)
+    start, end = NIGHT - timedelta(hours=1), NIGHT + timedelta(minutes=5)
+    trip = record(number="AA123", origin="CLT", destination="VPS", source="american_email", status="confirmed",
+                  start=start.isoformat(), end=end.isoformat())
+    gate = NIGHT + timedelta(minutes=2)
+    landed = provider(ident="AAL123", ident_iata="AA123", fa_flight_id="AA123-fixture", actual_off=start.isoformat(),
+                      origin={"code_iata": "CLT"}, destination={"code_iata": "VPS"}, scheduled_out=start.isoformat(),
+                      scheduled_in=end.isoformat(), actual_on=NIGHT.isoformat(), estimated_in=gate.isoformat())
+    with patch("flightwall.feeds.request_json", side_effect=[data(landed), data(landed | {"actual_in": gate.isoformat()})]) as network:
+        for tick in (0, 60, 120, 240, 360):
+            when = NIGHT + timedelta(seconds=tick)
+            with patch("flightwall.feeds.utcnow", return_value=when), patch("flightwall.feeds.time.monotonic", return_value=tick):
+                feed.poll(GATE, None, personal_flights=[trip])
+                row, = feed.personal_tracking.snapshot(GATE, [trip], when)
+                assert _arrival_clock(row, when) == (("LANDED", NIGHT) if tick < 120 else ("AT GATE", gate))
+            assert network.call_count == (1 if tick < 120 else 2)
+        assert all(urlsplit(call.args[0]).path.endswith("/flights/AA123") for call in network.call_args_list)
+        assert json.loads((tmp_path / "flightaware-usage.json").read_text())["reserved_milliusd"] == 10
+
+
+def test_presence_change_between_operating_status_and_position_closes_second_charge(tmp_path):
+    feed = FlightFeeds(tmp_path)
+    (tmp_path / "flightaware.key").write_text("fixture")
+    presence = night_home(tmp_path, when=NIGHT - timedelta(minutes=1))
+    start = (NIGHT - timedelta(minutes=30)).isoformat()
+    trip = flight(start=start, end=(NIGHT + timedelta(minutes=40)).isoformat())
+    def depart(*args):
+        presence.update("chris", {"state": "away", "observed_at": NIGHT.isoformat()}, NIGHT)
+        return data(provider(scheduled_out=start, actual_off=start))
+    with patch("flightwall.feeds.utcnow", return_value=NIGHT), patch("flightwall.feeds.request_json", side_effect=depart) as network:
+        feed.poll(GATE, trip)
+        assert network.call_count == 1
+        assert feed.operating_status_for_config(GATE, trip, NIGHT)["status"] == "paused_quiet_hours"
+        assert json.loads((tmp_path / "flightaware-usage.json").read_text())["reserved_milliusd"] == 5
+
+
+def test_chris_personal_flights_respect_lisa_consent_and_skip_duplicate_duty_leg(tmp_path):
+    tracker, network = setup(tmp_path, [data()])
+    mine = record(traveler="chris")
+    other = record()
+    settings = GATE | {"lisa_flight_tracking_enabled": False}
+    tracker.poll(settings, [mine, other], NOW, 0, operating=flight())
+    network.assert_not_called()
+    assert tracker.snapshot(settings, [mine, other], NOW, operating=flight()) == []
+    tracker.poll(settings, [mine, other], NOW, 120)
+    network.assert_called_once()
+    row, = tracker.snapshot(settings, [mine, other], NOW)
+    assert row["traveler"] == "chris" and row["provider"]["phase"] == "airborne"
+    assert row["id"] != flight()["id"]
+    assert tracker.snapshot(settings | {"guest_mode": True}, [mine, other], NOW) == []
+
+
+def test_delayed_observed_reservation_follows_beyond_old_window_without_reviving_unmatched_flight():
+    from flightwall.flight_alerts import gate_follow_window, within_tracking_window
+    target = flight()
+    later = NOW + timedelta(hours=9)
+    estimate = (later + timedelta(minutes=30)).isoformat()
+    observed = normalize_operating_status(provider(estimated_in=estimate), target, NOW)
+    assert not personal_tracking_window(target, later, observed)
+    assert personal_tracking_window(target, later, observed, follow_gate=True)
+    assert within_tracking_window(target, later, observed)
+    assert not gate_follow_window(target, later, observed | {"flight_id": "other"})
+    assert not gate_follow_window(target, later + timedelta(days=1), observed)
+
+
+def test_two_household_bookings_share_each_paid_request_and_keep_distinct_traveler_labels(tmp_path):
+    legs = [record(), record(traveler="chris")]
+    later = NOW + timedelta(seconds=120)
+    tracker, request = setup(tmp_path, [data(), position(later)])
+    tracker.poll(GATE, legs, NOW, 0)
+    tracker.poll(GATE, legs, later, 120)
+    assert request.call_count == 2
+    assert request.call_args.args[0].endswith("/position")
+    both = tracker.snapshot(GATE, legs, later)
+    assert {row["traveler"] for row in both} == {"chris", "lisa"}
+    assert len({row["id"] for row in both}) == 2
+    for row in both:
+        assert row["provider"]["flight_id"] == row["live"]["flight_id"] == row["id"]
+    mine, = tracker.snapshot(GATE | {"lisa_flight_tracking_enabled": False}, legs, later)
+    assert mine["traveler"] == "chris"
+
+
+def test_gate_follow_keeps_original_flight_through_provider_timetable_revisions():
+    from flightwall.flight_alerts import match_operating_flight
+    target = flight()
+    shifted = provider(scheduled_out=(datetime.fromisoformat(target["start"]) + timedelta(minutes=7)).isoformat())
+    other = provider(fa_flight_id="another-aircraft")
+    assert match_operating_flight(data(shifted), target, GATE) == ("matched", shifted)
+    assert match_operating_flight(data(other, shifted), target, GATE)[0] == "ambiguous"
+    assert match_operating_flight(data(other, shifted), target, GATE,
+                                  provider_id=shifted["fa_flight_id"]) == ("matched", shifted)
+    assert match_personal_flight(data(shifted), target)[0] == "not_found"
+    assert match_personal_flight(data(other, shifted), target, provider_id=shifted["fa_flight_id"]) == ("matched", shifted)
+
+
+def test_lisa_on_operating_flight_shares_its_fix_and_gate_clock_with_no_extra_requests(tmp_path):
+    from flightwall.personal_tracking_view import _arrival_clock
+    feed = FlightFeeds(tmp_path)
+    (tmp_path / "flightaware.key").write_text("fixture")
+    operating = flight() | {"id": "roster-test", "number": "123"}
+    gate = NOW + timedelta(minutes=2)
+    config = GATE | {"flightaware_quiet_hours_enabled": False}
+    with patch("flightwall.feeds.request_json", side_effect=[
+            data(), position(), data(provider(actual_on=NOW.isoformat(), actual_in=gate.isoformat()))]) as network:
+        for tick in (0, 120, 240):
+            when = NOW + timedelta(seconds=tick)
+            with patch("flightwall.feeds.utcnow", return_value=when), patch("flightwall.feeds.time.monotonic", return_value=tick):
+                feed.poll(config, operating, personal_flights=[record(), record(traveler="chris")])
+                row, = feed.personal_tracking.snapshot(config, [record(), record(traveler="chris")], when, operating=operating)
+                assert row["traveler"] == "lisa" and row["provider"]["number"] == "DL123"
+                if tick == 0:
+                    assert row["live"]["flight_id"] == row["id"] and network.call_count == 2
+                else:
+                    assert _arrival_clock(row, when) == ("AT GATE", gate) and network.call_count == 3

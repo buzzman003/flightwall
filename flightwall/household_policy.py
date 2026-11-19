@@ -40,6 +40,10 @@ def both_adults_away(presence):
     return isinstance(presence, dict) and all(_known(presence.get(person), "away") for person in ("chris", "lisa"))
 
 
+def either_adult_home(presence):
+    return isinstance(presence, dict) and any(_known(presence.get(person), "home") for person in ("chris", "lisa"))
+
+
 def _flights(status, config):
     snapshot = status.get("snapshot") or {}
     if not isinstance(snapshot, dict) or snapshot.get("demo"):
@@ -68,7 +72,8 @@ def _priority_flight(status, config, now):
                         if flight.get("id") != arrived_id and flight.get("id") == live_status.get("flight_id")
                         and (flight.get("origin"), flight.get("destination")) ==
                         (live_status.get("origin"), live_status.get("destination"))
-                        and not flight.get("deadhead") and within_tracking_window(flight, now)), None)
+                        and not flight.get("deadhead") and within_tracking_window(flight, now,
+                            live_status if config.get("flightaware_household_gate_tracking_enabled") is True else None)), None)
         if matched:
             return matched
     def minutes(key):
@@ -375,7 +380,8 @@ def build_rotation(status, config, now=None):
     operating = fresh_status(status.get("operating_status"), now)
     tracked = status.get("operating_flight")
     if (config.get("flightaware_enabled") is True and snapshot.get("demo") is False
-            and isinstance(tracked, dict) and within_tracking_window(tracked, now)
+            and isinstance(tracked, dict) and within_tracking_window(tracked, now,
+                operating if config.get("flightaware_household_gate_tracking_enabled") is True else None)
             and (not strict or isinstance(selected, dict) and tracked.get("id") == selected.get("id"))
             and any(flight.get("id") == tracked.get("id") for flight, _, _ in _flights(status, config))):
         add("flight_status", "flight_status:" + str(tracked.get("id") or "current"))

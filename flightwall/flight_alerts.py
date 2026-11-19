@@ -59,11 +59,42 @@ def flight_identity(flight, config):
     return tuple(flight.get(key) for key in ("id", "number", "origin", "destination", "start", "end", "deadhead")) + (config.get("airline"),)
 
 
-def within_tracking_window(flight, now):
+def gate_follow_window(flight, now, provider):
+    """Extend a matched trip for a reported delay, actual movement, or recent gate-in."""
+    if (not isinstance(provider, dict) or provider.get("source") != SOURCE
+            or provider.get("status") not in {"fresh", "stale"} or not provider.get("provider_flight_id")
+            or not flight.get("id") or provider.get("flight_id") != flight["id"]
+            or any(provider.get(k) != flight.get(k) for k in ("number", "origin", "destination"))
+            or provider.get("cancelled") is True or provider.get("phase") in {"blocked", "tracking_ended"}):
+        return False
+    try:
+        start, end, observed = stamp(flight["start"]), stamp(flight["end"]), stamp(provider["fetched_at"])
+        if not start - timedelta(hours=4) <= observed <= now or now < start - timedelta(hours=1):
+            return False
+        times = provider["times"]
+        if times.get("actual_in"):
+            gate = stamp(times["actual_in"])
+            return start - timedelta(hours=1) <= gate <= observed and now <= gate + timedelta(hours=1)
+        # A delayed departure/arrival estimate may extend the scheduled window.
+        # An aircraft with actual movement and a recently checked status gets
+        # another interval to report gate-in, including after touchdown.
+        for key in ("estimated_in", "estimated_on"):
+            if times.get(key) and end < stamp(times[key]) <= end + timedelta(days=1):
+                if now <= stamp(times[key]) + timedelta(hours=1):
+                    return True
+        return (now <= end + timedelta(days=1) and now - observed <= timedelta(hours=2)
+                and any(start - timedelta(hours=1) <= stamp(times[key]) <= observed
+                        for key in ("actual_on", "actual_off", "actual_out") if times.get(key)))
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return False
+
+
+def within_tracking_window(flight, now, provider=None):
     try:
         start, end = stamp(flight["start"]), stamp(flight["end"])
         return (not flight.get("deadhead") and start < end <= start + timedelta(hours=48)
-                and start - timedelta(hours=4) <= now.astimezone(UTC) <= end + timedelta(hours=6))
+                and (start - timedelta(hours=4) <= now.astimezone(UTC) <= end + timedelta(hours=6)
+                     or gate_follow_window(flight, now, provider)))
     except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
         return False
 
@@ -72,7 +103,9 @@ def choose_tracking_flight(snapshot, config, now, current_status=None):
     """A provider-confirmed departed leg can outlast its roster arrival time."""
     if not isinstance(snapshot, dict) or snapshot.get("demo") or config.get("demo"):
         return None
-    candidates = [flight for flight in snapshot.get("flights", []) if isinstance(flight, dict) and within_tracking_window(flight, now)]
+    gate_status = current_status if config.get("flightaware_household_gate_tracking_enabled") is True else None
+    candidates = [flight for flight in snapshot.get("flights", []) if isinstance(flight, dict)
+                  and within_tracking_window(flight, now, gate_status)]
     current = fresh_status(current_status, now)
     if current.get("status") in {"fresh", "stale"} and current.get("phase") in {"departed_gate", "airborne", "landed"}:
         match = next((flight for flight in candidates if flight.get("id") == current.get("flight_id")), None)
@@ -87,7 +120,7 @@ def choose_tracking_flight(snapshot, config, now, current_status=None):
     return copy.deepcopy(selected)
 
 
-def match_operating_flight(data, selected, config):
+def match_operating_flight(data, selected, config, *, provider_id=None):
     """One canonical airline/route/departure-window match; never nearest wins."""
     if not isinstance(data, dict) or not isinstance(data.get("flights"), list) or len(data["flights"]) > 1000:
         raise ValueError("Invalid operating flight result")
@@ -115,7 +148,8 @@ def match_operating_flight(data, selected, config):
         identifier = item.get("fa_flight_id")
         if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,200}", identifier):
             continue
-        matches.append(item)
+        if provider_id is None or identifier == provider_id:
+            matches.append(item)
     if len(matches) != 1:
         return ("ambiguous" if matches else "not_found"), None
     return "matched", matches[0]
@@ -187,7 +221,7 @@ def confirmed_gate_arrival(status, flight, now):
     if (not isinstance(status, dict) or not isinstance(flight, dict)
             or status.get("source") != SOURCE or status.get("status") not in {"fresh", "stale"}
             or status.get("phase") != "at_gate" or status.get("cancelled") is True or status.get("diverted") is True
-            or not status.get("provider_flight_id") or not flight.get("id") or not within_tracking_window(flight, now)
+            or not status.get("provider_flight_id") or not flight.get("id") or not within_tracking_window(flight, now, status)
             or status.get("flight_id") != flight.get("id")
             or any(status.get(key) != flight.get(key) for key in ("number", "origin", "destination"))):
         return None

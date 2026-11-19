@@ -1,3 +1,19 @@
+## 0.4.32 household flights through gate arrival
+
+The local-only `flightaware_household_gate_tracking_enabled` setting defaults
+to false. During configured quiet hours, the exception requires a fresh Home
+state from either opted-in adult for each paid request. It applies only to
+the household operating flight and eligible personal reservations. Retain
+Lisa’s tracking consent, guest and personal-card visibility rules for
+reservations. General flight watches and nearby enrichment observe quiet
+hours. Reservations and gate events never establish boarding or presence.
+
+Keep the hard shared daily and monthly allowances. Follow a matched delayed
+flight within the bounded provider-evidence window. After touchdown, fetch
+status until a confirmed gate-in or another terminal result, subject to all
+admission rules. Use an actual gate timestamp for AT GATE. An estimate or
+landing alone cannot supply that time.
+
 ## 0.4.31 passenger-matched airline reservations
 
 Separate, default-off Lisa settings govern airline booking mail and CWT invoice

@@ -1,3 +1,18 @@
+FLIGHT WALL 0.4.32 — HOUSEHOLD FLIGHTS AFTER 9 PM
+
+You can keep tracking household flights overnight when either adult has a
+fresh Home report. With overnight quiet hours enabled, this exception covers
+the operating roster and eligible personal reservations. Lisa’s flights also
+require her existing tracking opt-in. Nearby aircraft enrichment and public
+flight watches still observe quiet hours.
+
+An observed landing can appear before the plane reaches its gate. Flight Wall
+continues checking the flight status during taxi-in and shows AT GATE with the
+provider’s actual gate time when available. The daily and monthly spending
+limits still apply. The exception can be enabled on Batocera with:
+
+  /userdata/roms/ports/.data/flightwall/flightwall config --set flightaware_household_gate_tracking_enabled true
+
 FLIGHT WALL 0.4.31 — LISA’S AIRLINE RESERVATIONS
 
 Under Setup → Your Google accounts, Lisa can enable airline reservations, add

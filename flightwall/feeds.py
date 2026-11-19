@@ -21,7 +21,7 @@ from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fli
                             fresh_nearby_route, nearby_route_result, nearby_lookup_identity,
                             match_operating_flight, normalize_operating_status, operating_ident,
                             stamp as status_stamp, valid_us_registration, within_tracking_window)
-from .household_policy import both_adults_away
+from .household_policy import both_adults_away, either_adult_home
 from .personal import PersonalError, PersonalStore
 from .personal_tracking import PersonalFlightTracker
 from .presence import PresenceStore
@@ -289,7 +289,8 @@ class FlightFeeds:
         self.watch_results = {}
         self._watch_cache = {}
         self._watch_cursor = 0
-        self.personal_tracking = PersonalFlightTracker(lambda path, config: self._flightaware(path, config), self.data_dir)
+        self.personal_tracking = PersonalFlightTracker(
+            lambda path, config: self._flightaware(path, config, purpose="household"), self.data_dir)
         self._last_nearby = -math.inf
         self._nearby_query = None
         self._nearby_completed = (None, [])
@@ -321,11 +322,15 @@ class FlightFeeds:
         self._nearby_request_started = False
         self._nearby_lock = threading.Lock()
 
-    def _paid_pause_reason(self, config, now=None):
+    def _paid_pause_reason(self, config, now=None, *, purpose="operating"):
         now = now or utcnow()
         if config.get("flightaware_quiet_hours_enabled") is True:
             hour = now.astimezone(ZoneInfo(config.get("timezone", "UTC"))).hour
             if hour >= 21 or hour < 9:
+                if (purpose == "household" and config.get("flightaware_household_gate_tracking_enabled") is True
+                        and config.get("demo") is False and config.get("presence_enabled") is True
+                        and either_adult_home(PresenceStore(self.data_dir, lambda: config).snapshot(now))):
+                    return None
                 return "quiet_hours"
         if (config.get("presence_enabled") is True
                 and both_adults_away(PresenceStore(self.data_dir, lambda: config).snapshot(now))):
@@ -338,7 +343,7 @@ class FlightFeeds:
     def _allow_paid_request(self, config, path, *, purpose="operating"):
         from decimal import Decimal, InvalidOperation
         _, fee = _paid_path(path, allow_registration=purpose == "nearby")
-        if purpose not in {"operating", "nearby"} or purpose == "nearby" and fee != 5:
+        if purpose not in {"operating", "household", "nearby"} or purpose == "nearby" and fee != 5:
             raise ValueError("Unsupported paid request purpose")
         try:
             configured_limit = config.get("flightaware_monthly_limit_usd", DEFAULTS["flightaware_monthly_limit_usd"])
@@ -359,7 +364,7 @@ class FlightFeeds:
                 raise ValueError("Invalid daily app budget")
             with self._budget_storage._locked():
                 now = utcnow()
-                if reason := self._paid_pause_reason(config, now):
+                if reason := self._paid_pause_reason(config, now, purpose=purpose):
                     raise PaidRequestsPaused(reason)
                 today = now.astimezone(timezone.utc).date()
                 if not PRICING_CHECKED <= today <= PRICING_CHECKED + timedelta(days=PRICING_MAX_AGE_DAYS):
@@ -439,7 +444,7 @@ class FlightFeeds:
     def _flightaware(self, path, config, *, purpose="operating"):
         path, _ = _paid_path(path, allow_registration=purpose == "nearby")
         # Recheck for each request, including each call in a batch and the CLI.
-        if reason := self._paid_pause_reason(config):
+        if reason := self._paid_pause_reason(config, purpose=purpose):
             raise PaidRequestsPaused(reason)
         key_path = self.data_dir / "flightaware.key"
         try:
@@ -474,12 +479,13 @@ class FlightFeeds:
             return {**base, "status": "unconfigured"}
         if not flight or flight.get("deadhead"):
             return {**base, "status": "idle"}
-        if not within_tracking_window(flight, now):
-            return {**base, "status": "outside_window"}
         identity, result = self._operating_completed
+        gate_status = result if config.get("flightaware_household_gate_tracking_enabled") is True else None
+        if not within_tracking_window(flight, now, gate_status):
+            return {**base, "status": "outside_window"}
         selected = flight_identity(flight, config)
         if identity != selected or self._operating_terminal != selected:
-            if reason := self._paid_pause_reason(config, now):
+            if reason := self._paid_pause_reason(config, now, purpose="household"):
                 status = "paused_quiet_hours" if reason == "quiet_hours" else "paused_away"
                 return {**base, "status": status, "reason": reason}
         if identity != selected:
@@ -709,7 +715,7 @@ class FlightFeeds:
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
-        paused = self.paid_paused(config, now)
+        paused = self._paid_pause_reason(config, now, purpose="household") is not None
         try:
             if not paused:
                 self._poll_live(config, selected, now)
@@ -733,8 +739,9 @@ class FlightFeeds:
                 self.live = None
         # The operating flight always gets the first use of the existing shared
         # paid-request budget. Public requests never replace its live position.
+        self.personal_tracking.share_operating(config, selected, self.operating_status, self.live)
         if not paused:
-            self.personal_tracking.poll(config, personal_flights or [], now, time.monotonic())
+            self.personal_tracking.poll(config, personal_flights or [], now, time.monotonic(), operating=selected)
         self._poll_watches(config, watches or [], now)
         if not self._nearby_lock.acquire(blocking=False):
             return
@@ -989,7 +996,8 @@ class FlightFeeds:
             self.live = None
             self._set_operating_status(config, selected, {"status": "unconfigured", "source": FLIGHT_SOURCE})
             return
-        if not within_tracking_window(selected, now):
+        follow_gate = config.get("flightaware_household_gate_tracking_enabled") is True
+        if not within_tracking_window(selected, now, self.operating_status if follow_gate else None):
             self.live = None
             self._set_operating_status(config, selected, {"status": "outside_window", "source": FLIGHT_SOURCE})
             return
@@ -1019,14 +1027,24 @@ class FlightFeeds:
                                              "end": (start + timedelta(hours=6)).isoformat(),
                                              "ident_type": "designator", "max_pages": 1})
             try:
-                data = self._flightaware("/flights/" + urllib.parse.quote(number, safe="") + "?" + params, config)
+                data = self._flightaware("/flights/" + urllib.parse.quote(number, safe="") + "?" + params,
+                                         config, purpose="household")
             except PaidRequestsPaused:
                 self._last_live, self._lookup_at = previous_live_tick, previous_lookup_tick
                 raise
-            outcome, matched = match_operating_flight(data, selected, config)
+            outcome, matched = match_operating_flight(data, selected, config,
+                                                      provider_id=self._live_id if follow_gate else None)
             if matched is None:
-                self._live_id, self.live = None, None
-                self._set_operating_status(config, selected, {"status": outcome, "source": FLIGHT_SOURCE})
+                # Once the operating instance is identified, a missing update
+                # must not switch tracking to a different flight of that number.
+                if not follow_gate:
+                    self._live_id = None
+                self.live = None
+                self._operating_next = "status"
+                if follow_gate and self._live_id and self.operating_status.get("fetched_at"):
+                    self._set_operating_status(config, selected, fresh_status(self.operating_status, now, False))
+                else:
+                    self._set_operating_status(config, selected, {"status": outcome, "source": FLIGHT_SOURCE})
                 return
             status = normalize_operating_status(matched, selected, now)
             previous_id = self._live_id
@@ -1042,6 +1060,9 @@ class FlightFeeds:
                 self._operating_terminal = identity
                 self.live = None
                 return
+            if follow_gate and status["phase"] == "scheduled":
+                self._operating_next = "status"
+                return
             self._operating_next = "position"
             if not first or not position_eligible:
                 return
@@ -1050,7 +1071,8 @@ class FlightFeeds:
         previous_request_kind = self._operating_next
         self._operating_next = "status"
         try:
-            data = self._flightaware("/flights/" + urllib.parse.quote(self._live_id, safe="") + "/position", config)
+            data = self._flightaware("/flights/" + urllib.parse.quote(self._live_id, safe="") + "/position",
+                                     config, purpose="household")
         except PaidRequestsPaused:
             self._operating_next = previous_request_kind
             if not first:

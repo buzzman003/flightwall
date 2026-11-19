@@ -120,7 +120,8 @@ def build_flight_context(status, config, now):
         return None
     flight = status.get("operating_flight")
     flights = snapshot.get("flights")
-    if (not isinstance(flight, dict) or not within_tracking_window(flight, now)
+    gate_status = status.get("operating_status") if config.get("flightaware_household_gate_tracking_enabled") is True else None
+    if (not isinstance(flight, dict) or not within_tracking_window(flight, now, gate_status)
             or not isinstance(flights, list) or flight not in flights):
         return None
     origin, destination = flight.get("origin"), flight.get("destination")

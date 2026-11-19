@@ -30,6 +30,7 @@ from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip_preview
 from .flight_watches import FlightWatchStore, tracking_available
 from .personal_travel import PersonalTravel, visible_travel
+from .personal_tracking import personal_tracking_enabled
 from .delta_travel import DeltaTravel
 from .airline_mail import AirlineMail
 from .weather import WeatherFeed
@@ -312,9 +313,10 @@ class Runtime:
                 status["personal_travel"] = visible_travel(travel_records, config, now)
             except ValueError:
                 travel_records = []
-            if config.get("lisa_flight_tracking_enabled") is True and config.get("flightaware_enabled") is True:
+            if personal_tracking_enabled(config):
                 try:
-                    status["personal_tracking"] = self.feeds.personal_tracking.snapshot(config, travel_records, now)
+                    status["personal_tracking"] = self.feeds.personal_tracking.snapshot(config, travel_records, now,
+                                                                                      operating=operating)
                 except (ValueError, OSError, TypeError):
                     pass
         status["personal_items"] = filter_personal_items(personal_items, status, config, now)
@@ -631,9 +633,7 @@ class Runtime:
             except (ValueError, OSError):
                 watches = []
             personal_flights = []
-            if (config.get("lisa_flight_tracking_enabled") is True and config.get("flightaware_enabled") is True
-                    and config.get("demo") is False and config.get("guest_mode") is False
-                    and config.get("personal_travel_cards_visible") is True):
+            if personal_tracking_enabled(config):
                 try:
                     personal_flights = self.personal_travel.list_records()
                 except (ValueError, OSError):
