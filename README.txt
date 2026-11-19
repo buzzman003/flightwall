@@ -1,3 +1,12 @@
+FLIGHT WALL 0.4.31 — LISA’S AIRLINE RESERVATIONS
+
+Under Setup → Your Google accounts, Lisa can enable airline reservations, add
+her exact ticket-name spellings, and choose whether to read CWT ticket PDFs.
+Her existing read-only Gmail sign-in works for this. Flight Wall checks for
+authenticated booking emails with structured flight reservations and issued
+CWT invoices. Different airlines can appear together on the Personal Flights
+card. Exact flight matches use the existing tracking, quiet hours and budget.
+
 FLIGHT WALL 0.4.30
 
 The ten-day family outlook can display an optional private recurring travel

@@ -30,6 +30,7 @@ WIZARD_SETTINGS = frozenset({
     "messages_enabled", "chris_gmail_enabled", "lisa_gmail_enabled", "chris_lawyer_senders",
     "delta_travel_enabled", "delta_travel_owner_names", "delta_travel_lisa_names",
     "delta_travel_lisa_mail_enabled", "lisa_flight_tracking_enabled",
+    "lisa_airline_mail_enabled", "lisa_ticket_pdfs_enabled",
     "vps_leave_plan_enabled", "vps_leave_drive_minutes", "vps_leave_parking_minutes",
     "vps_leave_security_minutes", "vps_leave_gate_minutes",
     "vps_leave_target_early_minutes", "vps_leave_target_late_minutes",
@@ -266,16 +267,22 @@ class OnboardingRouter:
         if not isinstance(patch, dict) or not patch or set(patch) - WIZARD_SETTINGS:
             raise SetupError("Choose supported setup settings to save.")
         patch = dict(patch)
-        lisa_travel = (patch.get("delta_travel_lisa_mail_enabled") is True
-                       or "delta_travel_lisa_names" in patch
-                       and patch.get("delta_travel_lisa_mail_enabled", self.config_getter().get("delta_travel_lisa_mail_enabled")) is True)
+        lisa_imports = ("delta_travel_lisa_mail_enabled", "lisa_airline_mail_enabled", "lisa_ticket_pdfs_enabled")
+        enabling = [key for key in lisa_imports if patch.get(key) is True]
+        current = self.config_getter()
+        aliases_changed = ("delta_travel_lisa_names" in patch
+                           and patch["delta_travel_lisa_names"] != current.get("delta_travel_lisa_names"))
+        lisa_travel = (bool(enabling) or aliases_changed and
+                       (body.get("consenting_person") == "lisa" or any(current.get(key) for key in lisa_imports)))
         if lisa_travel:
             self._consent(body, "lisa")
-            if patch.get("delta_travel_lisa_mail_enabled") is True and not self._saved_authorization("lisa", "gmail"):
-                raise SetupError("Connect Lisa's read-only Gmail before enabling her Delta booking imports.")
-            self._record_consent("lisa", "delta-travel")
+            if enabling and not self._saved_authorization("lisa", "gmail"):
+                raise SetupError("Connect Lisa's read-only Gmail before enabling her booking imports.")
+            self._record_consent("lisa", "airline-travel" if "lisa_airline_mail_enabled" in enabling else "delta-travel")
+            if "lisa_ticket_pdfs_enabled" in enabling:
+                self._record_consent("lisa", "ticket-pdfs")
         if (patch.get("delta_travel_enabled") is True or "delta_travel_owner_names" in patch
-                or "delta_travel_lisa_names" in patch and not lisa_travel):
+                or aliases_changed and not lisa_travel):
             self._consent(body, "chris")
             if patch.get("delta_travel_enabled") is True and not self._saved_authorization("chris", "gmail"):
                 raise SetupError("Connect Chris's read-only Gmail before enabling Delta booking imports.")

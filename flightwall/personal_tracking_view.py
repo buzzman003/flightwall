@@ -1,8 +1,10 @@
 """Personal Lisa flight context, separate from crew duty and phone presence."""
 from __future__ import annotations
 
+from datetime import timedelta
 import math
 
+from .flight_alerts import SOURCE, stamp
 from .time_format import format_time
 
 
@@ -35,13 +37,40 @@ def _phase(row):
         if provider.get("cancelled") is True:
             return "TRACKING ENDED / CHECK AIRLINE"
         return {"scheduled": "SCHEDULED", "departed_gate": "GATE OUT", "airborne": "AIRBORNE",
-                "landed": "LANDED", "at_gate": "AT GATE", "blocked": "TRACKING BLOCKED",
+                "blocked": "TRACKING BLOCKED",
                 "tracking_ended": "TRACKING ENDED"}.get(provider.get("phase"), "FLIGHT UPDATE")
     return "UPDATE UNAVAILABLE"
 
 
 def _number(value, low, high):
     return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+
+
+def _arrival_clock(row, now):
+    """A past touchdown/gate arrival remains a fact after position fixes expire."""
+    provider = row["provider"]
+    if (provider.get("source") != SOURCE or provider.get("status") not in {"fresh", "stale"}
+            or provider.get("phase") not in {"at_gate", "landed"}
+            or provider.get("diverted") is True or provider.get("cancelled") is True):
+        return None
+    times = provider.get("times")
+    if not isinstance(times, dict):
+        return None
+    try:
+        observed = stamp(provider["fetched_at"])
+        actual = {event: stamp(times["actual_" + event]) for event in ("out", "off", "on", "in")
+                  if times.get("actual_" + event)}
+        clocks = list(actual.values())
+        if not clocks or clocks != sorted(clocks) or not clocks[-1] <= observed <= now:
+            return None
+        earliest = stamp(row["flight"]["start"]) - timedelta(hours=1)
+        if provider["phase"] == "at_gate" and "in" in actual and actual["in"] >= earliest:
+            return "AT GATE", actual["in"]
+        if "on" in actual and actual["on"] >= earliest:
+            return "LANDED", actual["on"]
+    except (TypeError, ValueError, KeyError, OverflowError):
+        pass
+    return None
 
 
 def render_personal_tracking(draw, image, state, config, now):
@@ -69,7 +98,11 @@ def render_personal_tracking(draw, image, state, config, now):
     start, end = _dt(flight["start"]), _dt(flight["end"])
     schedule = "PLANNED ROUTE / SCHED " + format_time(start.astimezone(zone)) + " - " + format_time(end.astimezone(zone), include_zone=True)
     _text(draw, (16, 211), schedule, MUTED, max_width=480)
-    if live and plotted:
+    arrival = _arrival_clock(row, now)
+    if arrival:
+        event, when = arrival
+        _text(draw, (16, 222), event + " " + format_time(when.astimezone(zone), include_zone=True), CYAN, max_width=480)
+    elif live and plotted:
         observed = _dt(live.get("observed_at"))
         bits = ["OBS " + format_time(observed.astimezone(zone))]
         if live.get("altitude_units") == "feet" and _number(live.get("altitude"), -2000, 100000):
@@ -83,6 +116,7 @@ def render_personal_tracking(draw, image, state, config, now):
         text = "OBSERVED POSITION OUTSIDE PLANNED MAP" if live else "POSITION NOT AVAILABLE"
         _text(draw, (16, 222), text, AMBER if live else MUTED, max_width=480)
     draw.line((14, 232, 498, 232), fill=LINE)
-    _text(draw, (15, 241), "FLIGHTAWARE / " + _phase(row) + " / BOARDING UNKNOWN", MUTED,
+    phase = "ARRIVAL OBSERVED" if arrival else _phase(row)
+    _text(draw, (15, 241), "FLIGHTAWARE / " + phase + " / BOARDING UNKNOWN", MUTED,
           max_width=deck_footer_width(state))
     return True

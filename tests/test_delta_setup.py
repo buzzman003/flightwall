@@ -142,6 +142,28 @@ def test_lisa_tracking_opt_in_is_separate_setup_only_and_needs_lisa_consent(tmp_
     assert store.get()["delta_travel_lisa_mail_enabled"] is False
 
 
+def test_all_airline_mail_and_ticket_pdf_require_lisas_gmail_and_own_consent(tmp_path):
+    store = ConfigStore(tmp_path)
+    router = OnboardingRouter(tmp_path, store.get, {"setup_save": store.update})
+    patch = {"lisa_airline_mail_enabled": True, "lisa_ticket_pdfs_enabled": True,
+             "delta_travel_lisa_names": '["Sample Passenger"]'}
+    assert not set(patch).intersection(store.public())
+    assert not store.get()["lisa_airline_mail_enabled"] and not store.get()["lisa_ticket_pdfs_enabled"]
+    with pytest.raises(ValueError):
+        store.update(patch, remote=True)
+    with pytest.raises(SetupError):
+        router._save_settings({"settings": patch, "owner_consent": True, "consenting_person": "chris"})
+    lisa = {"owner_consent": True, "consenting_person": "lisa"}
+    with pytest.raises(SetupError, match="read-only Gmail"):
+        router._save_settings({"settings": patch} | lisa)
+    router._saved_authorization = lambda person, service: (person, service) == ("lisa", "gmail")
+    router._save_settings({"settings": patch} | lisa)
+    assert store.get()["lisa_airline_mail_enabled"] and store.get()["lisa_ticket_pdfs_enabled"]
+    assert not any(store.get()[k] for k in ("messages_enabled", "lisa_flight_tracking_enabled", "delta_travel_enabled"))
+    router._save_settings({"settings": {"lisa_ticket_pdfs_enabled": False}})
+    assert store.get()["lisa_airline_mail_enabled"] and not store.get()["lisa_ticket_pdfs_enabled"]
+
+
 def test_lisa_mail_worker_is_independent_of_chris_errors_and_message_previews(tmp_path):
     from flightwall.backend import Runtime
     from unittest.mock import Mock

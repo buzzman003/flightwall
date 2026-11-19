@@ -298,6 +298,15 @@ class GmailClient:
         if not re.fullmatch(r"/(?:messages|threads)(?:/[A-Za-z0-9_-]{1,256})?", path) or path in {"/messages/send", "/messages/modify", "/messages/trash", "/messages/delete", "/messages/batchDelete", "/messages/batchModify"}:
             raise MessageError("Unsupported Gmail read operation.")
         url = GMAIL_URL + path + "?" + urlencode(parameters, doseq=True)
+        return self._get(url)
+
+    def ticket_attachment(self, message_id, attachment_id):
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", message_id)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{1,1024}", attachment_id)):
+            raise MessageError("Invalid ticket attachment.")
+        return self._get(f"{GMAIL_URL}/messages/{message_id}/attachments/{attachment_id}?fields=size,data")
+
+    def _get(self, url):
         try:
             return self._request("GET", url, token=self._access_token())
         except _Unauthorized:

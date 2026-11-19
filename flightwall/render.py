@@ -969,7 +969,7 @@ def _flight_watch(draw, image, state, config, now, tz):
 
 
 def _personal_travel(draw, state, now, rows, tz):
-    _header(draw, state, now, "PERSONAL DELTA TRAVEL")
+    _header(draw, state, now, "PERSONAL FLIGHTS")
     for index, row in enumerate(rows):
         y = 62 + index * 54
         depart = _dt(row["start"]).astimezone(tz)

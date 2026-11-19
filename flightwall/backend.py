@@ -31,6 +31,7 @@ from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip
 from .flight_watches import FlightWatchStore, tracking_available
 from .personal_travel import PersonalTravel, visible_travel
 from .delta_travel import DeltaTravel
+from .airline_mail import AirlineMail
 from .weather import WeatherFeed
 from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_weather_eligible
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
@@ -93,6 +94,7 @@ class Runtime:
         self.personal_travel = PersonalTravel(data_dir, self.config.get)
         self.delta_travel = DeltaTravel(data_dir, self.config.get)
         self.delta_travel_lisa = DeltaTravel(data_dir, self.config.get, person="lisa")
+        self.airline_mail = AirlineMail(data_dir, self.config.get)
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
@@ -444,6 +446,7 @@ class Runtime:
         return {"version": __version__, "profiles": household["connected_profiles"],
                 "delta_travel": self.delta_travel.status(),
                 "delta_travel_lisa": self.delta_travel_lisa.status(),
+                "airline_mail": self.airline_mail.status(),
                 "nearby_route_diagnostics": {**self.feeds.nearby_route_diagnostics(),
                                              "viewer_active": self.nearby_view_is_active()},
                 "kids": household["kids"], "presence": self.presence.snapshot(),
@@ -678,6 +681,11 @@ class Runtime:
                     self.delta_travel_lisa.sync()
                 except Exception:
                     pass  # Lisa's separately consented mailbox has its own error state.
+            if not self.stop_event.is_set() and config.get("lisa_airline_mail_enabled"):
+                try:
+                    self.airline_mail.sync()
+                except Exception:
+                    pass  # Reservation refresh is independent of inbox previews.
             if config["messages_enabled"]:
                 for person in ("chris", "lisa"):
                     if not self.stop_event.is_set() and config[f"{person}_gmail_enabled"]:

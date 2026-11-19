@@ -1,3 +1,14 @@
+0.4.31 PERSONAL AIRLINE RESERVATIONS
+
+Synthetic regression tests cover passenger-matched structured booking markup,
+issued agency invoices, multi-carrier flight identity, scoped mailbox settings,
+and preserving existing tracking, budget and privacy gates. A read-only
+on-device check independently verified the previously connected profile and
+parsed four legs from an actual issued invoice, including its requested
+connection and return. The boarding and historical position of the traveler
+cannot be established from that invoice. No live AeroAPI charge was requested
+for this historical verification. Unsupported formats need review.
+
 0.4.30 FAMILY TRAVEL LABEL AND SHARED PHOTOS
 
 Use synthetic local-date fixtures to check alternating travel spans, their

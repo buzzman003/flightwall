@@ -6,7 +6,7 @@ TIMING_LABELS = {
     'nearby': 'Nearby aircraft', 'trip_summary': 'Trip schedule', 'trip_map': 'Trip map',
     'flight_status': 'Live flight', 'flight_brief': 'Flight brief', 'custody_outlook': 'Family outlook',
     'today_activities': 'Today activities', 'dinner_options': 'Dinner ideas', 'dinner': 'Dinner menu',
-    'personal_travel': 'Personal Delta travel',
+    'personal_travel': 'Personal flights',
 }
 
 
@@ -36,7 +36,7 @@ CARD_LABELS = {
     'dinner_options_card_visible': 'Dinner ideas',
     'appointment_cards_visible': 'Appointments',
     'flight_watch_cards_visible': 'Tracked flights',
-    'personal_travel_cards_visible': 'Personal Delta travel',
+    'personal_travel_cards_visible': 'Personal flights',
 }
 CARD_DEFAULTS = {key: True for key in CARD_LABELS}
 VIEW_FIELDS = {

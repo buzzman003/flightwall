@@ -17,7 +17,7 @@ import urllib.parse
 from .flight_alerts import SOURCE, fresh_status, normalize_operating_status, stamp
 from .flight_watches import tracking_available
 from .mycrew import airport_zone
-from .personal_travel import MAX_RECORDS, _reservation
+from .personal_travel import MAX_RECORDS, _reservation, reservation_schedule
 
 
 UTC = timezone.utc
@@ -69,10 +69,13 @@ def _safe_target(value):
     if not isinstance(value, dict) or set(value) != _TARGET_FIELDS:
         return None
     try:
-        record = {key: value[key] for key in ("number", "origin", "destination", "start", "end", "traveler")}
-        record.update(status=value["reservation_status"], source="delta_email", updated_at=value["start"])
-        result = personal_tracking_targets([record])
-        return result[0] if result and result[0] == value else None
+        start, end = reservation_schedule(value)
+        if (value["traveler"] == "lisa" and value["reservation_status"] in _RESERVATION_STATUSES
+                and value["source"] == "personal_travel" and value["deadhead"] is False
+                and value["start"] == start.isoformat() and value["end"] == end.isoformat()
+                and value["id"] == _target_id(value)):
+            return dict(value)
+        return None
     except (ValueError, TypeError, KeyError, OverflowError):
         return None
 
@@ -116,8 +119,13 @@ def match_personal_flight(data, flight):
         return "ambiguous", None
     matches = []
     for item in data["flights"]:
-        if not isinstance(item, dict) or flight["number"] not in (
-                item.get("ident"), item.get("ident_iata"), item.get("ident_icao")):
+        if not isinstance(item, dict):
+            continue
+        # The operating carrier may be a regional partner. Only accept a
+        # marketing number explicitly returned for this flight by the provider.
+        codeshares = item.get("codeshares_iata")
+        if (flight["number"] not in (item.get("ident"), item.get("ident_iata"), item.get("ident_icao"))
+                and not (isinstance(codeshares, list) and flight["number"] in codeshares)):
             continue
         origin, destination = item.get("origin"), item.get("destination")
         if (not isinstance(origin, dict) or not isinstance(destination, dict)
@@ -270,8 +278,8 @@ class PersonalFlightTracker:
                 if (entry["next"] == "status" or not provider.get("provider_flight_id")
                         or fresh_status(provider, now).get("status") != "fresh"):
                     start = stamp(flight["start"])
-                    params = urllib.parse.urlencode({"start": (start - timedelta(hours=1)).isoformat(),
-                                                     "end": (start + timedelta(hours=1)).isoformat(),
+                    params = urllib.parse.urlencode({"start": (start - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                                     "end": (start + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                                                      "ident_type": "designator", "max_pages": 1})
                     response = self.request("/flights/" + flight["number"] + "?" + params, config)
                     outcome, match = match_personal_flight(response, flight)

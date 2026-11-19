@@ -228,6 +228,37 @@ def test_unmatched_or_ambiguous_leg_never_buys_position(tmp_path):
     assert request.call_count == 1
 
 
+@pytest.mark.parametrize(("number", "source"), [("AA310", "american_email"),
+                                               ("B6310", "airline_email"),
+                                               ("6E310", "airline_email")])
+def test_marketed_booking_tracks_exact_provider_flight_or_codeshare(tmp_path, number, source):
+    from flightwall.feeds import _paid_path
+
+    trip = record(number=number, source=source, status="confirmed", origin="CLT", destination="STL")
+    target, = personal_tracking_targets([trip])
+    marketed = provider(ident="RPA4310", ident_iata="YX4310", codeshares_iata=[number],
+                        origin={"code_iata": "CLT"}, destination={"code_iata": "STL"},
+                        fa_flight_id="RPA4310-test")
+    for bad in (dict(marketed, codeshares_iata=number), dict(marketed, scheduled_out=trip["end"]),
+                dict(marketed, origin={"code_iata": "VPS"})):
+        assert match_personal_flight(data(bad), target) == ("not_found", None)
+    assert match_personal_flight(data(marketed, dict(marketed, fa_flight_id="other")), target)[0] == "ambiguous"
+
+    later = NOW + timedelta(seconds=120)
+    tracker, lookup = setup(tmp_path, [data(marketed), position(later) | {"fa_flight_id": "RPA4310-test"}])
+    tracker.poll(CONFIG, [trip], NOW, 0)
+    query = urlsplit(_paid_path(lookup.call_args.args[0])[0])
+    assert query.path == "/flights/" + number
+    assert parse_qs(query.query)["start"] == ["2026-11-17T16:30:00Z"]
+    tracker.poll(CONFIG, [trip], later, 120)
+    assert _paid_path(lookup.call_args.args[0])[0] == "/flights/RPA4310-test/position"
+    observed, = tracker.snapshot(CONFIG, [trip], later)
+    assert observed["status"] == "tracking" and observed["ident"] == number
+    assert observed["reservation_status"] == "confirmed" and observed["traveler"] == "lisa"
+    assert observed["live"]["provider_flight_id"] == "RPA4310-test"
+    assert tracker.snapshot(CONFIG | {"guest_mode": True}, [trip], later) == []
+
+
 def test_three_targets_pair_status_with_position_before_round_robin_so_fixes_are_fresh(tmp_path):
     records = [record(number=f"DL{123 + index}",
                       start=(NOW - timedelta(minutes=30 - index)).isoformat(),

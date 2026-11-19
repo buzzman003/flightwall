@@ -1,4 +1,4 @@
-"""Reviewed Delta travel, separate from all operating schedules."""
+"""Reviewed personal reservations, separate from all operating schedules."""
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -16,6 +16,22 @@ DISPLAY_WINDOW = timedelta(days=14)
 RETENTION = timedelta(days=30)
 STATUSES = {"listed", "jumpseat_requested", "confirmed", "cancelled", "flown"}
 FIELDS = {"number", "origin", "destination", "start", "end", "status", "source", "updated_at"}
+_FLIGHT_NUMBER = re.compile(r"(?:[A-Z][A-Z0-9]|[0-9][A-Z])[1-9][0-9]{0,3}")
+_AIRLINE_RECEIPTS = {"american_email", "airline_email"}
+
+
+def reservation_schedule(row):
+    """Validate the flight identity and return its scheduled times in UTC."""
+    if not _FLIGHT_NUMBER.fullmatch(row["number"]):
+        raise ValueError("Use a two-character airline code and a flight number from 1 to 9999.")
+    origin, destination = row["origin"], row["destination"]
+    if origin == destination or not all(re.fullmatch(r"[A-Z]{3}", code) and airport_zone(code)
+                                        for code in (origin, destination)):
+        raise ValueError("Use two distinct supported three-letter airport codes.")
+    start, end = stamp(row["start"]), stamp(row["end"])
+    if not timedelta(0) < end - start <= timedelta(days=1):
+        raise ValueError("The scheduled arrival must follow departure by no more than one day.")
+    return start, end
 
 
 def _reservation(row):
@@ -23,17 +39,17 @@ def _reservation(row):
         raise ValueError("Use only the documented personal travel fields.")
     if any(not isinstance(value, str) or len(value) > 40 for value in row.values()):
         raise ValueError("Personal travel fields must be short text values.")
-    if not re.fullmatch(r"DL[1-9][0-9]{0,3}", row["number"]):
-        raise ValueError("Use the Delta flight number, such as DL1234.")
-    origin, destination = row["origin"], row["destination"]
-    if origin == destination or not all(re.fullmatch(r"[A-Z]{3}", code) and airport_zone(code)
-                                        for code in (origin, destination)):
-        raise ValueError("Use two distinct supported three-letter airport codes.")
-    start, end, updated = (stamp(row[field]) for field in ("start", "end", "updated_at"))
-    if not timedelta(0) < end - start <= timedelta(days=1):
-        raise ValueError("The scheduled arrival must follow departure by no more than one day.")
-    if row["status"] not in STATUSES or row["source"] not in {"delta_email", "calendar_copy"}:
+    start, end = reservation_schedule(row)
+    updated = stamp(row["updated_at"])
+    source = row["source"]
+    if row["status"] not in STATUSES or (source not in _AIRLINE_RECEIPTS and source not in {"delta_email", "calendar_copy"}):
         raise ValueError("Use a documented personal travel status and source.")
+    if source in _AIRLINE_RECEIPTS:
+        if (row.get("traveler") != "lisa" or row["status"] not in {"confirmed", "cancelled"}
+                or (source == "american_email" and not row["number"].startswith("AA"))):
+            raise ValueError("Use an identified Lisa airline reservation with a matching carrier and status.")
+    elif not row["number"].startswith("DL"):
+        raise ValueError("Delta listings and calendar copies require a Delta flight number.")
     if row.get("traveler", "chris") not in {"chris", "lisa"}:
         raise ValueError("Use a supported personal traveler.")
     if row["source"] == "calendar_copy" and row["status"] not in {"listed", "jumpseat_requested"}:
@@ -49,7 +65,7 @@ def _identity(row):
 
 
 def _precedence(row):
-    return row["source"] == "delta_email", stamp(row["updated_at"])
+    return row["source"] != "calendar_copy", stamp(row["updated_at"])
 
 
 def _resolve(rows):
@@ -58,8 +74,14 @@ def _resolve(rows):
         by_identity.setdefault(_identity(row), []).append(row)
     resolved = {}
     for key, candidates in by_identity.items():
+        if any(row["status"] == "flown" for row in candidates):
+            # A receipt confirms a booking; it cannot undo evidence of actual travel.
+            candidates = [row for row in candidates if row["source"] not in _AIRLINE_RECEIPTS]
         best = max(candidates, key=_precedence)
-        if any(_precedence(row) == _precedence(best) and row != best for row in candidates):
+        # A carrier and an agency may report the same leg at the same instant.
+        # Its times and booking status must agree; the source label can differ.
+        if any(_precedence(row) == _precedence(best)
+               and any(row[k] != best[k] for k in ("start", "end", "status")) for row in candidates):
             raise ValueError("Conflicting travel records share the same source time. Review the latest evidence.")
         resolved[key] = best
     return resolved
@@ -223,8 +245,7 @@ class PersonalTravel:
                                  for row in retained if self._identity_text(row) in removed
                                  and row["source"] == "delta_email" and row["status"] == "listed"
                                  and stamp(row["updated_at"]) <= observed and stamp(row["start"]) >= observed]
-                established = {_identity(row) for row in retained
-                               if row["source"] == "delta_email" and row["status"] in {"confirmed", "flown"}}
+                established = {_identity(row) for row in retained if row["status"] in {"confirmed", "flown"}}
                 listing_rows = [row for row in rows if _identity(row) not in established]
                 merged = _resolve([*retained, *listing_rows, *cancellations])
                 if len(merged) > MAX_RECORDS:

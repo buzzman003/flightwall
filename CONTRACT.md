@@ -1,3 +1,14 @@
+## 0.4.31 passenger-matched airline reservations
+
+Separate, default-off Lisa settings govern airline booking mail and CWT invoice
+PDFs. Her existing Delta-only consent never enables either. The mail worker
+parses only supported flight confirmations and exact passenger aliases. A
+reservation remains distinct from boarding, operating duty, or observed flight
+position. Ticket PDFs are processed on the device for verified ticket invoices.
+No attachment, original message, document text, passenger names from the mail,
+or unmasked booking references belong in diagnostics or released files.
+A partial agency itinerary adds verified legs without canceling unmentioned ones.
+
 0.4.30 FAMILY TRAVEL LABEL AND SHARED PHOTOS
 
 Project a private recurring travel label onto local dates in the ten-day

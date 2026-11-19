@@ -59,7 +59,7 @@ def test_cli_reservation_joins_tv_rotation_without_becoming_operating_or_mainten
     state = entry_render_state(status, config, slot, now)
     with patch("flightwall.render._text") as text:
         render_frame(state, config)
-    assert {"PERSONAL DELTA TRAVEL", "DL1234 / ATL > MEM", "CHRIS / CONFIRMED", "CHRIS / LISTED", "CHRIS / JUMPSEAT REQUESTED"}.issubset(
+    assert {"PERSONAL FLIGHTS", "DL1234 / ATL > MEM", "CHRIS / CONFIRMED", "CHRIS / LISTED", "CHRIS / JUMPSEAT REQUESTED"}.issubset(
         {call.args[2] for call in text.call_args_list})
     for context, settings in ((status, config | {"guest_mode": True}),
                               (status | {"backend_available": False}, config)):
@@ -170,3 +170,37 @@ def test_two_travelers_on_the_same_flight_have_separate_status_and_identity(tmp_
     assert store.import_records([chris, lisa], now)["stored"] == 2
     store.import_records([dict(lisa, status="cancelled", updated_at=now.isoformat())], now)
     assert {row["traveler"]: row["status"] for row in store.list_records()} == {"chris": "listed", "lisa": "cancelled"}
+
+
+def test_lisa_airline_receipt_is_personal_travel_and_partial_receipt_keeps_other_leg(tmp_path):
+    now = datetime(2026, 11, 5, 17, tzinfo=timezone.utc)
+    runtime = Runtime(tmp_path, tmp_path / "install")
+    runtime.config.update({"demo": False})
+    store = runtime.personal_travel
+    outbound = record(now, number="AA310", traveler="lisa", source="american_email", origin="CLT", destination="STL")
+    returning = record(now, number="B6213", traveler="lisa", source="airline_email", origin="STL", destination="BOS",
+                       start=(now + timedelta(days=4)).isoformat(), end=(now + timedelta(days=4, hours=3)).isoformat())
+    assert store.import_records([outbound, returning], now)["changed"]
+    assert not store.import_records([returning], now)["changed"]
+    assert not store.import_records([dict(outbound, source="airline_email")], now)["changed"]
+    with pytest.raises(ValueError, match="Conflicting"):
+        store.import_records([dict(outbound, source="airline_email", status="cancelled")], now)
+    status = runtime.display_status(now)
+    assert {row["number"] for row in status["personal_travel"]} == {"AA310", "B6213"}
+    assert status["snapshot"]["flights"] == [] and status["operating_flight"] is None
+    assert "AA310" not in json.dumps(runtime.status(now))
+    slot, = [s for s in build_rotation(status, runtime.config.get(), now) if s["view"] == "personal_travel"]
+    state = entry_render_state(status, runtime.config.get(), slot, now)
+    with patch("flightwall.render._text") as text:
+        render_frame(state, runtime.config.get())
+    assert {"PERSONAL FLIGHTS", "LISA / CONFIRMED", "AA310 / CLT > STL"}.issubset(
+        call.args[2] for call in text.call_args_list)
+
+    store.import_records([dict(outbound, status="cancelled", updated_at=now.isoformat())], now)
+    assert not store.import_records([outbound], now)["changed"]
+    assert [row["number"] for row in runtime.display_status(now)["personal_travel"]] == ["B6213"]
+    for invalid in (dict(returning, traveler="chris"), dict(returning, status="flown"),
+                    dict(returning, source="american_email"), dict(outbound, source="delta_email"),
+                    dict(returning, number="12310")):
+        with pytest.raises(ValueError):
+            store.import_records([invalid], now)

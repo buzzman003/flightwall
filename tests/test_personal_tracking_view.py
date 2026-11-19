@@ -134,3 +134,26 @@ def test_budget_stop_is_labeled_without_synthesizing_a_position_or_flight_delay(
     assert "POSITION NOT AVAILABLE" in values
     assert not any("DELAYED" in value or value.startswith("OBS ") for value in values)
 
+
+@pytest.mark.parametrize(("phase", "field", "label"), [("landed", "actual_on", "LANDED"),
+                                                      ("at_gate", "actual_in", "AT GATE")])
+def test_past_verified_arrival_clock_survives_position_expiry(phase, field, label):
+    row = tracked_row()
+    row["provider"]["phase"] = phase
+    row["provider"]["times"][field] = NOW.isoformat()
+    state = state_for(row) | {"now": (NOW + timedelta(minutes=15)).isoformat(), "rotation_paused": True}
+    values, _ = labels(state)
+    assert label + " 12:00 PM CST" in values
+    assert "FLIGHTAWARE / ARRIVAL OBSERVED / BOARDING UNKNOWN" in values
+    assert not any("LIVE POSITION" in text or "31000 FT" in text for text in values)
+    assert not any("ARRIVAL OBSERVED" in text for text in labels(state, CONFIG | {"guest_mode": True})[0])
+    assert not any("ARRIVAL OBSERVED" in text for text in labels(dict(state, now=(NOW + timedelta(hours=4)).isoformat()))[0])
+
+    for changes in ({"diverted": True}, {"cancelled": True}, {"flight_id": "other"},
+                    {"times": {"estimated_in": NOW.isoformat()}},
+                    {"times": {field: (NOW + timedelta(minutes=1)).isoformat()}}):
+        modified = deepcopy(row)
+        modified["provider"].update(changes)
+        values, _ = labels(dict(state, personal_tracking=[modified]))
+        assert not any("ARRIVAL OBSERVED" in text or text.startswith(label + " ") for text in values)
+

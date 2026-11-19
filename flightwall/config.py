@@ -50,6 +50,7 @@ DEFAULTS = {
     "messages_enabled": False, "chris_gmail_enabled": False, "lisa_gmail_enabled": False,
     "delta_travel_enabled": False, "delta_travel_owner_names": "[]", "delta_travel_lisa_names": "[]",
     "delta_travel_lisa_mail_enabled": False, "lisa_flight_tracking_enabled": False,
+    "lisa_airline_mail_enabled": False, "lisa_ticket_pdfs_enabled": False,
     "chris_lawyer_senders": "[]", "chris_lawyer_domains": "[]",
     "lisa_mail_senders": "[]", "lisa_mail_domains": "[]", "message_preview_chars": 180,
     "chris_notifications_enabled": False, "lisa_notifications_enabled": False,
@@ -335,8 +336,8 @@ class ConfigStore:
             candidate = self.get() | checked
             if candidate["delta_travel_enabled"] and not json.loads(candidate["delta_travel_owner_names"]):
                 raise ValueError("Enter your full passenger-name spelling before enabling Delta email imports")
-            if candidate["delta_travel_lisa_mail_enabled"] and not json.loads(candidate["delta_travel_lisa_names"]):
-                raise ValueError("Enter Lisa's full passenger-name spelling before enabling her Delta email imports")
+            if (candidate["delta_travel_lisa_mail_enabled"] or candidate["lisa_airline_mail_enabled"]) and not json.loads(candidate["delta_travel_lisa_names"]):
+                raise ValueError("Enter Lisa's full passenger-name spelling before enabling her booking email imports")
             if set(json.loads(candidate["delta_travel_owner_names"])) & set(json.loads(candidate["delta_travel_lisa_names"])):
                 raise ValueError("Chris and Lisa need distinct passenger-name spellings")
             if candidate["vps_leave_target_early_minutes"] <= candidate["vps_leave_target_late_minutes"]:
