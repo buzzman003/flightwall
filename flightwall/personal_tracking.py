@@ -16,6 +16,7 @@ import urllib.parse
 
 from .flight_alerts import SOURCE, fresh_status, gate_follow_window, normalize_operating_status, operating_ident, stamp
 from .flight_watches import tracking_available
+from .gate_checkpoint import GateCheckpoints
 from .mycrew import airport_zone
 from .personal_travel import MAX_RECORDS, _reservation, reservation_schedule
 
@@ -240,6 +241,7 @@ class PersonalFlightTracker:
     """One bounded paid request per interval, after the operating flight."""
     def __init__(self, request, data_dir):
         self.request, self.data_dir = request, data_dir
+        self.checkpoints = GateCheckpoints(data_dir, "reservations")
         self._cache = {}
         self._operating_observation = (None, {})
         self._cursor = 0
@@ -295,6 +297,8 @@ class PersonalFlightTracker:
                     and self._leg(flight) == duty):
                 continue
             provider = self._shared_result(flight).get("provider")
+            if follow_gate and not provider:
+                provider = self.checkpoints.get(flight, None, now)
             if personal_tracking_window(flight, now, provider, follow_gate=follow_gate):
                 yield flight
 
@@ -305,6 +309,10 @@ class PersonalFlightTracker:
         available = tracking_available(self.data_dir, config)
         for flight in self._targets(config, records, now, operating):
             result = self._shared_result(flight)
+            if not result and config.get("flightaware_household_gate_tracking_enabled") is True:
+                saved = self.checkpoints.get(flight, None, now)
+                if saved:
+                    result = {"status": "scheduled", "provider": saved}
             rows.append({**result, "id": flight["id"], "traveler": flight["traveler"],
                          "reservation_status": flight["reservation_status"], "flight": flight,
                          "status": result.get("status", "pending" if available else "unconfigured")})
@@ -331,6 +339,12 @@ class PersonalFlightTracker:
             entry = self._cache.get(key)
             if entry is None:
                 entry = self._cache[key] = {"flight": flight, "result": {}, "next": "status", "retry_at": -math.inf}
+                if config.get("flightaware_household_gate_tracking_enabled") is True:
+                    saved = self.checkpoints.get(flight, None, now)
+                    if saved:
+                        entry.update(result={"status": "scheduled", "provider": saved},
+                                     provider_id=saved["provider_flight_id"],
+                                     terminal=saved["phase"] in {"at_gate", "blocked", "tracking_ended"})
             elif entry["flight"] != flight:
                 entry["result"] = self._shared_result(flight)
                 entry["flight"] = flight
@@ -356,6 +370,8 @@ class PersonalFlightTracker:
                         entry["retry_at"] = tick + 300
                     else:
                         provider = normalize_operating_status(match, flight, now)
+                        if config.get("flightaware_household_gate_tracking_enabled") is True:
+                            self.checkpoints.save(flight, None, provider, now)
                         entry["provider_id"] = provider["provider_flight_id"]
                         entry["result"] = {"status": "scheduled", "provider": provider}
                         if (old.get("live", {}).get("provider_flight_id") == provider["provider_flight_id"]

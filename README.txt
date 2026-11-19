@@ -1,3 +1,22 @@
+FLIGHT WALL 0.4.33 — PRIVATE AGENDA AND HOUSEHOLD RELIABILITY
+
+Under household setup, Chris can enable his private agenda. The board shows
+upcoming entries from his primary Google Calendar and unfinished tasks when
+Chris is Home, Lisa and the children are Away, and guest mode is off.
+Calendar entries use the existing Calendar connection. To include tasks
+created with Google Calendar's Task button, enable the Google Tasks API in
+the same Google Cloud project and approve the separate read-only Google Tasks
+connection under Chris's Google connections. Desktop OAuth setups can run:
+
+  flightwall tasks-authorize --credentials /path/to/desktop-client.json --no-browser
+
+Use the same private loopback tunnel as for Gmail sign-in. A to-do entered as
+a normal calendar event already appears during its scheduled date range.
+Chris can also add and complete local checklist items in household setup.
+To put a Your Dot reminder on the board, ask your dot to put a dated event
+on your connected Google Calendar. Native Dot and Echo reminders stay in
+their own services unless you copy them to a supported source.
+
 FLIGHT WALL 0.4.32 — HOUSEHOLD FLIGHTS AFTER 9 PM
 
 You can keep tracking household flights overnight when either adult has a

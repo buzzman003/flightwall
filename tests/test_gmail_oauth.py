@@ -73,6 +73,44 @@ def join(threads):
         assert not thread.is_alive()
 
 
+@pytest.mark.parametrize("identity, expected", [
+    ({"email": "OWNER@example.test", "verified_email": True}, True),
+    ({"email": "other@example.test", "verified_email": True}, False),
+    ({"email": "owner@example.test", "verified_email": False}, False),
+])
+def test_tasks_desktop_consent_keeps_existing_calendar_and_mail_credentials(setup, identity, expected):
+    from flightwall.agenda_google_tasks import TasksClient
+    from flightwall.gmail_oauth import authorize_tasks
+    data, account, credentials, original = setup
+    calendar_token = account / "google-token.json"
+    original[calendar_token] = b'{"refresh_token":"synthetic-original-calendar-grant"}'
+    calendar_token.write_bytes(original[calendar_token])
+    prior_token = account / "tasks-token.json"
+    prior_token.write_text('{"prior":"tasks"}')
+    on_url, query, _, threads = driver()
+    with (patch.object(TasksClient, "_request", return_value=response(scope=TasksClient.scope + " email")),
+          patch("flightwall.agenda_google_tasks._GoogleAccountInfo._request", return_value=identity) as verify,
+          patch("flightwall.agenda_google_tasks.CalendarClient._api", return_value={"id": "owner@example.test", "primary": True}) as primary):
+        if expected:
+            result = authorize_tasks(data, credentials, False, callback_port=0, timeout=3, on_url=on_url)
+            assert result["person"] == "chris" and result["scopes"] == list(TasksClient.scopes)
+            assert TasksClient(account).connected()
+        else:
+            with pytest.raises(MessageError, match="same Google account"):
+                authorize_tasks(data, credentials, False, callback_port=0, timeout=3, on_url=on_url)
+            assert prior_token.read_text() == '{"prior":"tasks"}'
+    verify.assert_called_once_with("GET", "https://www.googleapis.com/oauth2/v2/userinfo?fields=email,verified_email",
+                                   token="synthetic-gmail-access")
+    primary.assert_called_once_with("/users/me/calendarList/primary", {"fields": "id,primary"})
+    join(threads)
+    assert query["scope"] == [" ".join(TasksClient.scopes)]
+    assert all(path.read_bytes() == content for path, content in original.items())
+    if expected:
+        assert "@example.test" not in (account / "tasks-client.json").read_text() + prior_token.read_text()
+        calendar_token.write_text('{"refresh_token":"synthetic-another-calendar"}')
+        assert not TasksClient(account).connected()
+
+
 def test_loopback_checks_host_state_and_pkce_and_saves_only_separate_gmail_files(setup, capsys):
     data, account, credentials, old = setup
     on_url, query, replies, threads = driver([

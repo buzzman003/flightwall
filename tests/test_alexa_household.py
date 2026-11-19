@@ -53,9 +53,13 @@ class Adapter:
     def list_timers(self):
         return self.store.list_timers()
 
-    def cancel_timer(self, item_id):
-        self.cancels.append(item_id)
-        return self.store.cancel(item_id)
+    def cancel_timer(self, selector):
+        try:
+            result = self.store.cancel(**selector)
+        except TimerError as exc:
+            raise alexa.BoardError(retryable=False, public_message=str(exc)) from None
+        self.cancels.append(result["timer"]["id"])
+        return result
 
     def watch_flight(self, payload):
         self.watches.append(copy.deepcopy(payload))
@@ -243,7 +247,8 @@ class HouseholdVoiceTests(unittest.TestCase):
 
     def test_cancel_mismatched_name_number_does_not_cancel(self):
         self.call("StartTimerIntent", {"TimerLabel": "Tea", "TimerDuration": "PT5M"})
-        self.assertIn("do not match", speech(self.call("CancelTimerIntent", {"TimerNumber": "1", "TimerLabel": "Pasta"})))
+        self.assertIn("do not match", speech(self.call("CancelTimerIntent", {"TimerNumber": "1", "TimerLabel": "Pasta"},
+                                                      request_id="cancel-mismatched")))
         self.assertFalse(self.board.cancels)
 
     def test_no_after_uncertain_timer_does_not_claim_no_write(self):

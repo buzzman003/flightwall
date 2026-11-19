@@ -52,6 +52,18 @@ class TimerTests(unittest.TestCase):
         self.assertEqual(self.store.list_timers(), [])
         self.assertFalse(self.store.cancel(timer["id"])["cancelled"])
 
+    def test_concurrent_numbered_cancellation_replays_original_selection_after_restart(self):
+        first = self.start("Tea", request="tea")["timer"]
+        self.start("Pasta", request="pasta")
+        def cancel(_):
+            return TimerStore(self.root).cancel(number=1, request_id="one-cancel")
+        with ThreadPoolExecutor(max_workers=2) as workers:
+            results = list(workers.map(cancel, range(2)))
+        self.assertEqual(sum(result["cancelled"] for result in results), 1)
+        self.assertTrue(all(result["timer"]["id"] == first["id"] for result in results))
+        self.assertFalse(cancel(0)["cancelled"])
+        self.assertEqual([r["label"] for r in self.store.list_timers()], ["Pasta"])
+
     def test_done_disappears_exactly_five_minutes_after_deadline_without_writing(self):
         timer = self.start(duration=1)["timer"]
         deadline = self.now + timedelta(seconds=1)

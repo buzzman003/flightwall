@@ -342,6 +342,18 @@ class HouseholdManagerTests(unittest.TestCase):
     def patched_api(self):
         return patch.object(CalendarClient, "_api", autospec=True, side_effect=self.api)
 
+    def test_known_calendar_ids_refresh_when_calendar_discovery_is_down(self):
+        def no_discovery(client, path, params):
+            if path == "/users/me/calendarList":
+                raise CalendarError("Calendar discovery unavailable.")
+            return self.api(client, path, params)
+        with patch.object(CalendarClient, "_api", autospec=True, side_effect=no_discovery):
+            result = self.manager.sync()
+        self.assertEqual(result["kids"]["state"], "home")
+        self.assertFalse(result["custody_outlook"]["stale"])
+        self.assertEqual(len(result["flight_snapshot"]["flights"]), 2)
+        self.assertTrue(result["connected_profiles"]["chris"]["verified"])
+
     def test_shared_family_calendar_works_with_chris_only_and_flights_deduplicate(self):
         with self.patched_api():
             result = self.manager.sync()

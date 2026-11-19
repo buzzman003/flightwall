@@ -91,6 +91,9 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
             result["flight_watches"] = [dict(row, live=None, status="stale" if isinstance(row.get("flight"), dict) else "unavailable")
                                         for row in watches if isinstance(row, dict)]
     result["household_context"] = household_context(result, config, now)
+    from .chris_agenda import permitted
+    if not backend_available or not permitted(config, result["household_context"]):
+        result.pop("chris_agenda", None)
     return result
 
 
@@ -144,6 +147,7 @@ def entry_render_state(status, config, entry, now=None):
              "dinner_today_selected": status.get("dinner_today_selected", False),
              "timers": status.get("timers", []), "custody_outlook": status.get("custody_outlook", {}),
              "agenda_page": entry.get("agenda_page", 0),
+             "chris_agenda": status.get("chris_agenda", {}) if view == "chris_agenda" else {},
              "shopping_list": status.get("shopping_list", {}),
              "flight_watches": status.get("flight_watches", []),
              "personal_tracking": status.get("personal_tracking", []),
@@ -1227,8 +1231,6 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
                 report_display_activity(connection, desired_activity)
                 last_activity = now
             activity_view = desired_activity
-            if sleeping and not settings_open and not help_open:
-                frame = Image.new("RGB", frame.size)
             animations_allowed = not (settings_open or help_open or sleeping or error
                                       or config.get("guest_mode") is True or not backend_available)
             guard = (transition_signature(current_status, config, entries, backend_available, wall_now)
@@ -1273,6 +1275,8 @@ def run_gui(connection, *, windowed=False, max_frames=None, on_healthy=None,
                     if show_couple_photo:
                         attach_couple_photo(frame, state, config, couple_photos, display_surface.get_size(),
                                             wall_now, timer_progress, ticker_progress)
+            if sleeping and not (settings_open or help_open):
+                frame = Image.new("RGB", frame.size)
             screen.draw(frame, config)
             if frames == 0 and on_healthy:
                 on_healthy()

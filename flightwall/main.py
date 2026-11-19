@@ -41,6 +41,10 @@ def parser():
     gmail.add_argument("--no-browser", action="store_true")
     gmail.add_argument("--callback-port", type=int, default=8766)
     gmail.add_argument("--person", choices=["chris", "lisa"], default="chris")
+    tasks = commands.add_parser("tasks-authorize", help="Connect Chris's unfinished Google Tasks to his private agenda")
+    tasks.add_argument("--credentials", required=True, type=Path)
+    tasks.add_argument("--no-browser", action="store_true")
+    tasks.add_argument("--callback-port", type=int, default=8766)
     gmail_profile = commands.add_parser("gmail-profile-check", help="Privately verify the selected Gmail account identity")
     gmail_profile.add_argument("--person", choices=["chris", "lisa"], default="chris")
     gmail_profile.add_argument("--expected-email", required=True)
@@ -269,6 +273,10 @@ def main(argv=None):
             from .gmail_oauth import authorize_gmail
             emit(authorize_gmail(args.data_dir, args.credentials, open_browser=not args.no_browser,
                                  callback_port=args.callback_port, person=args.person))
+        elif command == "tasks-authorize":
+            from .gmail_oauth import authorize_tasks
+            emit(authorize_tasks(args.data_dir, args.credentials, open_browser=not args.no_browser,
+                                 callback_port=args.callback_port))
         elif command == "gmail-profile-check":
             from .gmail_oauth import check_gmail_profile
             result = check_gmail_profile(args.data_dir, args.expected_email, person=args.person)

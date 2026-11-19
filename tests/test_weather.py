@@ -94,6 +94,16 @@ class WeatherTests(unittest.TestCase):
         self.assertTrue(night["coverage_complete"])
         self.assertNotIn("forecast", state)
 
+    def test_past_midnight_overnight_does_not_hide_coming_night_low(self):
+        now = datetime(2026, 11, 10, 9, tzinfo=UTC)
+        docs = documents(now)
+        dawn = now.astimezone(ZONE).replace(hour=6)
+        docs[1]["properties"]["periods"].append(period(dawn - timedelta(hours=5), dawn,
+                                                      temperature=41, daytime=False))
+        result, _ = self.poll(docs, now)
+        self.assertEqual(result["today"]["low"], 50)
+        self.assertEqual(result["today"]["low_status"], "available")
+
     def test_evening_future_only_feed_keeps_tonight_low_without_inventing_past_high(self):
         now = datetime(2026, 11, 1, 0, 15, tzinfo=UTC)  # 7:15 PM CDT on October 31
         docs = documents(now)

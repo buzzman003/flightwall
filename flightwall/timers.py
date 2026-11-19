@@ -62,6 +62,13 @@ def _duration(value):
     return value
 
 
+def _request_key(request_id):
+    if (not isinstance(request_id, str) or not 1 <= len(request_id) <= 512 or not request_id.strip()
+            or any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in request_id)):
+        raise TimerError("Use a nonempty request_id of at most 512 characters.")
+    return hashlib.sha256(request_id.encode()).hexdigest()
+
+
 class TimerStore:
     def __init__(self, data_dir, config_getter=None):
         self.data_dir = Path(data_dir)
@@ -158,13 +165,9 @@ class TimerStore:
         source = payload.get("source", "manual")
         if not isinstance(source, str) or source not in {"manual", "alexa"}:
             raise TimerError("Timer source must be manual or alexa.")
-        request_id = payload.get("request_id")
-        if "request_id" in payload and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 512
-                or not request_id.strip() or any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in request_id)):
-            raise TimerError("Use a nonempty request_id of at most 512 characters.")
+        key = _request_key(payload["request_id"]) if "request_id" in payload else None
         intent = {"label": label, "duration_seconds": duration, "source": source}
         digest = hashlib.sha256(json.dumps(intent, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
-        key = hashlib.sha256(request_id.encode()).hexdigest() if request_id is not None else None
         with self._locked():
             now, state = _aware(), self._read()
             state["requests"] = {k: v for k, v in state["requests"].items()
@@ -203,22 +206,55 @@ class TimerStore:
             state = self._read()
         return [self._project(timer, now) for timer in state["timers"] if self._visible(timer, now)]
 
-    def cancel(self, item_id):
-        if not isinstance(item_id, str) or not re.fullmatch(r"[a-f0-9]{24}", item_id):
-            raise TimerError("Use a timer ID returned by the timer list.")
+    def cancel(self, item_id=None, *, number=None, label=None, request_id=None):
+        key = _request_key(request_id) if request_id is not None else None
+        if item_id is not None:
+            if number is not None or label is not None or not isinstance(item_id, str) or not re.fullmatch(r"[a-f0-9]{24}", item_id):
+                raise TimerError("Use a timer ID returned by the timer list.")
+        elif (key is None or number is None and label is None
+              or number is not None and (type(number) is not int or not 1 <= number <= MAX_TIMERS)):
+            raise TimerError("Use a timer number or label and a request_id.")
+        normalized = _label(label).casefold() if label is not None else None
+        digest = hashlib.sha256(json.dumps(["cancel", item_id, number, normalized]).encode()).hexdigest()
         with self._locked():
             now, state = _aware(), self._read()
-            timer = next((item for item in state["timers"] if item["id"] == item_id), None)
-            if timer is None:
-                timer = next((r["timer"] for r in state["requests"].values()
-                              if r["timer"]["id"] == item_id and r["timer"]["cancelled"]), None)
+            requests = {k: v for k, v in state["requests"].items() if _stamp(v["created_at"]) + REQUEST_TTL > now}
+            state["requests"] = requests
+            if key in requests:
+                if requests[key]["payload_hash"] != digest:
+                    raise TimerError("This request_id was used for different timer details. Use a new request_id.")
+                return {"cancelled": False, "timer": self._project(requests[key]["timer"], now)}
+            if key is not None and len(requests) >= MAX_REQUESTS:
+                raise TimerError("The timer request history is full. Retry after older requests expire.")
+            if item_id is not None:
+                timer = next((item for item in state["timers"] if item["id"] == item_id), None)
+                if timer is None:
+                    timer = next((r["timer"] for r in requests.values()
+                                  if r["timer"]["id"] == item_id and r["timer"]["cancelled"]), None)
                 if timer is None:
                     raise TimerError("That timer was not found. List timers to choose its current ID.")
+            else:
+                visible = [item for item in state["timers"] if self._visible(item, now)]
+                if number is not None:
+                    if number > len(visible):
+                        raise TimerError("That timer number is not available. Say list timers to hear the current timers.")
+                    timer = visible[number - 1]
+                    if normalized is not None and normalized != timer["label"].casefold():
+                        raise TimerError("The timer name and number do not match. Say list timers to check.")
+                else:
+                    matches = [item for item in visible if item["label"].casefold() == normalized]
+                    if not matches:
+                        raise TimerError("No Flight Wall timer has that label. Say list timers to hear the current timers.")
+                    if len(matches) > 1:
+                        raise TimerError("More than one timer has that label. Say list timers, then cancel by number.")
+                    timer = matches[0]
             if timer["cancelled"]:
                 return {"cancelled": False, "timer": self._project(timer, now)}
             timer.update(cancelled=True, cancelled_at=_iso(now))
-            for record in state["requests"].values():
-                if record["timer"]["id"] == item_id:
+            for record in requests.values():
+                if record["timer"]["id"] == timer["id"]:
                     record["timer"] = copy.deepcopy(timer)
+            if key is not None:
+                requests[key] = {"payload_hash": digest, "created_at": _iso(now), "timer": copy.deepcopy(timer)}
             self._write(state)
             return {"cancelled": True, "timer": self._project(timer, now)}

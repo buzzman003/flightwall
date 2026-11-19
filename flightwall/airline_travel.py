@@ -198,7 +198,7 @@ def _flight(flight, received):
             "updated_at": received.isoformat(), "traveler": "lisa"}
 
 
-def _itinerary(nodes, aliases, received):
+def _itinerary(nodes, aliases, received, allow_cancellation):
     locator = None
     records = {}
     if len(nodes) > MAX_LEGS * 8:
@@ -210,13 +210,17 @@ def _itinerary(nodes, aliases, received):
             raise DeltaReview(REVIEW)
         if not aliases.intersection(_passenger(person) for person in people):
             continue
-        if _term(node.get("reservationStatus")) != "ReservationConfirmed":
+        status = _term(node.get("reservationStatus"))
+        cancelled = status in {"ReservationCancelled", "ReservationCanceled"}
+        if status != "ReservationConfirmed" and not (allow_cancellation and cancelled):
             raise DeltaReview(REVIEW)
         code = _text(node.get("reservationNumber"), 32).upper()
         if not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{2,31}", code) or locator not in {None, code}:
             raise DeltaReview(REVIEW)
         locator = code
         row = _flight(node.get("reservationFor"), received)
+        if cancelled:
+            row["status"] = "cancelled"
         identity = row["number"], row["origin"], row["destination"], row["start"]
         if identity in records and records[identity] != row:
             raise DeltaReview(REVIEW)
@@ -226,8 +230,8 @@ def _itinerary(nodes, aliases, received):
     return locator, sorted(records.values(), key=lambda row: (row["start"], row["number"]))
 
 
-def parse_airline(payload, lisa_names, received, booking_salt):
-    """Extract confirmed segments for explicitly named travelers in Lisa's mailbox."""
+def parse_airline(payload, lisa_names, received, booking_salt, *, issuer="", allow_cancellation=False):
+    """Extract explicit passenger, booking and leg states from verified markup."""
     if (not isinstance(received, datetime) or received.tzinfo is None or received.utcoffset() is None
             or not isinstance(booking_salt, bytes) or len(booking_salt) != 32):
         raise DeltaReview(REVIEW)
@@ -241,23 +245,44 @@ def parse_airline(payload, lisa_names, received, booking_salt):
             raise DeltaReview(REVIEW)
         nodes = [node for document in markup.json_documents
                  for node in _schema_nodes(json.loads(document, object_pairs_hook=_object))]
-        candidates = [_itinerary(group, aliases, received.astimezone(timezone.utc))
+        candidates = [_itinerary(group, aliases, received.astimezone(timezone.utc), allow_cancellation)
                       for group in (nodes, markup.microdata) if group]
     except (ValueError, TypeError, RecursionError, OverflowError):
         raise DeltaReview(REVIEW) from None
     if not candidates or any(result != candidates[0] for result in candidates[1:]):
         raise DeltaReview(REVIEW)
     locator, records = candidates[0]
-    key = hmac.new(booking_salt, ("airline-reservation-v1\0" + locator).encode(), hashlib.sha256)
+    # The same locator can be reused by unrelated airlines or agencies.
+    key = hmac.new(booking_salt, ("airline-reservation-v2\0" + issuer + "\0" + locator).encode(), hashlib.sha256)
     return {"records": records, "booking_key": key.hexdigest()}
 
 
 # The ticket template sometimes prints an agency station label instead of an
 # IATA code. Accept verified spellings only; never geocode an ambiguous city.
 _CWT_STATIONS = {"FT WALTON BEACH,FL": "VPS", "CHARLOTTE, NC": "CLT", "ST LOUIS/LAMB,MO": "STL"}
-_CWT_CARRIERS = {"AMERICAN AIRLINES": "AA", "DELTA AIR LINES": "DL", "UNITED AIRLINES": "UA"}
+# Marketing names and IATA designators in US DOT airline reporting. Operated-by
+# text can name a different airline and is deliberately outside this grammar.
+_CWT_CARRIERS = {
+    "ALASKA AIRLINES": "AS", "ALLEGIANT AIR": "G4", "AMERICAN AIRLINES": "AA",
+    "AVELO AIRLINES": "XP", "BREEZE AIRWAYS": "MX", "DELTA AIR LINES": "DL",
+    "FRONTIER AIRLINES": "F9", "HAWAIIAN AIRLINES": "HA", "JETBLUE AIRWAYS": "B6",
+    "SOUTHWEST AIRLINES": "WN", "SPIRIT AIRLINES": "NK", "SUN COUNTRY AIRLINES": "SY",
+    "UNITED AIRLINES": "UA",
+}
 _CWT_DATE = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ ]+\d{1,2},[ ]+\d{4}"
 _CWT_SEGMENT = re.compile(r"^[ \t]*Flight[ \t]+(.+?)[ \t]+([0-9]{1,4})[ \t]*$", re.M)
+
+
+def _cwt_carrier(label):
+    label = " ".join(label.upper().split())
+    if label in _CWT_CARRIERS:
+        return _CWT_CARRIERS[label]
+    if re.fullmatch(r"[A-Z0-9]{2}", label, re.ASCII) and not label.isdigit():
+        return label
+    named = re.fullmatch(r"([A-Z ]+) \(([A-Z0-9]{2})\)", label, re.ASCII)
+    if named and _CWT_CARRIERS.get(named[1]) == named[2]:
+        return named[2]
+    raise DeltaReview(REVIEW)
 
 
 def _cwt_station(label):
@@ -275,9 +300,11 @@ def _cwt_clock(value):
     return datetime.strptime(value, "%I:%M %p, %b %d, %Y").isoformat(timespec="minutes")
 
 
-def _cwt_leg(carrier, number, block, received):
+def _cwt_leg(carrier, number, block, received, allow_cancellation):
     status = re.findall(r"^[ \t]*Status[ \t]+([^\r\n]+)$", block, re.M)
-    if len(status) != 1 or status[0].strip().casefold() != "confirmed":
+    label = status[0].strip().casefold() if len(status) == 1 else ""
+    cancelled = label in {"cancelled", "canceled"}
+    if label != "confirmed" and not (allow_cancellation and cancelled):
         raise DeltaReview(REVIEW)
     pairs = re.findall(r"^[ \t]*DEPARTURE[ \t]+ARRIVAL[ \t]*\n[ \t]*([^\n]+)\n[ \t]*([^\n]+)",
                        block, re.M)
@@ -288,13 +315,14 @@ def _cwt_leg(carrier, number, block, received):
         raise DeltaReview(REVIEW)
     origin, destination = map(_cwt_station, stations)
     depart, arrive = map(_cwt_clock, clocks)
-    return _flight({"@type": "Flight", "airline": {"@type": "Airline", "iataCode": _CWT_CARRIERS.get(carrier, carrier)},
+    return _flight({"@type": "Flight", "airline": {"@type": "Airline", "iataCode": _cwt_carrier(carrier)},
                     "flightNumber": number, "departureAirport": {"@type": "Airport", "iataCode": origin},
                     "arrivalAirport": {"@type": "Airport", "iataCode": destination},
-                    "departureTime": depart, "arrivalTime": arrive}, received)
+                    "departureTime": depart, "arrivalTime": arrive}, received) | {
+                        "status": "cancelled" if cancelled else "confirmed"}
 
 
-def parse_cwt_invoice(text, lisa_names, received, booking_salt):
+def parse_cwt_invoice(text, lisa_names, received, booking_salt, *, allow_cancellation=False):
     """Read only the verified columns of an authenticated CWT issued-ticket PDF.
 
     Input must retain the original columns. The caller verifies sender,
@@ -321,7 +349,8 @@ def parse_cwt_invoice(text, lisa_names, received, booking_salt):
     try:
         for position, match in enumerate(segments):
             end = segments[position + 1].start() if position + 1 < len(segments) else len(text)
-            records.append(_cwt_leg(match[1], match[2], text[match.end():end], received.astimezone(timezone.utc)))
+            records.append(_cwt_leg(match[1], match[2], text[match.end():end],
+                                    received.astimezone(timezone.utc), allow_cancellation))
     except (ValueError, TypeError, OverflowError):
         raise DeltaReview(REVIEW) from None
     if len({(row["number"], row["start"], row["origin"], row["destination"]) for row in records}) != len(records):

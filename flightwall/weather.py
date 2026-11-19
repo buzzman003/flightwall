@@ -177,7 +177,10 @@ def _validate_cache_feed(feed, *, hourly):
 def _daily(feed, date, zone, now):
     rows = [row for row in feed.get("periods", []) if _stamp(row["start"]).astimezone(zone).date() == date]
     days = [row for row in rows if row["is_daytime"] is True]
-    nights = [row for row in rows if row["is_daytime"] is False]
+    # A short "Overnight" starting after midnight belongs to yesterday's
+    # night. Today's night is the provider period extending past local noon.
+    noon = datetime.combine(date, daytime(12), zone)
+    nights = [row for row in rows if row["is_daytime"] is False and _stamp(row["end"]) > noon]
     # Ambiguous duplicate daytime/nighttime periods do not invent a high/low.
     day = days[0] if len(days) == 1 else {}
     night = nights[0] if len(nights) == 1 else {}

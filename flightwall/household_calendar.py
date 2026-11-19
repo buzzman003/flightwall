@@ -167,6 +167,27 @@ def _event_versions(events):
     return [*unique.values(), *anonymous]
 
 
+def event_bounds(event, default_timezone):
+    start_data, end_data = event.get("start"), event.get("end")
+    if not isinstance(start_data, dict) or not isinstance(end_data, dict):
+        return None
+    all_day = "date" in start_data and "date" in end_data
+    if all_day and "dateTime" not in start_data and "dateTime" not in end_data:
+        zone = start_data.get("timeZone") or default_timezone
+        start = _midnight(start_data["date"], zone)
+        end = _midnight(end_data["date"], end_data.get("timeZone") or zone)
+    elif "dateTime" in start_data and "dateTime" in end_data and "date" not in start_data and "date" not in end_data:
+        end_value = dict(end_data)
+        if start_data.get("timeZone"):
+            end_value.setdefault("timeZone", start_data["timeZone"])
+        start, end = _event_time(start_data), _event_time(end_value)
+    else:
+        return None
+    if start is None or end is None or end.astimezone(UTC) <= start.astimezone(UTC):
+        return None
+    return start, end, all_day
+
+
 def parse_kids_events(events, default_timezone="UTC"):
     """Retain normalized exact Mom/Dad/parent's-house aliases only."""
     intervals = {}
@@ -176,21 +197,10 @@ def parse_kids_events(events, default_timezone="UTC"):
         parent = {"mom": "Mom", "mom's house": "Mom", "dad": "Dad", "dad's house": "Dad"}.get(normalized)
         if parent is None or event.get("status") == "cancelled":
             continue
-        start_data, end_data = event.get("start"), event.get("end")
-        if not isinstance(start_data, dict) or not isinstance(end_data, dict):
+        bounds = event_bounds(event, default_timezone)
+        if bounds is None:
             continue
-        if "date" in start_data and "date" in end_data and "dateTime" not in start_data and "dateTime" not in end_data:
-            start = _midnight(start_data["date"], start_data.get("timeZone") or default_timezone)
-            end = _midnight(end_data["date"], end_data.get("timeZone") or start_data.get("timeZone") or default_timezone)
-        elif "dateTime" in start_data and "dateTime" in end_data and "date" not in start_data and "date" not in end_data:
-            start_value, end_value = dict(start_data), dict(end_data)
-            if start_data.get("timeZone"):
-                end_value.setdefault("timeZone", start_data["timeZone"])
-            start, end = _event_time(start_value), _event_time(end_value)
-        else:
-            continue
-        if start is None or end is None or end.astimezone(UTC) <= start.astimezone(UTC):
-            continue
+        start, end, _ = bounds
         interval = {"start": _iso(start), "end": _iso(end), "parent": parent,
                     "state": "home" if parent == "Mom" else "away"}
         intervals[(interval["start"], interval["end"], parent)] = interval
@@ -315,12 +325,16 @@ def kids_snapshot(intervals, last_sync, now=None, stale_after=1800, source=""):
         return result
     result["stale"] = False
     active = []
+    upcoming = []
     for interval in intervals:
         try:
             if interval.get("parent") not in ("Mom", "Dad"):
                 continue
-            if _stamp(interval["start"]) <= now.astimezone(UTC) < _stamp(interval["end"]):
+            start, end = _stamp(interval["start"]), _stamp(interval["end"])
+            if start <= now < end:
                 active.append(interval)
+            elif now < start < end:
+                upcoming.append((start, interval["parent"]))
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             continue
     parents = {item["parent"] for item in active}
@@ -330,8 +344,10 @@ def kids_snapshot(intervals, last_sync, now=None, stale_after=1800, source=""):
         result["error"] = "No Mom or Dad event covers the current time."
     else:
         parent = next(iter(parents))
+        boundaries = [_stamp(item["end"]) for item in active]
+        boundaries.extend(start for start, next_parent in upcoming if next_parent != parent)
         result.update(parent=parent, state="home" if parent == "Mom" else "away",
-                      until=_iso(min(_stamp(item["end"]) for item in active)))
+                      until=_iso(min(boundaries)))
     return result
 
 
@@ -718,14 +734,7 @@ class HouseholdCalendars:
 
     def sync(self):
         config, now = dict(self.config_getter()), _now()
-        errors = {}
-        for profile in PROFILES:
-            client = self.client_for(profile)
-            if client.client_path.exists() and client.token_path.exists():
-                try:
-                    self.list_calendars(profile)
-                except CalendarError as error:
-                    errors[profile] = str(error)
+        verified, errors = set(), {}
         with self.lock:
             role_cache = self._read()["flight_roles"]
         roles = self._roles(config)
@@ -734,6 +743,7 @@ class HouseholdCalendars:
             role_cache.pop("mycrew", None)
         mycrew_result = None
         for role, calendar_id, source in roles:
+            discovery_error = None
             if not calendar_id:
                 if role != "primary":
                     role_cache.pop(role, None)
@@ -744,15 +754,15 @@ class HouseholdCalendars:
                         raise CalendarError("Choose one Chris flight calendar by its ID during setup.")
                     calendar_id = matches[0]["id"]
                 except CalendarError as error:
-                    errors["chris"] = str(error)
+                    discovery_error = error
             signature = self._flight_binding(role, str(config.get("calendar_id") or "") if role == "primary" else calendar_id,
                                              source, config)
             previous = role_cache.get(role, {})
             snapshot = previous.get("snapshot") if previous.get("binding") == signature else None
             snapshot = copy.deepcopy(snapshot) if snapshot else _empty_flights({"calendar_name": source})
             try:
-                if "chris" in errors:
-                    raise CalendarError(errors["chris"])
+                if discovery_error is not None:
+                    raise discovery_error
                 include_hotels = bool(config.get("hotel_details_enabled", False) and role != "mycrew")
                 include_leaves = bool(config.get("brief_leave_times_enabled", False) and role == "secondary")
                 include_mycrew = calendar_id == mycrew_id
@@ -763,6 +773,7 @@ class HouseholdCalendars:
                         calendar_id, include_descriptions=include_hotels or include_leaves or include_mycrew)
                     if include_mycrew:
                         mycrew_result = result
+                verified.add("chris")
                 flights = (parse_mycrew_events(result["items"], config["airline"]) if role == "mycrew"
                            else parse_events(result["items"], source))
                 snapshot = {"flights": flights, "last_sync": _iso(now),
@@ -771,6 +782,7 @@ class HouseholdCalendars:
                             "trip_days": parse_mycrew_trip_days(result["items"]) if role == "mycrew" else [],
                             "brief_leaves": parse_brief_leave_notes(result["items"], config.get("timezone")) if include_leaves else []}
             except CalendarError as error:
+                errors["chris"] = str(error)
                 snapshot["error"] = str(error)
             role_cache[role] = {"binding": signature, "snapshot": snapshot}
         # Source notes are transient until all selected flight roles can be
@@ -793,9 +805,8 @@ class HouseholdCalendars:
             family = copy.deepcopy(family)
             profile = config.get("family_calendar_profile", "chris")
             try:
-                if profile in errors:
-                    raise CalendarError(errors[profile])
                 result = self.client_for(profile).get_events(config["family_calendar_id"], now - timedelta(days=2), now + timedelta(days=45))
+                verified.add(profile)
                 children, activities, agenda_policy = _agenda_preferences(self.agenda_path)
                 display_zone = config.get("timezone", "UTC")
                 day = now.astimezone(ZoneInfo(display_zone)).date()
@@ -814,6 +825,17 @@ class HouseholdCalendars:
                               activity_last_sync=_iso(now),
                               last_sync=_iso(now), error=None)
             except CalendarError as error:
+                errors[profile] = str(error)
                 family["error"] = str(error)
             self._update("family", family)
+        for profile in PROFILES:
+            if profile in verified or profile in errors:
+                self._profile_result(profile, None if profile in verified else errors[profile])
+            else:
+                client = self.client_for(profile)
+                if client.client_path.exists() and client.token_path.exists():
+                    try:
+                        self.list_calendars(profile)
+                    except CalendarError:
+                        pass  # list_calendars records discovery failure for setup.
         return self.status()

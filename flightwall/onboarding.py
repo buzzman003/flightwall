@@ -20,8 +20,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .config import private_json
+from .agenda_google_tasks import TasksClient
 
 WIZARD_SETTINGS = frozenset({
+    "chris_agenda_enabled",
     "timezone", "rotation_seconds", "flight_focus_seconds", "flight_window_before_minutes",
     "flight_window_after_minutes", "calendar_id", "calendar_name", "secondary_calendar_id",
     "secondary_calendar_name", "family_calendar_profile", "family_calendar_id", "family_calendar_name",
@@ -50,6 +52,7 @@ SCOPES = {
     "calendar": ("https://www.googleapis.com/auth/calendar.events.readonly",
                  "https://www.googleapis.com/auth/calendar.calendarlist.readonly"),
     "gmail": ("https://www.googleapis.com/auth/gmail.readonly",),
+    "tasks": TasksClient.scopes,
 }
 GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
@@ -225,14 +228,16 @@ class OnboardingRouter:
         private_json(path, records[-100:])
 
     def _account(self, person, service):
-        if person not in PEOPLE or service not in SCOPES:
+        if person not in PEOPLE or service not in SCOPES or (service == "tasks" and person != "chris"):
             raise SetupError("Choose Chris or Lisa and a supported Google connection.")
         directory = self.data_dir / "accounts" / person
-        prefix = "google" if service == "calendar" else "gmail"
+        prefix = "google" if service == "calendar" else service
         return directory / (prefix + "-client.json"), directory / (prefix + "-token.json")
 
     def _saved_authorization(self, person, service):
         client_path, token_path = self._account(person, service)
+        if service == "tasks":
+            return TasksClient(client_path.parent).connected()
         try:
             client, token = json.loads(client_path.read_text()), json.loads(token_path.read_text())
             if not isinstance(client, dict) or not isinstance(token, dict):
@@ -253,7 +258,8 @@ class OnboardingRouter:
             extra = {}
         return {"csrf": session["csrf"], "settings": {k: config.get(k) for k in sorted(WIZARD_SETTINGS - {"health_query", "inspiration_topics"})},
                 "profiles": {person: {"calendar_authorized": self._saved_authorization(person, "calendar"),
-                                      "gmail_authorized": self._saved_authorization(person, "gmail")} for person in PEOPLE},
+                                      "gmail_authorized": self._saved_authorization(person, "gmail"),
+                                      "tasks_authorized": person == "chris" and self._saved_authorization(person, "tasks")} for person in PEOPLE},
                 "openai_key_saved": (self.data_dir / "openai.key").is_file(),
                 "health_query_saved": bool(config.get("health_query")),
                 "inspiration_topics_saved": bool(config.get("inspiration_topics")),
@@ -267,6 +273,9 @@ class OnboardingRouter:
         if not isinstance(patch, dict) or not patch or set(patch) - WIZARD_SETTINGS:
             raise SetupError("Choose supported setup settings to save.")
         patch = dict(patch)
+        if patch.get("chris_agenda_enabled") is True:
+            self._consent(body, "chris")
+            self._record_consent("chris", "private-agenda")
         lisa_imports = ("delta_travel_lisa_mail_enabled", "lisa_airline_mail_enabled", "lisa_ticket_pdfs_enabled")
         enabling = [key for key in lisa_imports if patch.get(key) is True]
         current = self.config_getter()
@@ -375,7 +384,7 @@ class OnboardingRouter:
             staging_path = client_path.with_name(client_path.stem.replace("-client", "-web-client") + ".json")
             client = json.loads(staging_path.read_text())
         except (OSError, ValueError):
-            if service != "gmail":
+            if service not in ("gmail", "tasks"):
                 raise SetupError("Upload the Google Web application client JSON for this account first.") from None
             try:
                 calendar_path, _ = self._account(person, "calendar")
@@ -422,22 +431,38 @@ class OnboardingRouter:
         response = _json_request(GOOGLE_TOKEN, form={"grant_type": "authorization_code", "code": values["code"][0],
                 "redirect_uri": flow["redirect"], "client_id": client["client_id"], "client_secret": client["client_secret"],
                 "code_verifier": flow["verifier"]})
+        client_path, token_path = self._account(flow["person"], flow["service"])
+        if flow["service"] in ("tasks", "gmail"):
+            from .gmail_oauth import _checked_token, _store_pair
+            from .messages import GmailClient, MessageError
+            service = TasksClient if flow["service"] == "tasks" else GmailClient
+            try:
+                token = _checked_token(response, client, service)
+                if service is TasksClient:
+                    client = TasksClient(client_path.parent).verified_client(client, token["access_token"])
+                _store_pair(client_path.parent, client, token, service.prefix)
+            except MessageError as exc:
+                raise SetupError(str(exc)) from None
+        else:
+            self._save_calendar_pair(response, client, client_path, token_path)
+        self._record_consent(flow["person"], flow["service"])
+        self.callbacks.get("setup_refresh", lambda: None)()
+
+    @staticmethod
+    def _save_calendar_pair(response, client, client_path, token_path):
         granted = response.get("scope", "").split() if isinstance(response.get("scope"), str) else []
         access, refresh = response.get("access_token"), response.get("refresh_token")
         try:
             lifetime = int(response.get("expires_in", 0))
         except (ValueError, TypeError):
             lifetime = 0
-        if (set(granted) != set(SCOPES[flow["service"]]) or response.get("token_type", "").casefold() != "bearer"
+        if (set(granted) != set(SCOPES["calendar"]) or response.get("token_type", "").casefold() != "bearer"
                 or not isinstance(access, str) or not 1 <= len(access) <= 16384
                 or not isinstance(refresh, str) or not 1 <= len(refresh) <= 16384 or not 0 < lifetime <= 86400):
             raise SetupError("Google did not grant the exact requested read permissions and offline access. Start again and approve only this connection.")
-        client_path, token_path = self._account(flow["person"], flow["service"])
         private_json(client_path, client)
         private_json(token_path, {"client_id": client["client_id"], "access_token": access, "refresh_token": refresh,
                                   "expires_at": time.time() + lifetime, "scopes": granted})
-        self._record_consent(flow["person"], flow["service"])
-        self.callbacks.get("setup_refresh", lambda: None)()
 
     def handle(self, handler, method, path):
         parsed = urlsplit(path)
@@ -456,7 +481,7 @@ class OnboardingRouter:
                 return True
             if method == "GET" and route == "/setup/oauth/callback":
                 self._oauth_complete(parsed.query)
-                self._reply(handler, 200, '<!doctype html><meta charset="utf-8"><title>Account connected</title><p>Your Google read authorization is saved. Return to setup to list and choose the actual calendars.</p><a href="/setup">Return to Flight Wall setup</a>', content_type="text/html; charset=utf-8")
+                self._reply(handler, 200, '<!doctype html><meta charset="utf-8"><title>Account connected</title><p>Your Google read authorization is saved. Return to household setup to review your connection.</p><a href="/setup">Return to Flight Wall setup</a>', content_type="text/html; charset=utf-8")
                 return True
             if method == "POST" and handler.headers.get("Origin") != origin:
                 self._reply(handler, 403, {"error": "Setup requests must come from this same browser address."})
@@ -513,6 +538,18 @@ class OnboardingRouter:
                     return True
                 if route == "/setup/settings":
                     result = self._save_settings(body)
+                elif route == "/setup/chris-tasks":
+                    self._consent(body, "chris")
+                    action = body.get("action")
+                    if action not in ("list", "add", "complete"):
+                        raise SetupError("Choose a supported task action.")
+                    try:
+                        if action == "list":
+                            result = {"tasks": self.callbacks["setup_tasks"]()}
+                        else:
+                            result = self.callbacks["setup_task_edit"](action, body)
+                    except ValueError as exc:
+                        raise SetupError(str(exc)) from None
                 elif route == "/setup/display/focus":
                     if body or parsed.query:
                         raise SetupError("The display focus action takes no parameters.")

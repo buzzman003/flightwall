@@ -25,6 +25,7 @@ from .presence import PresenceStore
 from .messages import MessageFeeds
 from .content import SourceContent
 from .household_policy import household_context, filter_personal_items, card_visible
+from .chris_agenda import ChrisAgenda, permitted as chris_agenda_permitted
 from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip_preview
@@ -37,7 +38,7 @@ from .weather import WeatherFeed
 from .trip_weather import TripWeatherFeed, preview_airports, select_airports, trip_weather_eligible
 from .flight_environment import FlightEnvironmentFeed, _radar_context as radar_context
 from .flight_context import build_flight_context
-from .flight_alerts import SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fresh_status, stamp as flight_stamp
+from .flight_alerts import SOURCE as FLIGHT_SOURCE, fresh_status, stamp as flight_stamp
 
 
 def choose_flight(snapshot, config, now=None):
@@ -99,6 +100,7 @@ class Runtime:
         self.shopping_list = ShoppingListStore(data_dir)
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
+        self.chris_agenda = ChrisAgenda(data_dir, self.config.get, lambda: self.household.client_for("chris"))
         self.messages = MessageFeeds(data_dir, self.config.get)
         self.content = SourceContent(data_dir, self.config.get)
         self.updater_status = {"status": "disabled"}
@@ -110,6 +112,7 @@ class Runtime:
         self._mail_lock = threading.Lock()
         self._content_lock = threading.Lock()
         self._mail_worker = None
+        self._agenda_worker = None
         self._content_worker = None
         self._weather_worker = None
         self._trip_weather_worker = None
@@ -180,7 +183,7 @@ class Runtime:
         config = self.config.get()
         snapshot = attach_commute_plan(self.snapshot(), self.data_dir, config, now)
         flight = choose_flight(snapshot, config, now)
-        operating = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
+        operating = self.feeds.select_operating_flight(snapshot, config, now)
         operating_status = self.feeds.operating_status_for_config(config, operating, now)
         recent_arrival = self._vps_arrival(snapshot, config, operating, operating_status, now)
         if ((operating_status.get("status") == "fresh"
@@ -304,6 +307,11 @@ class Runtime:
             status["shopping_list"] = {"items": [], "enabled": False, "visible": False}
         context = household_context(status, config, now)
         status["household_context"] = context
+        if snapshot.get("demo") is False and chris_agenda_permitted(config, context):
+            try:
+                status["chris_agenda"] = self.chris_agenda.snapshot(now)
+            except (OSError, ValueError):
+                pass
         status["personal_travel"] = []
         status["personal_tracking"] = []
         if (snapshot.get("demo") is False and config.get("guest_mode") is False
@@ -412,6 +420,7 @@ class Runtime:
     def status(self, now=None):
         """Maintenance/MCP never receives Lisa's private cards or mailbox data."""
         status = self.display_status(now)
+        status.pop("chris_agenda", None)
         status.pop("personal_travel", None)
         status.pop("personal_tracking", None)
         status["messages"]["lisa"] = []
@@ -488,7 +497,8 @@ class Runtime:
         return self.timers.start(payload)
 
     def cancel_timer(self, payload):
-        return self.timers.cancel(payload.get("id"))
+        return self.timers.cancel(payload.get("id"), number=payload.get("number"), label=payload.get("label"),
+                                  request_id=payload.get("request_id"))
 
     def get_shopping_list(self):
         config = self.config.get()
@@ -618,12 +628,17 @@ class Runtime:
             tick = time.monotonic()
             if tick - last_sync >= 300 or self.refresh_event.is_set():
                 self.refresh_event.clear()
+                if config.get("chris_agenda_enabled") and (self._agenda_worker is None or not self._agenda_worker.is_alive()):
+                    self._agenda_worker = threading.Thread(target=self.chris_agenda.refresh,
+                                                           args=(datetime.now(timezone.utc),),
+                                                           name="flightwall-chris-agenda", daemon=True)
+                    self._agenda_worker.start()
                 self.sync()
                 last_sync = time.monotonic()
             now = datetime.now(timezone.utc)
             snapshot = self.snapshot()
             roster_selected = choose_flight(snapshot, config, now)
-            selected = choose_tracking_flight(snapshot, config, now, self.feeds.operating_status)
+            selected = self.feeds.select_operating_flight(snapshot, config, now)
             provider = self.feeds.operating_status_for_config(config, selected, now)
             recent = self._vps_arrival(snapshot, config, selected, provider, now)
             context = household_context({"presence": self.presence.snapshot(now), "snapshot": snapshot,
@@ -802,6 +817,7 @@ class Runtime:
             "update_presence": self.update_presence,
             "receive_notification": self.receive_notification,
             "setup_get": self.setup_get, "setup_save": self.setup_save,
+            "setup_tasks": self.chris_agenda.tasks, "setup_task_edit": self.chris_agenda.edit,
             "get_dinner_options": lambda: self.dinner_options.status(include_recipes=True),
             "focus_display": lambda: self._focus_display(),
             "setup_calendars": self.household.list_calendars,
@@ -838,6 +854,8 @@ class Runtime:
             self.remote.stop()
         if self.worker:
             self.worker.join(timeout=2)
+        if self._agenda_worker:
+            self._agenda_worker.join(timeout=2)
         if self._weather_worker:
             self._weather_worker.join(timeout=2)
         if self._trip_weather_worker:

@@ -55,6 +55,7 @@ def airport(now=NOW):
 
 def weather_state(now=NOW):
     return {"demo": False, "backend_available": True, "now": now.isoformat(), "view": "trip_weather",
+            "last_sync": now.isoformat(),
             "flights": [FLIGHT | {"start": (now + timedelta(days=1)).isoformat(),
                                    "end": (now + timedelta(days=1, hours=2)).isoformat()}],
             "presence": {"chris": {"state": "home", "stale": False, "last_seen": now.isoformat()}},
@@ -154,6 +155,9 @@ class TripWeatherViewTests(unittest.TestCase):
                 self.assertNotIn("68F / VFR", labels)
                 self.assertIn("CURRENT CONDITIONS UNKNOWN", labels)
         for state_changes, config in (({"backend_available": False}, CONFIG), ({"demo": True}, CONFIG),
+                                      ({"last_sync": None}, CONFIG),
+                                      ({"last_sync": (NOW - timedelta(hours=1)).isoformat()}, CONFIG),
+                                      ({"error": "calendar unavailable"}, CONFIG),
                                       ({}, CONFIG | {"demo": True}), ({}, CONFIG | {"trip_weather_enabled": False})):
             with self.subTest(state=state_changes, config=config):
                 labels, _ = capture(weather_state() | state_changes, config)

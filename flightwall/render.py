@@ -224,6 +224,8 @@ def _footer(draw, state, view, now, tz, personal_item=None):
         status, color = ("SCHEDULE UNAVAILABLE / UNKNOWN IS NOT AWAY", AMBER) if outlook.get("stale", True) else ("FAMILY PLAN / CALENDAR SCHEDULE", MUTED)
     elif view == "today_activities":
         status, color = "FAMILY CALENDAR / LOCAL TIME", MUTED
+    elif view == "chris_agenda":
+        status, color = "", MUTED
     elif view == "couple_photos":
         status, color = "", MUTED
     elif view == "flight_watch":
@@ -1534,6 +1536,12 @@ def render_frame(state, config, size=BASE_SIZE):
         _custody_outlook(draw, state, config, now)
     elif view == "today_activities":
         _today_activities(draw, state, config, now)
+    elif view == "chris_agenda":
+        from .chris_agenda import draw_agenda
+        if not draw_agenda(draw, state, config, now):
+            view = "home"
+            state = dict(state, view="home")
+            _home(draw, state, config, now)
     elif view == "couple_photos":
         _header(draw, state, now, "TOGETHER")
     elif view == "local_visit":

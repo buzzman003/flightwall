@@ -409,6 +409,11 @@ def build_rotation(status, config, now=None):
                 and timedelta(0) <= now - issued < timedelta(seconds=900)):
             add("airport_alerts")
     outlook = status.get("custody_outlook") or {}
+    from .chris_agenda import PER_PAGE, permitted, visible_rows
+    if status.get("backend_available", True) is True and snapshot.get("demo") is False and permitted(config, context):
+        events, tasks = visible_rows(status.get("chris_agenda"), now)
+        for page in range(math.ceil(max(len(events), len(tasks)) / PER_PAGE)):
+            add("chris_agenda", f"chris_agenda:{page}", agenda_page=page)
     if config.get("custody_outlook_enabled", True) and outlook.get("days"):
         add("custody_outlook")
     if snapshot.get("demo") is not True and card_enabled("today_activities", config):

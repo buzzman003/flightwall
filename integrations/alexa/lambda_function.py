@@ -197,12 +197,12 @@ class BoardClient:
             raise BoardError()
         return rows
 
-    def cancel_timer(self, item_id):
-        result = self._request("/api/v1/timers/cancel", {"id": item_id})
+    def cancel_timer(self, payload):
+        result = self._request("/api/v1/timers/cancel", payload)
         if type(result.get("cancelled")) is not bool:
             raise BoardError()
         timer = _timer(result.get("timer"))
-        if timer["id"] != item_id or not timer["cancelled"]:
+        if not timer["cancelled"]:
             raise BoardError()
         return result
 
@@ -872,28 +872,22 @@ def _list_timers(client):
     return _complete(" ".join(entries))
 
 
-def _cancel_timer(client, values):
+def _cancel_timer(client, values, request):
     label, number = values.get("TimerLabel"), values.get("TimerNumber")
     if label is None and number is None:
         return _speech("Which Flight Wall timer? Say, cancel the pasta timer, or cancel timer number one.")
-    timers = client.list_timers()
+    selector = {"request_id": _request_id(request.get("requestId"))}
     if number is not None:
-        if not isinstance(number, str) or not re.fullmatch(r"[1-5]", number) or int(number) > len(timers):
+        if not isinstance(number, str) or not re.fullmatch(r"[1-5]", number):
             return _speech("That timer number is not available. Say list timers to hear the current timers.")
-        matches = [timers[int(number) - 1]]
-        if label is not None and _timer_label(label).casefold() != matches[0]["label"].casefold():
-            return _speech("The timer name and number do not match. Say list timers to check.")
-    else:
-        normalized = _timer_label(label).casefold()
-        matches = [timer for timer in timers if timer["label"].casefold() == normalized]
-    if not matches:
-        return _speech("No Flight Wall timer has that label. Say list timers to hear the current timers.")
-    if len(matches) != 1:
-        return _speech("More than one timer has that label. Say list timers, then cancel timer number one, or another number.")
-    timer = _timer(matches[0])
+        selector["number"] = int(number)
+    if label is not None:
+        selector["label"] = _timer_label(label)
     try:
-        client.cancel_timer(timer["id"])
-    except BoardError:
+        timer = _timer(client.cancel_timer(selector).get("timer"))
+    except BoardError as exc:
+        if exc.public_message:
+            return _speech(exc.public_message)
         return _speech("I could not confirm that cancellation. Say list timers to check before trying again.", end=True)
     return _complete(f"Cancelled the {timer['label']} timer on Flight Wall.")
 
@@ -1072,7 +1066,7 @@ def lambda_handler(event, lambda_context):
         if name == "ListTimersIntent":
             return _list_timers(client)
         if name == "CancelTimerIntent":
-            return _cancel_timer(client, values)
+            return _cancel_timer(client, values, request)
         if name in ("StartTimerIntent", "SetTimerLabelIntent", "SetTimerDurationIntent") or (
                 name == "SetDurationIntent" and pending and pending["kind"] == "timer"):
             if "Duration" in values:

@@ -463,6 +463,44 @@ def test_gate_follow_keeps_original_flight_through_provider_timetable_revisions(
     assert match_personal_flight(data(other, shifted), target, provider_id=shifted["fa_flight_id"]) == ("matched", shifted)
 
 
+@pytest.mark.parametrize("operating", [False, True])
+def test_restart_keeps_verified_gate_receipt_for_a_severely_delayed_flight(tmp_path, operating):
+    from flightwall.personal_tracking_view import _arrival_clock
+    config = GATE | {"flightaware_quiet_hours_enabled": False}
+    (tmp_path / "flightaware.key").write_text("synthetic-key")
+    target = flight()
+    itinerary = [] if operating else [record()]
+    roster = {"flights": [target] if operating else [], "demo": False}
+    late = NOW + timedelta(hours=9)
+    planned = provider(actual_off=None, estimated_in=late.isoformat())
+    landed = provider(actual_on=late.isoformat(), estimated_in=(late + timedelta(minutes=10)).isoformat())
+    gate = late + timedelta(minutes=3)
+    arrival = landed | {"actual_in": gate.isoformat()}
+    for when, reply in ((NOW, planned), (late, landed), (gate, arrival), (gate + timedelta(minutes=11), None)):
+        feed = FlightFeeds(tmp_path)
+        chosen = feed.select_operating_flight(roster, config, when)
+        assert (chosen == target) == operating
+        with patch("flightwall.feeds.utcnow", return_value=when), patch("flightwall.feeds.request_json",
+                side_effect=[data(reply)] if reply else []) as network:
+            feed.poll(config, chosen, personal_flights=itinerary)
+            assert network.call_count == int(reply is not None)
+            if when >= gate:
+                if operating:
+                    published = feed.operating_status_for_config(config, target, when)
+                    assert published["times"]["actual_in"] == gate.isoformat()
+                else:
+                    row, = feed.personal_tracking.snapshot(config, itinerary, when)
+                    assert _arrival_clock(row, when) == ("AT GATE", gate)
+    receipt, = tmp_path.glob("flight-gates-*.json")
+    raw = receipt.read_text()
+    assert all(value not in raw for value in ("latitude", "longitude", "lisa", target["id"], "synthetic-key"))
+    restart = FlightFeeds(tmp_path)
+    assert not restart.personal_tracking.snapshot(config | {"guest_mode": True}, itinerary, gate)
+    with patch("flightwall.feeds.utcnow", return_value=gate + timedelta(days=4)):
+        restart.poll(config, None, personal_flights=[])
+    assert not receipt.exists()
+
+
 def test_lisa_on_operating_flight_shares_its_fix_and_gate_clock_with_no_extra_requests(tmp_path):
     from flightwall.personal_tracking_view import _arrival_clock
     feed = FlightFeeds(tmp_path)

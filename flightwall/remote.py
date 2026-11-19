@@ -237,7 +237,7 @@ class RemoteServer:
                 return self._redact(callback())
             allowed = {
                 "start_timer": {"label", "duration_seconds", "request_id", "source"},
-                "cancel_timer": {"id", "request_id"},
+                "cancel_timer": {"id", "request_id", "label", "number"},
                 "create_flight_watch": {"airline", "flight_number", "date", "request_id", "source"},
                 "add_shopping_item": {"item", "request_id", "source"},
                 "remove_shopping_item": {"item", "id", "request_id", "source"},

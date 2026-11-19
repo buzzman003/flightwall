@@ -504,3 +504,19 @@ Version 0.4.10 integration:
   uncertain attempt automatically. No mail is sent when unconfigured.
 - Optional boot service uses the stable Ports launcher once per boot; it
   does not bypass staged activation, rollback, or the existing GUI lock.
+
+## Private agenda and reservation changes (0.4.33)
+
+Chris separately opts in to a TV-only agenda from his primary calendar for
+the next seven days. Google Tasks requires a separate read-only grant under
+Chris's account. Only unfinished titles are read into memory. Flight Wall
+checklist items live outside releases and may be completed in owner setup.
+The TV rechecks known Chris Home, Lisa Away and children Away on every frame.
+Guest mode, stale observations and an unavailable backend hide the agenda.
+Agenda data must stay out of maintenance status, MCP and Alexa responses.
+
+Authenticated, unambiguous carrier or agency changes reconcile against the
+traveler and exact booking leg. Unresolved changes require owner review.
+Gate-tracking checkpoints contain a short-lived exact flight match and
+provider clocks. Every paid request remains subject to household consent,
+presence and budget. The overnight exception applies only to household flights.

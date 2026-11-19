@@ -173,12 +173,21 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-class GmailClient:
-    """Fixed-endpoint Gmail read-only client; OAuth consent is owned by setup."""
+class GoogleReadClient:
+    """Shared read-only transport with a fixed Google service and separate credentials."""
+    label: str
+    prefix: str
+    scope: str
+    base_url: str
+
+    @classmethod
+    def granted_scopes(cls, scopes):
+        return isinstance(scopes, list) and all(isinstance(s, str) for s in scopes) and set(scopes) == {cls.scope}
+
     def __init__(self, account_dir):
         self.account_dir = Path(account_dir)
-        self.client_path = self.account_dir / "gmail-client.json"
-        self.token_path = self.account_dir / "gmail-token.json"
+        self.client_path = self.account_dir / f"{self.prefix}-client.json"
+        self.token_path = self.account_dir / f"{self.prefix}-token.json"
         self.opener = build_opener(_NoRedirect())
 
     @staticmethod
@@ -202,7 +211,7 @@ class GmailClient:
                 raise ValueError()
             return client
         except (OSError, ValueError, TypeError, AttributeError):
-            raise MessageError("Connect this person's Gmail in setup; calendar consent does not grant Gmail access.") from None
+            raise MessageError(f"Connect this person's {self.label} in setup; calendar consent does not grant {self.label} access.") from None
 
     def _token(self):
         try:
@@ -210,13 +219,13 @@ class GmailClient:
             if not isinstance(token.get("access_token"), str) or not token["access_token"] or len(token["access_token"]) > 16384:
                 raise ValueError()
             scopes = token.get("scopes")
-            if not isinstance(scopes, list) or GMAIL_SCOPE not in scopes:
+            if not self.granted_scopes(scopes):
                 raise ValueError()
             if token.get("client_id") != self._client()["client_id"]:
                 raise ValueError()
             return token
         except (OSError, ValueError, TypeError):
-            raise MessageError("This person has not granted Gmail read-only access. Connect Gmail separately in setup.") from None
+            raise MessageError(f"This person has not granted {self.label} read-only access. Connect {self.label} separately in setup.") from None
 
     def connected(self):
         try:
@@ -226,8 +235,8 @@ class GmailClient:
             return False
 
     def _request(self, method, url, *, token=None, form=None):
-        if not (url == TOKEN_URL or url.startswith(GMAIL_URL + "/")):
-            raise MessageError("Unsupported Gmail endpoint.")
+        if not (url == TOKEN_URL or url.startswith(self.base_url + "/")):
+            raise MessageError(f"Unsupported {self.label} endpoint.")
         headers = {"Accept": "application/json", "User-Agent": "FlightWall/0.3"}
         data = None
         if token:
@@ -251,10 +260,10 @@ class GmailClient:
             if status == 401:
                 raise _Unauthorized() from None
             if status in {400, 403}:
-                raise MessageError("Gmail access was denied. Check this person's consent, Gmail API setup and authorization status.") from None
-            raise MessageError("Gmail retrieval is unavailable; summaries may be stale.") from None
+                raise MessageError(f"{self.label} access was denied. Check this person's consent, {self.label} API setup and authorization status.") from None
+            raise MessageError(f"{self.label} retrieval is unavailable; summaries may be stale.") from None
         except (URLError, OSError, ValueError, UnicodeError):
-            raise MessageError("Gmail retrieval is unavailable; summaries may be stale.") from None
+            raise MessageError(f"{self.label} retrieval is unavailable; summaries may be stale.") from None
 
     def _access_token(self, refresh=False):
         client, token = self._client(), self._token()
@@ -266,45 +275,37 @@ class GmailClient:
         if valid and not refresh:
             return token["access_token"]
         if not isinstance(token.get("refresh_token"), str) or not token["refresh_token"]:
-            raise MessageError("Gmail offline access has expired. Reconnect this person's Gmail in setup.")
+            raise MessageError(f"{self.label} offline access has expired. Reconnect this person's {self.label} in setup.")
         form = {"client_id": client["client_id"], "refresh_token": token["refresh_token"], "grant_type": "refresh_token"}
         if client.get("client_secret"):
             form["client_secret"] = client["client_secret"]
         try:
             response = self._request("POST", TOKEN_URL, form=form)
         except _Unauthorized:
-            raise MessageError("Gmail authorization expired. Reconnect this person's Gmail in setup.") from None
+            raise MessageError(f"{self.label} authorization expired. Reconnect this person's {self.label} in setup.") from None
         access = response.get("access_token")
         token_type = response.get("token_type", "Bearer")
         scopes = response.get("scope", " ".join(token["scopes"]))
         scopes = scopes.split() if isinstance(scopes, str) else []
         lifetime = response.get("expires_in", 3600)
         refresh_token = response.get("refresh_token") or token["refresh_token"]
-        if not isinstance(access, str) or not access or len(access) > 16384 or GMAIL_SCOPE not in scopes or isinstance(lifetime, bool) or not isinstance(token_type, str) or token_type.casefold() != "bearer" or not isinstance(refresh_token, str) or not refresh_token or len(refresh_token) > 16384:
-            raise MessageError("Google did not return valid Gmail read-only authorization. Reconnect Gmail in setup.")
+        if not isinstance(access, str) or not access or len(access) > 16384 or not self.granted_scopes(scopes) or isinstance(lifetime, bool) or not isinstance(token_type, str) or token_type.casefold() != "bearer" or not isinstance(refresh_token, str) or not refresh_token or len(refresh_token) > 16384:
+            raise MessageError(f"Google did not return valid {self.label} read-only authorization. Reconnect {self.label} in setup.")
         try:
             lifetime = int(lifetime)
             if not 1 <= lifetime <= 86400:
                 raise ValueError()
         except (ValueError, TypeError, OverflowError):
-            raise MessageError("Google returned an invalid Gmail token expiry. Reconnect Gmail in setup.") from None
-        token = {"client_id": client["client_id"], "access_token": access,
-                 "refresh_token": refresh_token,
-                 "expires_at": time.time() + lifetime, "scopes": scopes}
-        private_json(self.token_path, token)
+            raise MessageError(f"Google returned an invalid {self.label} token expiry. Reconnect {self.label} in setup.") from None
+        lock = PersonalStore(self.account_dir, lambda: {})
+        lock.lock_path = self.account_dir / f"{self.prefix}-auth.lock"
+        with lock._locked():
+            if self._client() != client or self._token() != token:
+                raise MessageError(f"{self.label} credentials changed during refresh. Retry with the current account.")
+            updated = {**token, "access_token": access, "refresh_token": refresh_token,
+                       "expires_at": time.time() + lifetime, "scopes": scopes}
+            private_json(self.token_path, updated)
         return access
-
-    def api(self, path, parameters):
-        if not re.fullmatch(r"/(?:messages|threads)(?:/[A-Za-z0-9_-]{1,256})?", path) or path in {"/messages/send", "/messages/modify", "/messages/trash", "/messages/delete", "/messages/batchDelete", "/messages/batchModify"}:
-            raise MessageError("Unsupported Gmail read operation.")
-        url = GMAIL_URL + path + "?" + urlencode(parameters, doseq=True)
-        return self._get(url)
-
-    def ticket_attachment(self, message_id, attachment_id):
-        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", message_id)
-                or not re.fullmatch(r"[A-Za-z0-9_-]{1,1024}", attachment_id)):
-            raise MessageError("Invalid ticket attachment.")
-        return self._get(f"{GMAIL_URL}/messages/{message_id}/attachments/{attachment_id}?fields=size,data")
 
     def _get(self, url):
         try:
@@ -313,7 +314,26 @@ class GmailClient:
             try:
                 return self._request("GET", url, token=self._access_token(refresh=True))
             except _Unauthorized:
-                raise MessageError("Gmail authorization expired. Reconnect this person's Gmail in setup.") from None
+                raise MessageError(f"{self.label} authorization expired. Reconnect this person's {self.label} in setup.") from None
+
+
+class GmailClient(GoogleReadClient):
+    label = "Gmail"
+    prefix = "gmail"
+    scope = GMAIL_SCOPE
+    base_url = GMAIL_URL
+
+    def api(self, path, parameters):
+        if not re.fullmatch(r"/(?:messages|threads)(?:/[A-Za-z0-9_-]{1,256})?", path) or path in {"/messages/send", "/messages/modify", "/messages/trash", "/messages/delete", "/messages/batchDelete", "/messages/batchModify"}:
+            raise MessageError("Unsupported Gmail read operation.")
+        url = self.base_url + path + "?" + urlencode(parameters, doseq=True)
+        return self._get(url)
+
+    def ticket_attachment(self, message_id, attachment_id):
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,256}", message_id)
+                or not re.fullmatch(r"[A-Za-z0-9_-]{1,1024}", attachment_id)):
+            raise MessageError("Invalid ticket attachment.")
+        return self._get(f"{self.base_url}/messages/{message_id}/attachments/{attachment_id}?fields=size,data")
 
 
 class _Unauthorized(Exception):

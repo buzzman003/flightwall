@@ -87,8 +87,13 @@ class AlexaBoardEndToEndTests(unittest.TestCase):
                     self.assertEqual(len(runtime.timers.list_timers(NOW)), 1)
                     listed = alexa.lambda_handler(event("ListTimersIntent", "timer-list"), None)
                     self.assertIn("synthetic pasta", listed["response"]["outputSpeech"]["text"])
-                    alexa.lambda_handler(event("CancelTimerIntent", "timer-cancel", {"TimerNumber": "1"}), None)
-                    self.assertEqual(runtime.timers.list_timers(NOW), [])
+                    alexa.lambda_handler(event("StartTimerIntent", "timer-next", {"TimerLabel": "Tea", "TimerDuration": "PT5M"}), None)
+                    cancellation = event("CancelTimerIntent", "timer-cancel", {"TimerNumber": "1"})
+                    for _ in range(2):
+                        response = alexa.lambda_handler(cancellation, None)
+                        self.assertIn("synthetic pasta", response["response"]["outputSpeech"]["text"])
+                    self.assertEqual([row["label"] for row in runtime.timers.list_timers(NOW)], ["Tea"])
+                    alexa.lambda_handler(event("CancelTimerIntent", "timer-next-cancel", {"TimerLabel": "Tea"}), None)
 
                     for index in range(5):
                         started = alexa.lambda_handler(event("StartTimerIntent", "limit-start-" + str(index),

@@ -226,6 +226,21 @@ def test_pricing_requires_review_after_ninety_days_and_no_credits_are_assumed(tm
     assert read(tmp_path)["reserved_milliusd"] == 5
 
 
+@pytest.mark.parametrize("rollover", [False, True])
+def test_a_reviewed_price_schedule_migrates_existing_spend_under_the_same_lock(tmp_path, rollover):
+    feed = FlightFeeds(tmp_path)
+    first = NOW.replace(month=11, day=20)
+    second = first + timedelta(days=15 if rollover else 1)
+    with patch("flightwall.feeds.utcnow", return_value=first):
+        feed._allow_paid_request(config(), LOOKUP, purpose="nearby")
+    with patch("flightwall.feeds.utcnow", return_value=second), patch("flightwall.feeds.PRICING_CHECKED", second.date()):
+        feed._allow_paid_request(config(), POSITION)
+    saved = read(tmp_path)
+    assert saved["reserved_milliusd"] == (10 if rollover else 15)
+    assert saved["nearby_reserved_milliusd"] == (0 if rollover else 5)
+    assert saved["pricing_checked"] == second.date().isoformat()
+
+
 def test_os_lock_prevents_separate_processes_from_overspending(tmp_path):
     code = """
 import sys

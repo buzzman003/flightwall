@@ -72,7 +72,7 @@ def test_local_opt_in_and_rotation_ignore_non_jpegs_and_release_picture_when_hid
     assert deck.select(True) is None
 
 
-def test_featured_group_changes_each_local_monday_and_is_stable_after_relaunch(album):
+def test_whole_album_rotates_without_a_repeat_and_weekly_order_survives_relaunch(album):
     for number in range(1, 9):
         Image.new("RGB", (32, 18), (number * 25, 10, 20)).save(album / f"{number:02d}.jpg")
     sunday = NOW.date() + timedelta(days=6 - NOW.weekday())
@@ -80,19 +80,19 @@ def test_featured_group_changes_each_local_monday_and_is_stable_after_relaunch(a
 
     def cards(deck, tick, day):
         assert deck.refresh(tick, True, day)
-        found = set()
-        for _ in range(4):
+        found = []
+        for _ in range(8):
             deck.select(False)
             picture = deck.select(True)
-            found.add(round(picture.getpixel((0, 0))[0] / 25))
+            found.append(round(picture.getpixel((0, 0))[0] / 25))
         return found
 
     deck = LocalPhotoDeck(album.parent)
     previous_week = cards(deck, 0, sunday)
-    new_week = cards(deck, .1, monday)
-    assert len(previous_week) == len(new_week) == 4
-    assert previous_week.isdisjoint(new_week)
-    assert previous_week | new_week == set(range(1, 9))
+    new_week = cards(LocalPhotoDeck(album.parent), .1, monday)
+    assert set(previous_week) == set(new_week) == set(range(1, 9))
+    assert previous_week != new_week
+    assert cards(deck, .1, monday)[0] != previous_week[-1]
     assert cards(LocalPhotoDeck(album.parent), 5, monday + timedelta(days=2)) == new_week
 
 

@@ -64,7 +64,7 @@ def test_zero_delta_matches_are_healthy_over_real_http_without_fetches_or_mailbo
     thread.start()
     now = datetime.now(timezone.utc)
     try:
-        with patch("flightwall.messages.GMAIL_URL", f"http://127.0.0.1:{server.server_port}"):
+        with patch.object(feed.client, "base_url", f"http://127.0.0.1:{server.server_port}"):
             # The old field selection reproduces the real failure rather than
             # relaxing the shared Gmail client's JSON/metadata requirements.
             with pytest.raises(MessageError, match="unavailable"):

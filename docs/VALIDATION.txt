@@ -1,3 +1,43 @@
+0.4.33 AUDIT REPAIRS AND PRIVATE AGENDA
+
+The Windows recipe, timer, voice bridge, boot and weather regression run
+passed 138 tests with 70 subtests. One platform-specific test was skipped.
+The run used synthetic messages, forecasts and requests, including real
+loopback HTTP through the Alexa bridge. Duplicate and simultaneous requests
+for the same numbered timer left the following timer intact. SMTP tests
+confirmed a retry after a pre-submission failure and suppression after an
+uncertain submission. The tests sent no household email.
+
+Weather fixtures cover a stale roster at home the day before a trip and a
+forecast issued after midnight containing both the remainder of last night
+and the upcoming night. A separate read-only request to the public NWS SJU
+airport grid returned 14 forecast periods. It used the airport location.
+Compare a real trip forecast against the airport-local forecast window.
+
+The agency parser tests exercise named marketing carriers, including names
+with an alphanumeric designator, and an explicit two-character flight
+designator on a ticket. A conflicting name and code, ambiguous station, or
+operated-by-only label needs review. The agency and structured airline
+parsers passed 62 synthetic cases. The source for US marketing names is
+the US Department of Transportation's Domestic Airline Consumer Airfare
+Report, with carrier statistics from the Bureau of Transportation Statistics.
+https://www.transportation.gov/sites/dot.gov/files/2026-04/Domestic%20Airfare%20Consumer%20Report%202025_Q3.pdf
+https://www.bts.gov/explore-topics-and-geography/topics/airline-time-performance-and-causes-flight-delays
+
+Verify both Home/Away permutations for the private cards, membership of the
+actually selected custody source, expiration during pause, disconnection,
+and guest mode. Verify a newer cancellation cannot be undone by replaying
+an older receipt; an unrelated passenger or a reused booking reference must
+leave another itinerary alone. Verify gate tracking through a restart after
+the last scheduled arrival, subject to current presence and budget.
+
+Native Linux firmware acceptance, signed publication, next-launch activation,
+actual cold boot, the revised Lambda on an Echo, a delivered recipe and an
+actual next gate arrival require their own evidence. The stable boot service
+is separate from the versioned executable and the original recovery helper.
+Verify the installed service against the reviewed launcher before replacement
+and preserve the previous copy for rollback.
+
 0.4.32 HOUSEHOLD FLIGHTS AFTER 9 PM
 
 Check both adults' Home/Away/Unknown combinations, report expiry and the

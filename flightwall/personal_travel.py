@@ -20,6 +20,10 @@ _FLIGHT_NUMBER = re.compile(r"(?:[A-Z][A-Z0-9]|[0-9][A-Z])[1-9][0-9]{0,3}")
 _AIRLINE_RECEIPTS = {"american_email", "airline_email"}
 
 
+class BookingReview(ValueError):
+    """A notice needs an earlier receipt or a clearer reference to the changed leg."""
+
+
 def reservation_schedule(row):
     """Validate the flight identity and return its scheduled times in UTC."""
     if not _FLIGHT_NUMBER.fullmatch(row["number"]):
@@ -118,6 +122,7 @@ class PersonalTravel:
         self.storage = PersonalStore(data_dir, config_getter)
         self.storage.path = Path(data_dir) / "personal-travel.json"
         self.storage.lock_path = Path(data_dir) / "personal-travel.lock"
+        self.airline_evidence = Path(data_dir) / "airline-bookings.json"
 
     def _document(self):
         try:
@@ -152,8 +157,97 @@ class PersonalTravel:
             raise ValueError("The private travel store could not be read. Its contents were preserved.") from None
 
     def list_records(self):
-        # Atomic replacement means a read observes one entire import or its predecessor.
-        return self._document()["reservations"]
+        if not self.airline_evidence.exists():
+            return self._document()["reservations"]
+        with self.storage._locked():
+            base = self._document()["reservations"]
+            return self._apply_airline_evidence(base, self._read_airline_evidence())
+
+    def _read_airline_evidence(self):
+        try:
+            document = _read_json(self.airline_evidence)
+        except FileNotFoundError:
+            return {}
+        if not isinstance(document, dict) or len(document) > MAX_RECORDS:
+            raise ValueError("Invalid private airline booking associations.")
+        evidence = {}
+        for key, entries in document.items():
+            if (not re.fullmatch(r"[a-f0-9]{64}", key) or not isinstance(entries, list)
+                    or not 1 <= len(entries) <= MAX_RECORDS):
+                raise ValueError("Invalid private airline booking association.")
+            rows = [_reservation(row) for row in entries]
+            if any(row["source"] not in _AIRLINE_RECEIPTS for row in rows) or len({_identity(r) for r in rows}) != len(rows):
+                raise ValueError("Invalid private airline booking leg.")
+            evidence[key] = rows
+        return evidence
+
+    @staticmethod
+    def _apply_airline_evidence(base, evidence):
+        # Two independently booked reservations can cover the same flight.
+        # Closing one leaves the other usable until it is also cancelled.
+        grouped = {}
+        for rows in evidence.values():
+            for row in rows:
+                grouped.setdefault(_identity(row), []).append(row)
+        resolved = {_identity(row): row for row in base}
+        for leg, rows in grouped.items():
+            active = [row for row in rows if row["status"] == "confirmed"]
+            winner = max(active or rows, key=_precedence)
+            latest = max(stamp(row["updated_at"]) for row in rows)
+            winner = dict(winner, updated_at=latest.isoformat())
+            prior = resolved.get(leg)
+            if prior is None or (prior["source"] in _AIRLINE_RECEIPTS and _precedence(prior) <= _precedence(winner)):
+                resolved[leg] = winner
+            else:
+                resolved[leg] = _resolve([prior, winner])[leg]
+        if len(resolved) > MAX_RECORDS:
+            raise ValueError("Private travel store is full.")
+        return [resolved[key] for key in sorted(resolved)]
+
+    def import_airline_receipt(self, booking_key, payload, now, *, change_notice=False):
+        """Reconcile only mentioned legs. A cancellation must match a known ticket."""
+        rows = self._records(payload, now)
+        if (not re.fullmatch(r"[a-f0-9]{64}", booking_key) or any(r["source"] not in _AIRLINE_RECEIPTS for r in rows)
+                or len({r["updated_at"] for r in rows}) != 1 or len({_identity(r) for r in rows}) != len(rows)):
+            raise BookingReview("Ambiguous airline booking.")
+        with self.storage._locked():
+            document = self._document()
+            prior_evidence = self._read_airline_evidence()
+            evidence = {key: [r for r in entries if stamp(r["end"]) > now - RETENTION]
+                        for key, entries in prior_evidence.items()}
+            evidence = {key: entries for key, entries in evidence.items() if entries}
+            associated = {_identity(r): r for r in evidence.get(booking_key, [])}
+            if change_notice and not any(_identity(r) in associated for r in rows):
+                raise BookingReview("Verify the original booking before applying this change.")
+            if change_notice and any(_identity(r) not in associated for r in rows) and not any(
+                    r["status"] == "cancelled" for r in rows):
+                raise BookingReview("An itinerary change needs the replaced leg.")
+            if change_notice and all(
+                    r["status"] == "confirmed" and _identity(r) in associated and
+                    all(r[k] == associated[_identity(r)][k] for k in ("status", "start", "end")) and
+                    stamp(r["updated_at"]) > stamp(associated[_identity(r)]["updated_at"]) for r in rows):
+                raise BookingReview("The change notice does not identify a changed flight.")
+            for row in rows:
+                identity = _identity(row)
+                previous = associated.get(identity)
+                if previous and stamp(row["updated_at"]) < stamp(previous["updated_at"]):
+                    continue
+                if row["status"] == "cancelled" and (not previous or row["start"] != previous["start"]):
+                    raise BookingReview("Cancellation needs the exact confirmed departure.")
+                if previous and row["updated_at"] == previous["updated_at"] and row != previous:
+                    raise BookingReview("Conflicting airline notices have the same time.")
+                associated[identity] = row
+            evidence[booking_key] = [associated[key] for key in sorted(associated)]
+            if len(evidence) > MAX_RECORDS or len(json.dumps(evidence).encode()) > MAX_BYTES:
+                raise ValueError("Private airline booking evidence is full.")
+            base = [r for r in document["reservations"] if stamp(r["end"]) > now - RETENTION]
+            result = self._apply_airline_evidence(base, evidence)
+            # Publish the evidence first. Even after an interrupted projection,
+            # list_records applies it under the same lock before any paid tracking.
+            if evidence != prior_evidence:
+                self.storage._write_document(self.airline_evidence, evidence)
+            if result != document["reservations"]:
+                self._write(result, document["bookings"])
 
     def import_file(self, path, now=None):
         now = now or datetime.now(timezone.utc)

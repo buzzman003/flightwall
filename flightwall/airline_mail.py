@@ -8,7 +8,7 @@ import re
 from .airline_travel import parse_airline
 from .delta_travel import DeltaReview, DeltaTravel, MAX_TEXT, _header, _inline_fields, owner_names
 from .messages import MessageError
-from .personal_travel import RETENTION
+from .personal_travel import BookingReview, RETENTION
 
 
 # Any marketing carrier can appear on an agency ticket. Gmail-classified
@@ -24,7 +24,9 @@ latam.com avianca.com cwtsato.com mycwt.com expedia.com travelocity.com
 CONSUMER_DOMAINS = frozenset("gmail.com googlemail.com hotmail.com outlook.com live.com yahoo.com icloud.com aol.com proton.me protonmail.com".split())
 TOPIC = re.compile(r"\b(?:e[- ]?ticket|ticket|receipt|invoice|itinerary|confirmation|reservation|booking|booked|confirmed|trip)\b", re.I)
 CHANGED = re.compile(r"\b(?:cancel(?:ed|led|lation)|reschedul\w*|chang(?:e|ed|es)|refund\w*|void(?:ed)?)\b", re.I)
+CANCELLATION = re.compile(r"\b(?:cancel(?:ed|led|lation)|refund\w*|void(?:ed)?)\b", re.I)
 TICKETED = re.compile(r"^\s*(?:e[- ]?)?ticket\s*[/ -]\s*invoice\s+issued\b", re.I)
+CWT_CHANGE = re.compile(r"^\s*(?:e[- ]?)?ticket\s*[/ -]\s*invoice\b", re.I)
 NONFLIGHT = re.compile(r"\b(?:hotel|rental car|cruise|concert|train|price alert|special offer|earn miles)\b", re.I)
 RECEIPTS = ('{subject:flight subject:itinerary subject:receipt subject:confirmation subject:reservation '
             'subject:booking subject:ticket subject:invoice subject:trip}')
@@ -52,7 +54,8 @@ def _issuer(headers, subject):
     if (len(dmarc) != 1 or not re.match(r"\s*dmarc=pass\b", dmarc[0], re.I)
             or not re.search(r"\bheader\.from=" + re.escape(domain) + r"(?=\s|$)", dmarc[0], re.I)):
         return None
-    if not TOPIC.search(subject) or NONFLIGHT.search(subject):
+    flight_notice = CHANGED.search(subject) and re.search(r"\bflight\b", subject, re.I)
+    if not (TOPIC.search(subject) or flight_notice) or NONFLIGHT.search(subject):
         return None
     registered = next((known for known in ISSUERS if domain == known or domain.endswith("." + known)), None)
     if registered:
@@ -111,6 +114,7 @@ class AirlineMail(DeltaTravel):
         super().__init__(data_dir, config_getter, person="lisa")
         self._scope = None
         self._seen = OrderedDict()
+        self._unmatched_changes = OrderedDict()
         self._next = {}
         self._result = {}
 
@@ -157,12 +161,14 @@ class AirlineMail(DeltaTravel):
             # A Gmail from: query can also match a display name. An unknown
             # authenticated issuer needs a separate positive reservation query.
             return None
-        if CHANGED.search(subject):
-            raise DeltaReview()
+        changed = bool(CHANGED.search(subject))
         received = datetime.fromtimestamp(int(meta["internalDate"]) / 1000, timezone.utc)
         if not now - timedelta(days=367) <= received <= now + timedelta(minutes=5):
             raise DeltaReview()
-        if issuer == "cwtsato.com" and (not selection[1] or not TICKETED.search(subject)):
+        if issuer == "cwtsato.com" and (not selection[1] or not (
+                TICKETED.search(subject) or changed and CWT_CHANGE.search(subject))):
+            if selection[1] and changed:
+                raise DeltaReview()
             return []
         active()
         structure = self.client.api(path, {"format": "full", "fields": STRUCTURE})["payload"]
@@ -179,15 +185,18 @@ class AirlineMail(DeltaTravel):
             raw = base64.b64decode(encoded + "=" * (-len(encoded) % 4), altchars=b"-_", validate=True)
             if len(raw) != size:
                 raise DeltaReview()
-            ticket = parse_cwt_invoice(extract_itinerary_text(raw), selection[0], received, salt)
+            ticket = parse_cwt_invoice(extract_itinerary_text(raw), selection[0], received, salt,
+                                       allow_cancellation=changed)
         else:
             fields = _bounded_fields(structure)
             active()
             payload = self.client.api(path, {"format": "full", "fields": fields})["payload"]
             active()
-            ticket = parse_airline(payload, selection[0], received, salt)
-        return [row for row in ticket["records"]
-                if datetime.fromisoformat(row["end"]) > now - RETENTION]
+            ticket = parse_airline(payload, selection[0], received, salt, issuer=issuer, allow_cancellation=True)
+        if CANCELLATION.search(subject) and not any(row["status"] == "cancelled" for row in ticket["records"]):
+            raise DeltaReview()
+        rows = [row for row in ticket["records"] if datetime.fromisoformat(row["end"]) > now - RETENTION]
+        return (ticket["booking_key"], rows, changed) if rows else []
 
     def sync(self, now=None):
         now = now or datetime.now(timezone.utc)
@@ -203,6 +212,7 @@ class AirlineMail(DeltaTravel):
             if self._scope != scope:
                 self._scope, self._next, self._result = scope, {}, {}
                 self._seen.clear()
+                self._unmatched_changes.clear()
             counts = {"inspected": 0, "matched_legs": 0, "review_needed": 0}
             salt = self._booking_salt()
             queries = [(KNOWN_QUERY, 12), (CATEGORY_QUERY, 12)]
@@ -214,8 +224,8 @@ class AirlineMail(DeltaTravel):
                     continue
                 if identifier not in self._seen:
                     try:
-                        rows = self._reservation(identifier, now, selection, authorization, salt, categorized)
-                        if rows is None:
+                        ticket = self._reservation(identifier, now, selection, authorization, salt, categorized)
+                        if ticket is None:
                             continue
                         if not self._still_selected(selection, authorization):
                             return self.status()
@@ -224,10 +234,21 @@ class AirlineMail(DeltaTravel):
                             raise
                         outcome = 0, 1
                     else:
-                        if rows:
-                            # A storage or reconciliation failure can be transient; retry next scan.
-                            self.travel.import_records(rows, now)
-                        outcome = len(rows), 0
+                        if ticket:
+                            key, rows, changed = ticket
+                            try:
+                                self.travel.import_airline_receipt(key, rows, now, change_notice=changed)
+                            except BookingReview:
+                                # Gmail returns newest first. Try this notice again after older
+                                # receipts have established the exact booking association.
+                                completed.add(identifier)
+                                counts["inspected"] += 1
+                                self._unmatched_changes[identifier] = None
+                                if len(self._unmatched_changes) > 1024:
+                                    self._unmatched_changes.popitem(last=False)
+                                continue
+                        outcome = len(ticket[1]) if ticket else 0, 0
+                    self._unmatched_changes.pop(identifier, None)
                     self._seen[identifier] = outcome
                 match_count, review = self._seen[identifier]
                 completed.add(identifier)
@@ -237,6 +258,7 @@ class AirlineMail(DeltaTravel):
                 counts["review_needed"] += review
                 if len(self._seen) > 1024:
                     self._seen.popitem(last=False)
+            counts["review_needed"] = sum(review for _, review in self._seen.values()) + len(self._unmatched_changes)
             self._result = dict(counts, status="review_needed" if counts["review_needed"] else "ready",
                                 last_sync=now.isoformat())
         except (ValueError, TypeError, OSError, KeyError, OverflowError):

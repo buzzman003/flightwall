@@ -299,6 +299,20 @@ class MessageTests(unittest.TestCase):
                 client.api("/messages/send", {})
             request.assert_not_called()
 
+    def test_refresh_does_not_overwrite_a_new_grant(self):
+        client = GmailClient(self.feeds.account_dir("chris"))
+        prior = client._token()
+        replacement = {**prior, "refresh_token": "synthetic-replacement"}
+
+        def switch_account(*args, **kwargs):
+            private_json(client.token_path, replacement)
+            return {"access_token": "synthetic-stale", "expires_in": 3600}
+
+        with patch.object(client, "_request", side_effect=switch_account):
+            with self.assertRaisesRegex(MessageError, "changed during refresh"):
+                client._access_token(refresh=True)
+        self.assertEqual(client._token(), replacement)
+
     def test_401_forces_one_refresh_and_tokens_cannot_follow_redirects(self):
         client = GmailClient(self.feeds.account_dir("chris"))
         with patch.object(client, "_access_token", side_effect=["old", "new"]) as access, \

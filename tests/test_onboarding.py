@@ -94,6 +94,25 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(self.call("/setup/settings", {"settings": {"brief_focus_enabled": False}}).status, 200)
         self.assertFalse(self.config.get()["brief_focus_enabled"])
 
+    def test_private_checklist_requires_administrator_chris_consent_and_csrf(self):
+        from flightwall.chris_agenda import ChrisAgenda
+        agenda = ChrisAgenda(self.data, self.config.get, lambda: None)
+        self.callbacks.update(setup_tasks=agenda.tasks, setup_task_edit=agenda.edit)
+        route = "/setup/chris-tasks"
+        payload = {"action": "add", "id": "909c875e357b11ef8f51062885ee91ae", "title": "Synthetic task"}
+        self.assertEqual(self.call(route, payload, authenticated=False).status, 401)
+        self.login()
+        for approval in ({}, self.consent("lisa")):
+            self.assertEqual(self.call(route, payload | approval).status, 400)
+            self.assertEqual(self.call("/setup/settings", {"settings": {"chris_agenda_enabled": True}} | approval).status, 400)
+        approved = self.consent("chris")
+        self.assertEqual(self.call(route, payload | approved, headers={"X-Setup-CSRF": ""}).status, 403)
+        self.assertEqual(agenda.tasks(), [])
+        self.assertEqual(self.call(route, payload | approved).status, 200)
+        self.assertEqual(self.call(route, {"action": "list"} | approved).value()["tasks"][0]["title"], payload["title"])
+        self.assertNotIn("Synthetic task", str(self.call("/setup/status", method="GET").value()))
+        self.assertEqual(self.call(route, payload | approved | {"action": "complete"}).value(), {"tasks": []})
+
     def test_dinner_generation_has_its_own_consent_and_cannot_enable_lisa_features(self):
         self.login()
         patch = {"dinner_options_enabled": True, "dinner_options_monthly_limit_usd": 3,
@@ -254,6 +273,30 @@ class OnboardingTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         self.assertFalse((self.data / "accounts" / "lisa" / "gmail-token.json").exists())
         self.assertNotIn("example-access", result.wfile.getvalue().decode())
+
+    def test_tasks_callback_checks_verified_primary_before_replacing_pair(self):
+        self.login()
+        account = self.data / "accounts" / "chris"
+        account.mkdir(parents=True)
+        (account / "google-token.json").write_text('{"refresh_token":"test-calendar"}')
+        pair = (account / "tasks-client.json", account / "tasks-token.json")
+        for email, expected in (("owner@example.test", 200), ("another@example.test", 400)):
+            previous = [p.read_bytes() if p.exists() else None for p in pair]
+            state = self.start_google("chris", "tasks")["state"][0]
+            with (patch("flightwall.onboarding._json_request", return_value=self.token_response("tasks")),
+                  patch("flightwall.agenda_google_tasks._GoogleAccountInfo._request",
+                        return_value={"email": email, "verified_email": True}),
+                  patch("flightwall.agenda_google_tasks.CalendarClient._api",
+                        return_value={"id": "owner@example.test", "primary": True})):
+                result = self.call("/setup/oauth/callback?" + urlencode({"state": state, "code": "test-code"}),
+                                   method="GET", authenticated=False)
+            self.assertEqual(result.status, expected)
+            self.assertTrue(self.router._saved_authorization("chris", "tasks"))
+            if expected == 400:
+                self.assertEqual([p.read_bytes() for p in pair], previous)
+                self.assertNotIn(b"@example.test", result.wfile.getvalue())
+        (account / "google-token.json").unlink()
+        self.assertFalse(self.router._saved_authorization("chris", "tasks"))
 
     def test_google_callback_state_single_use_and_does_not_need_strict_cookie(self):
         self.login()

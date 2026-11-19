@@ -24,11 +24,15 @@ from .flight_alerts import (SOURCE as FLIGHT_SOURCE, choose_tracking_flight, fli
 from .household_policy import both_adults_away, either_adult_home
 from .personal import PersonalError, PersonalStore
 from .personal_tracking import PersonalFlightTracker
+from .gate_checkpoint import GateCheckpoints
 from .presence import PresenceStore
 
 
 PRICING_CHECKED = datetime(2026, 10, 31, tzinfo=timezone.utc).date()
 PRICING_MAX_AGE_DAYS = 90
+# Schema 2 stores nominal amounts in milli-USD. Earlier verified schedules
+# with those units can carry their recorded spend forward without repricing it.
+LEGACY_PRICING_DATES = {"2026-10-31"}
 
 
 class PaidLimitError(ValueError):
@@ -314,6 +318,7 @@ class FlightFeeds:
         self._operating_completed = (None, self.operating_status)
         self._operating_next = "status"
         self._operating_terminal = None
+        self._gate_checkpoints = GateCheckpoints(self.data_dir, "operating")
         self._nearby_route_cache = {}
         self._last_nearby_route = -math.inf
         self._nearby_route_retry_at = -math.inf
@@ -401,8 +406,10 @@ class FlightFeeds:
                         or usage["reserved_milliusd"] % 5
                         or not isinstance(usage["day"], str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", usage["day"])
                         or datetime.fromisoformat(usage["day"]).date() > today or usage["month"] != usage["day"][:7]
-                        or usage["pricing_checked"] != PRICING_CHECKED.isoformat()):
+                        or usage["pricing_checked"] not in (LEGACY_PRICING_DATES | {PRICING_CHECKED.isoformat()})
+                        or usage["pricing_checked"] > PRICING_CHECKED.isoformat()):
                     raise ValueError("Invalid usage counter")
+                usage["pricing_checked"] = PRICING_CHECKED.isoformat()
                 # Earlier schema2 tracked only operating/public-watch requests.
                 # Its validated nominal total is preserved; nearby starts at0.
                 if not nearby_fields.intersection(usage):
@@ -466,6 +473,18 @@ class FlightFeeds:
     def _set_operating_status(self, config, flight, result):
         self.operating_status = result
         self._operating_completed = (flight_identity(flight, config), result)
+
+    def select_operating_flight(self, snapshot, config, now):
+        status = self.operating_status
+        if (config.get("flightaware_household_gate_tracking_enabled") is True
+                and config.get("flightaware_enabled") is True and config.get("demo") is False
+                and not status.get("provider_flight_id") and isinstance(snapshot, dict) and not snapshot.get("demo")):
+            restored = [row for f in snapshot.get("flights", []) if isinstance(f, dict) and not f.get("deadhead")
+                        if (row := self._gate_checkpoints.get(f, config.get("airline"), now))
+                        and within_tracking_window(f, now, row)]
+            if restored:
+                status = max(restored, key=lambda row: row["fetched_at"])
+        return choose_tracking_flight(snapshot, config, now, status)
 
     def operating_status_for_config(self, config, flight, now=None):
         """No network; ignore results for another calendar leg/configuration."""
@@ -715,6 +734,13 @@ class FlightFeeds:
         """Called by one backend thread; failures never erase the calendar."""
         self.error = None
         now = utcnow()
+        if (config.get("flightaware_household_gate_tracking_enabled") is not True
+                or config.get("flightaware_enabled") is not True or config.get("demo") is not False):
+            self._gate_checkpoints.clear()
+            self.personal_tracking.checkpoints.clear()
+        else:
+            self._gate_checkpoints.prune(now)
+            self.personal_tracking.checkpoints.prune(now)
         paused = self._paid_pause_reason(config, now, purpose="household") is not None
         try:
             if not paused:
@@ -992,6 +1018,13 @@ class FlightFeeds:
             self._operating_terminal = None
             self._operating_next = "status"
             self._set_operating_status(config, selected, {"status": "pending", "source": FLIGHT_SOURCE})
+            if config.get("flightaware_household_gate_tracking_enabled") is True:
+                saved = self._gate_checkpoints.get(selected, config.get("airline"), now)
+                if saved and within_tracking_window(selected, now, saved):
+                    self._set_operating_status(config, selected, saved)
+                    self._live_id = saved["provider_flight_id"]
+                    if saved["phase"] in {"at_gate", "blocked", "tracking_ended"}:
+                        self._operating_terminal = identity
         if not tracking_available(self.data_dir, config):
             self.live = None
             self._set_operating_status(config, selected, {"status": "unconfigured", "source": FLIGHT_SOURCE})
@@ -1047,6 +1080,8 @@ class FlightFeeds:
                     self._set_operating_status(config, selected, {"status": outcome, "source": FLIGHT_SOURCE})
                 return
             status = normalize_operating_status(matched, selected, now)
+            if follow_gate:
+                self._gate_checkpoints.save(selected, config.get("airline"), status, now)
             previous_id = self._live_id
             self._live_id = status["provider_flight_id"]
             if previous_id != self._live_id:

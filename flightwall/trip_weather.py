@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import private_json
+from .mycrew import airport_zone
+from .outlook import calendar_fresh
 from .weather import WeatherFeed
 
 UTC = timezone.utc
@@ -134,8 +136,14 @@ def select_airports(snapshot, now, timezone="UTC"):
     return result
 
 
+def _fresh_roster(snapshot, config, now):
+    return (isinstance(snapshot, dict) and snapshot.get("demo") is False
+            and calendar_fresh(snapshot.get("last_sync"), now, config.get("kids_stale_minutes", 30),
+                               failed=bool(snapshot.get("error"))))
+
+
 def _preview_legs(snapshot, config, now):
-    if not isinstance(snapshot, dict) or snapshot.get("demo") is not False:
+    if not _fresh_roster(snapshot, config, now):
         return []
     try:
         zone = ZoneInfo(config.get("timezone", "UTC"))
@@ -194,11 +202,9 @@ def trip_preview_eligible(status, config, now):
 
 
 def _overnight_legs(snapshot, config, now):
-    from .outlook import calendar_fresh, local_visits
+    from .outlook import local_visits
 
-    if (not isinstance(snapshot, dict) or snapshot.get("demo") is not False
-            or not calendar_fresh(snapshot.get("last_sync"), now, config.get("kids_stale_minutes", 30),
-                                  failed=bool(snapshot.get("error")))):
+    if not _fresh_roster(snapshot, config, now):
         return []
     zone = ZoneInfo("America/Chicago")
     visits = []
@@ -659,18 +665,19 @@ class TripWeatherFeed:
 
     def _forecast(self, target):
         code, station = target["iata"], target["icao"]
-        airports, _ = _references()
+        airports, stations = _references()
         airport = airports.get(code, {})
         lat, lon = airport.get("lat"), airport.get("lon")
-        if not station.startswith("K") or not _number(lat, 24, 50) or not _number(lon, -125, -66):
+        mainland = station.startswith("K") and _number(lat, 24, 50) and _number(lon, -125, -66)
+        puerto_rico = station.startswith("TJ") and _number(lat, 17.8, 18.6) and _number(lon, -67.4, -65.1)
+        if stations.get(code) != station or not (mainland or puerto_rico):
             return None
         with self._lock:
             if station not in self._forecasts:
                 config = {"demo": False, "weather_enabled": True, "weather_latitude": lat,
-                          "weather_longitude": lon, "timezone": "UTC"}
+                          "weather_longitude": lon, "timezone": str(airport_zone(code) or UTC)}
                 def settings():
-                    current = self.config_getter()
-                    return config | {"demo": self._mode() != "enabled", "timezone": current.get("timezone", "UTC")}
+                    return config | {"demo": self._mode() != "enabled"}
                 self._forecasts[station] = WeatherFeed(self.data_dir / "trip-weather" / station, settings)
             return self._forecasts[station]
 

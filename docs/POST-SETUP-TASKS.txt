@@ -1,7 +1,38 @@
 FLIGHT WALL: RELEASE FOLLOW-UP AND REMAINING VALIDATION
-Reviewed November 17, 2026 Central
+Reviewed November 18, 2026 Central
 
-CURRENT FOLLOW-UP THROUGH 0.4.22
+FOLLOW-UP FOR THE 0.4.33 AUDIT REPAIRS
+
+* Check the private displays using a normal day at home. Lisa's private
+  cards require Lisa Home, Chris Away and children Away. Chris's opt-in
+  agenda uses the opposite adult states and also requires children Away.
+  A lost or expired observation, a backend outage or guest mode must remove
+  private content even on a paused card. Keep real titles and images private.
+* In household setup, enable Chris's agenda and enter any local unfinished
+  tasks. His primary calendar uses its existing read-only connection.
+  Connecting Google Tasks requires a separate approval to read tasks and
+  check the signed-in Google email against Chris's primary calendar.
+  Check completion, expiry and household transitions without publishing
+  individual tasks or appointments in release notes.
+* Verify the next actual reissued or cancelled reservation against the
+  current ticket. Agency tickets can include an exact marketing name or
+  a printed airline code. An unidentified carrier, ambiguous city or
+  ambiguous cancellation needs review. At the next household flight after
+  9 p.m., verify the last confirmed gate report under the spending limit.
+* Use a routine dinner choice to verify one email arrives. A connection or
+  login failure before submission may be retried. An uncertain handoff to
+  the mail server must be checked before sending another recipe.
+* Update the voice function after activating the board, then check a numbered
+  timer cancellation on the Echo when two timers are running. The selected
+  timer should disappear and the other should continue.
+* Check a natural cold boot that initially finds the menu busy and one boot
+  with a game active. Check the day-before weather on a real fresh roster
+  and compare overnight lows against the forecast night on either side of
+  midnight. The local LED appearance is unchanged by the weather logic.
+* Native Echo timer import, the native Alexa shopping-list bridge,
+  store-arrival SMS and pantry suggestions remain deferred.
+
+HISTORICAL RECORD THROUGH 0.4.22 (NOVEMBER 17, 2026)
 
 The owner's November 17 instruction authorized work on the actionable backlog,
 including the previously recorded nearby-aircraft layout. The 0.4.22 candidate
@@ -20,7 +51,7 @@ Lisa's separately consented mailbox and optional exact-leg tracking are new
 0.4.22 work. Keep connection, source tests and real future airborne checks
 distinct in the final installation receipt.
 
-REMAINING PRACTICAL CHECKS AND EXTERNAL SETUP
+PRACTICAL CHECKS AND EXTERNAL SETUP RECORDED AT 0.4.22
 
 * Verify signed Linux acceptance, activation and private-file preservation for
   each new release. Repeated cold starts and failed-mount diagnosis require

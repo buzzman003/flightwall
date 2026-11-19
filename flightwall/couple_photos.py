@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import random
 import stat
 
 from PIL import Image, ImageOps
@@ -12,7 +13,6 @@ from PIL import Image, ImageOps
 VIEW = "couple_photos"
 FOLDER = "couple-photos"
 MAX_PHOTOS = 24
-WEEKLY_PHOTOS = 4
 MAX_BYTES = 4 * 1024 * 1024
 MAX_DIMENSION = 3840
 MAX_PIXELS = 3840 * 2160
@@ -79,15 +79,16 @@ def _decode(path, identity):
 
 
 class LocalPhotoDeck:
-    """Feature one set per local week and advance at the next card visit."""
+    """Rotate through the whole private album with a stable weekly shuffle."""
 
     def __init__(self, data_dir):
         self.data_dir = Path(data_dir) if isinstance(data_dir, (str, os.PathLike)) else None
         self._refresh_at = float("-inf")
         self._entries = ()
+        self._order = ()
         self._invalid = set()
         self._week = 0
-        self._last = 0
+        self._recent = []
         self._file = self._picture = self._projection = None
 
     def _inventory(self):
@@ -114,44 +115,51 @@ class LocalPhotoDeck:
                 found.append((number, path, identity))
         return tuple(found)
 
-    def _featured(self):
-        if not self._entries:
-            return ()
-        groups = (len(self._entries) + WEEKLY_PHOTOS - 1) // WEEKLY_PHOTOS
-        start = self._week % groups * WEEKLY_PHOTOS
-        return self._entries[start:start + WEEKLY_PHOTOS]
-
     def refresh(self, tick, permitted, local_day):
         if not permitted:
-            self._entries = ()
+            self._entries = self._order = ()
             self._invalid.clear()
             self._refresh_at = float("-inf")
             self.select(False)
             return False
         # Date ordinals start on a Monday. Use the board's local date so a
         # daylight saving transition or a restart never shifts the selection.
-        self._week = (local_day.toordinal() - 1) // 7
+        week = (local_day.toordinal() - 1) // 7
+        previous = self._entries
         if tick >= self._refresh_at:
             self._entries = self._inventory()
             self._invalid.intersection_update(self._entries)
             self._refresh_at = tick + 1
-        return any(entry not in self._invalid for entry in self._featured())
+        if week != self._week or self._entries != previous:
+            if week != self._week:
+                self._recent = self._recent[-2:]
+            self._week = week
+            entries = list(self._entries)
+            if len(entries) > 2:
+                random.Random(week).shuffle(entries)
+            self._order = tuple(entries)
+        return any(entry not in self._invalid for entry in self._order)
 
     def select(self, visible):
-        featured = self._featured()
+        featured = self._order
         if visible and self._file in featured:
             return self._picture
         self._file = self._picture = self._projection = None
         if not visible:
             return None
-        entries = sorted(featured, key=lambda item: (item[0] <= self._last, item[0]))
+        # Keep recently shown photos at the back even across a weekly shuffle.
+        rank = {number: index for index, number in enumerate(self._recent)}
+        entries = sorted(featured, key=lambda item: rank.get(item[0], -1))
         for entry in entries:
             if entry in self._invalid:
                 continue
             number, path, identity = entry
             picture = _decode(path, identity)
             if picture is not None:
-                self._last, self._file, self._picture = number, entry, picture
+                if number in self._recent:
+                    self._recent.remove(number)
+                self._recent.append(number)
+                self._file, self._picture = entry, picture
                 return picture
             self._invalid.add(entry)
         return None

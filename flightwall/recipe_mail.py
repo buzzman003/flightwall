@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import smtplib
 import ssl
+import time
 
 from .config import private_json
 
@@ -36,6 +37,7 @@ class RecipeMail:
         self.lock = lock
         self.enabled = enabled
         self.smtp_factory = smtp_factory
+        self.next_connection = 0.0
 
     @staticmethod
     def _read(path, maximum):
@@ -118,7 +120,9 @@ class RecipeMail:
             private_json(self.outbox, rows)
 
     def poll(self):
-        """Reserve before SMTP; never auto-retry an uncertain submission."""
+        """Retry connection failures; reserve immediately before submitting a message."""
+        if time.monotonic() < self.next_connection or not self.enabled():
+            return
         settings = self._config()
         binding = self._binding(settings)
         now = datetime.now(timezone.utc)
@@ -132,23 +136,34 @@ class RecipeMail:
                     private_json(self.outbox, rows)
                 return
             key, row = candidate
-            subject, body = row.pop('subject'), row.pop('body')
-            row['status'] = 'unconfirmed'
-            private_json(self.outbox, rows)
+            subject, body = row['subject'], row['body']
         message = EmailMessage()
         message['From'], message['To'], message['Subject'] = settings['sender'], settings['recipient'], subject
         message['Message-ID'] = f'<{key}@flightwall.local>'
         message.set_content(body)
         if not self.enabled() or self._config() != settings:
             return
-        with self.smtp_factory('smtp.gmail.com', 465, timeout=8, context=ssl.create_default_context()) as smtp:
-            smtp.login(settings['sender'], settings['app_password'])
-            if not self.enabled() or self._config() != settings:
-                return
-            if smtp.send_message(message):
-                return
-        with self.lock():
-            rows, _ = self._rows(datetime.now(timezone.utc))
-            if key in rows:
-                rows[key]['status'] = 'accepted'
-                private_json(self.outbox, rows)
+        try:
+            with self.smtp_factory('smtp.gmail.com', 465, timeout=8, context=ssl.create_default_context()) as smtp:
+                smtp.login(settings['sender'], settings['app_password'])
+                with self.lock():
+                    rows, cleaned = self._rows(datetime.now(timezone.utc))
+                    row = rows.get(key, {})
+                    if (row.get('status') != 'queued' or row.get('binding') != binding
+                            or not self.enabled() or self._config() != settings):
+                        if cleaned:
+                            private_json(self.outbox, rows)
+                        return
+                    row.pop('subject')
+                    row.pop('body')
+                    row['status'] = 'unconfirmed'
+                    private_json(self.outbox, rows)
+                if not smtp.send_message(message):
+                    with self.lock():
+                        rows, _ = self._rows(datetime.now(timezone.utc))
+                        if key in rows:
+                            rows[key]['status'] = 'accepted'
+                            private_json(self.outbox, rows)
+        except OSError:
+            self.next_connection = time.monotonic() + 60
+            raise

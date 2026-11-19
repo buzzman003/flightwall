@@ -16,7 +16,7 @@ def scheduled_state():
     commute = flight("VPS", "ATL", start=NOW + timedelta(hours=20), end=NOW + timedelta(hours=21), deadhead=True)
     duty = flight("ATL", "BNA", start=NOW + timedelta(hours=22), end=NOW + timedelta(hours=23))
     later = flight("BNA", "ATL", start=NOW + timedelta(days=2), end=NOW + timedelta(days=2, hours=1))
-    return {"snapshot": snapshot(commute, duty, later), "backend_available": True,
+    return {"snapshot": snapshot(commute, duty, later) | {"last_sync": NOW.isoformat()}, "backend_available": True,
             "presence": {"chris": {"state": "home", "stale": False, "last_seen": NOW.isoformat()}}}
 
 
@@ -33,6 +33,11 @@ def test_preview_requires_day_before_and_fresh_explicit_home_in_every_projection
     assert not trip_preview_eligible(state | {"backend_available": False}, SETTINGS, NOW)
     assert not trip_preview_eligible(state, SETTINGS | {"presence_enabled": False}, NOW)
     assert not trip_preview_eligible(state, SETTINGS | {"demo": True}, NOW)
+    for fields in ({"last_sync": None}, {"error": "calendar unavailable"},
+                   {"last_sync": (NOW - timedelta(days=4)).isoformat()}):
+        broken = state | {"snapshot": state["snapshot"] | fields}
+        assert not trip_weather_eligible(broken, SETTINGS, NOW)
+        assert not preview_airports(broken["snapshot"], SETTINGS, NOW)
     for moment in (NOW - timedelta(days=1), NOW + timedelta(days=1)):
         current = state | {"presence": {"chris": {"state": "home", "stale": False, "last_seen": moment.isoformat()}}}
         assert not trip_preview_eligible(current, SETTINGS, moment)
@@ -87,7 +92,8 @@ def test_rotation_includes_all_preview_airports_and_pages_visits_only_while_home
 def test_preview_uses_calendar_day_across_fall_dst_and_keeps_overnight_arrival():
     now = datetime(2026, 10, 31, 17, tzinfo=timezone.utc)
     start = datetime(2026, 11, 2, 5, 30, tzinfo=timezone.utc)  # Sunday 23:30 CST.
-    targets = preview_airports(snapshot(flight(start=start, end=start + timedelta(hours=2))), SETTINGS, now)
+    schedule = snapshot(flight(start=start, end=start + timedelta(hours=2))) | {"last_sync": now.isoformat()}
+    targets = preview_airports(schedule, SETTINGS, now)
     assert len(targets) == 2
     assert targets[1]["windows"][0]["scheduled_at"] == (start + timedelta(hours=2)).isoformat()
 
@@ -161,7 +167,7 @@ def test_nws_day_fallback_is_labeled_separately_from_unknown_timed_taf():
 def test_preview_feed_adds_explicit_deadhead_targets_without_caching_schedule(tmp_path):
     config = SETTINGS | {"trip_weather_enabled": True}
     feed = TripWeatherFeed(tmp_path, lambda: config)
-    source = snapshot(scheduled_state()["snapshot"]["flights"][0])
+    source = snapshot(scheduled_state()["snapshot"]["flights"][0]) | {"last_sync": NOW.isoformat()}
     def reply(url):
         stations = ("KVPS", "KATL")
         if "/metar?" in url:
@@ -173,3 +179,11 @@ def test_preview_feed_adds_explicit_deadhead_targets_without_caching_schedule(tm
     assert all(row["windows"] for row in result["airports"])
     cached = feed.path.read_text()
     assert "scheduled_at" not in cached and "synthetic-never-persist" not in cached
+
+
+def test_san_juan_uses_local_forecast_day_and_rejects_unmatched_airport(tmp_path):
+    feed = TripWeatherFeed(tmp_path, lambda: SETTINGS | {"trip_weather_enabled": True})
+    forecast = feed._forecast({"iata": "SJU", "icao": "TJSJ"})
+    assert forecast.config_getter()["timezone"] == "America/Puerto_Rico"
+    assert feed._forecast({"iata": "SJU", "icao": "TJXX"}) is None
+    assert feed._forecast({"iata": "CDG", "icao": "LFPG"}) is None

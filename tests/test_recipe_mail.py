@@ -66,3 +66,25 @@ def test_switching_recipient_while_authenticating_cancels_dispatch(tmp_path):
     smtp.login.side_effect = lambda *_: private_json(queue.credentials, SETTINGS | {"recipient": "new@example.net"})
     queue.poll()
     smtp.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("stage", ["connect", "login"])
+def test_pre_submission_failure_remains_queued_across_restart(tmp_path, stage):
+    smtp_factory = MagicMock()
+    smtp = smtp_factory.return_value.__enter__.return_value
+    failure = smtp_factory if stage == "connect" else smtp.login
+    failure.side_effect = ConnectionRefusedError()
+    smtp.send_message.return_value = {}
+    queue = RecipeMail(tmp_path, nullcontext, smtp_factory=smtp_factory)
+    private_json(queue.credentials, SETTINGS)
+    queue.queue(OPTION, "2026-11-04", "synthetic")
+    with pytest.raises(ConnectionRefusedError):
+        queue.poll()
+    assert queue.status()["recent"]["queued"] == 1
+    queue.poll()
+    failure.assert_called_once()
+    failure.side_effect = None
+    restarted = RecipeMail(tmp_path, nullcontext, smtp_factory=smtp_factory)
+    restarted.poll()
+    smtp.send_message.assert_called_once()
+    assert restarted.status()["recent"]["accepted"] == 1
