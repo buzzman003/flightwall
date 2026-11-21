@@ -33,9 +33,12 @@
             "the dinner menu is {Meal}",
             "set dinner card",
             "set the dinner card",
+            "add a dinner card",
+            "add dinner card",
             "dinner card",
             "set dinner card to {Meal}",
-            "set the dinner card to {Meal}"
+            "set the dinner card to {Meal}",
+            "put {Meal} on the dinner card"
           ]
         },
         {
@@ -307,6 +310,9 @@
             "start a timer for {TimerDuration} called {TimerLabel}",
             "set a timer for {TimerDuration} called {TimerLabel}",
             "set a timer for {TimerDuration}",
+            "start a timer for {TimerDuration}",
+            "start timer for {TimerDuration}",
+            "add a timer for {TimerDuration}",
             "add a {TimerLabel} {TimerDuration} timer",
             "add {TimerLabel} {TimerDuration} timer",
             "set a {TimerLabel} {TimerDuration} timer",
@@ -327,7 +333,8 @@
         },
         {
           "name": "ListTimersIntent",
-          "samples": ["list timers", "what timers are running", "show timers", "how much time is left on my timers"]
+          "samples": ["list timers", "list my timers", "what timers are running", "what timers do i have",
+                      "show timers", "how much time is left on my timers"]
         },
         {
           "name": "CancelTimerIntent",
@@ -335,7 +342,8 @@
             {"name": "TimerLabel", "type": "TIMER_LABEL"},
             {"name": "TimerNumber", "type": "AMAZON.NUMBER"}
           ],
-          "samples": ["cancel a timer", "cancel the {TimerLabel} timer", "dismiss the {TimerLabel} timer",
+          "samples": ["cancel a timer", "cancel the {TimerLabel} timer", "cancel my {TimerLabel} timer",
+                      "dismiss the {TimerLabel} timer", "stop the {TimerLabel} timer",
                       "cancel timer number {TimerNumber}", "dismiss timer number {TimerNumber}"]
         },
         {
@@ -349,7 +357,9 @@
                       "track {Airline} flight {FlightNumber} on {Date}",
                       "watch {Airline} flight {FlightNumber} on {Date}",
                       "track {Airline} {FlightNumber} on {Date}",
-                      "track {Airline} flight {FlightNumber}", "track flight {FlightNumber}"]
+                      "track {Airline} flight {FlightNumber}", "track {Airline} {FlightNumber}",
+                      "watch {Airline} flight {FlightNumber}", "watch {Airline} {FlightNumber}",
+                      "track flight {FlightNumber}"]
         },
         {
           "name": "SetFlightAirlineIntent",

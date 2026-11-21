@@ -127,6 +127,17 @@ class AlexaConversationTests(unittest.TestCase):
         self.assertEqual(self.board.calls[-1]["request_id"], "amzn1.echo-api.request.initial")
         self.assertEqual(self.board.calls[-1]["title"], "annual eye checkup")
 
+    def test_repeat_prompts_for_missing_appointment_date_and_keeps_the_request(self):
+        first = self.call("SetAppointmentTitleIntent", {"Title": "annual eye checkup"})
+        calls = alexa.BoardClient.call_count
+        repeat = self.call("AMAZON.RepeatIntent", previous=first, request_id="repeat-turn")
+        fallback = self.call("AMAZON.FallbackIntent", previous=repeat, request_id="fallback-turn")
+        self.assertIn("What day is the appointment", speech(repeat))
+        self.assertEqual(speech(repeat), speech(fallback))
+        self.assertEqual(first["sessionAttributes"], fallback["sessionAttributes"])
+        self.assertEqual(alexa.BoardClient.call_count, calls)
+        self.assertFalse(self.board.calls)
+
     def test_missing_title_is_elicited_without_guessing(self):
         response = self.call("AddAppointmentIntent", {"Date": "2026-10-23", "Time": "09:00"})
         self.assertIn("What is the appointment called", speech(response))

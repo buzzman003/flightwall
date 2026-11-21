@@ -1,3 +1,10 @@
+0.4.38 ALEXA FOLLOW-UPS
+
+Interaction-model tests check unique phrases and safe slot types. Handler and
+loopback tests cover dinner control phrases, safe follow-up repetition, preserved
+request IDs and confirmation before writes. Amazon model build and physical
+voice recognition require separately verified development-skill tests.
+
 0.4.37 CANCELED CALENDAR ENTRIES
 
 Synthetic schedule and agenda fixtures cover provider cancellation and

@@ -1,3 +1,10 @@
+FLIGHT WALL 0.4.38 — ALEXA FOLLOW-UPS
+
+The Alexa companion accepts more ways to ask for dinner cards, timers and
+flight watches. Say “repeat” during a follow-up to hear the current question.
+Apply the matching Alexa model and Lambda package to use these changes.
+The Alexa companion remains compatible with the 0.4.37 board.
+
 FLIGHT WALL 0.4.37 — CANCELED CALENDAR ENTRIES
 
 The board skips calendar entries marked canceled or inactive, including

@@ -40,6 +40,10 @@ DINNER_TEXT_SLOTS = {"AddDinnerIntent": "Meal", **dict.fromkeys(DINNER_DAY_INTEN
                      "SetDinnerSidesIntent": "Sides", "SetDinnerReadyTimeIntent": "ReadyTime"}
 DINNER_CANCEL_PHRASES = {"cancel", "cancel that", "cancel dinner", "cancel the dinner", "stop",
                          "stop dinner", "never mind", "nevermind"}
+DINNER_SKIP_PHRASES = {"skip", "skip that", "no", "none", "skip the sides", "no sides",
+                       "skip the ready time", "skip ready time", "no ready time"}
+DINNER_SAVE_PHRASES = {"save dinner", "save the dinner menu", "save dinner menu", "save dinner now",
+                       "just save dinner", "that is all for dinner"}
 TIMER_CANCEL_PHRASES = {"cancel", "cancel that", "cancel timer", "cancel the timer", "stop",
                         "stop timer", "stop the timer", "never mind", "nevermind"}
 AIRLINES = {"delta": "DL", "delta air lines": "DL", "delta airlines": "DL", "dl": "DL",
@@ -577,9 +581,9 @@ def _dinner_detail(client, name, values, pending, context):
     # An elicited free-text slot can capture the control phrase rather than
     # switch intents. Never save the literal words "skip" as a side dish.
     control = _dinner_control(values.get(DINNER_TEXT_SLOTS.get(name)))
-    if control in {"skip", "skip that", "no", "none", "no sides", "skip ready time"}:
+    if control in DINNER_SKIP_PHRASES:
         name = "SkipDinnerDetailIntent"
-    elif control in {"save dinner", "save dinner menu", "just save dinner"}:
+    elif control in DINNER_SAVE_PHRASES:
         name = "SaveDinnerIntent"
     if name == "SaveDinnerIntent":
         if pending.get("phase") == "ready_confirm":
@@ -635,8 +639,7 @@ def _confirm(pending):
                    "Should I save it? Say yes or no.", pending)
 
 
-def _continue_appointment(pending, context):
-    pending["phase"] = "collect"
+def _appointment_prompt(pending):
     if not pending.get("title"):
         return _speech("What is the appointment called? Say, it's called, followed by the name.", pending)
     if not pending.get("date"):
@@ -645,6 +648,14 @@ def _continue_appointment(pending, context):
         return _speech("What exact time is the appointment? Say, at three P.M., including A.M. or P.M.", pending)
     if type(pending.get("duration_minutes")) is not int or not 1 <= pending["duration_minutes"] <= 1440:
         return _speech("How long is the appointment? Say, for one hour, or give a duration in minutes.", pending)
+    return None
+
+
+def _continue_appointment(pending, context):
+    pending["phase"] = "collect"
+    prompt = _appointment_prompt(pending)
+    if prompt is not None:
+        return prompt
     try:
         _text(pending["title"])
         _exact_date(pending["date"])
@@ -843,6 +854,14 @@ def _elicit_timer(pending, slot, prompt):
     return result
 
 
+def _timer_prompt(pending):
+    if not pending.get("label"):
+        return _elicit_timer(pending, "TimerLabel", "What should I call the timer?")
+    if not pending.get("duration_seconds"):
+        return _elicit_timer(pending, "TimerDuration", "How long should it run? Choose one second to twenty four hours.")
+    return None
+
+
 def _timer_dialog(client, name, values, pending, request):
     if not pending or pending["kind"] != "timer" or pending.get("phase") == "retry":
         pending = {"kind": "timer", "phase": "collect", "request_id": _request_id(request.get("requestId"))}
@@ -853,11 +872,7 @@ def _timer_dialog(client, name, values, pending, request):
                 pending[field] = validator(values[slot])
             except (ValueError, ArithmeticError):
                 pending[field] = None
-    if not pending.get("label"):
-        return _elicit_timer(pending, "TimerLabel", "What should I call the timer?")
-    if not pending.get("duration_seconds"):
-        return _elicit_timer(pending, "TimerDuration", "How long should it run? Choose one second to twenty four hours.")
-    return _save_timer(client, pending)
+    return _timer_prompt(pending) or _save_timer(client, pending)
 
 
 def _list_timers(client):
@@ -898,6 +913,16 @@ def _confirm_flight(pending):
                    "to the flight board? Say yes or no.", pending)
 
 
+def _flight_prompt(pending):
+    if not pending.get("airline"):
+        return _speech("Which airline? Say, the airline is Delta, American, United, Allegiant, Frontier, or an airline code.", pending)
+    if not pending.get("flight_number"):
+        return _speech("What is the flight number? Say, the flight number is one hundred twenty three.", pending)
+    if not pending.get("date"):
+        return _speech("What date is that flight? Say, on Friday, or give the exact date.", pending)
+    return None
+
+
 def _flight_dialog(values, pending, request):
     if not pending or pending["kind"] != "flight_watch" or pending.get("phase") == "retry":
         pending = {"kind": "flight_watch", "phase": "collect", "request_id": _request_id(request.get("requestId"))}
@@ -908,13 +933,7 @@ def _flight_dialog(values, pending, request):
                 pending[field] = validator(values[slot])
             except (ValueError, TypeError):
                 pending[field] = None
-    if not pending.get("airline"):
-        return _speech("Which airline? Say, the airline is Delta, American, United, Allegiant, Frontier, or an airline code.", pending)
-    if not pending.get("flight_number"):
-        return _speech("What is the flight number? Say, the flight number is one hundred twenty three.", pending)
-    if not pending.get("date"):
-        return _speech("What date is that flight? Say, on Friday, or give the exact date.", pending)
-    return _confirm_flight(pending)
+    return _flight_prompt(pending) or _confirm_flight(pending)
 
 
 def _save_flight(client, pending):
@@ -998,6 +1017,37 @@ def _shopping_dialog(client, name, values, pending, request):
     return _save_shopping(client, pending)
 
 
+def _repeat_pending(pending):
+    """Recover the current voice step without contacting the board or making a write."""
+    if not pending:
+        return None
+    kind, phase = pending["kind"], pending.get("phase")
+    if phase == "retry":
+        return _speech("Say yes to retry the same request, or no to stop and check the board.", pending)
+    if kind == "dinner":
+        if phase == "ready_confirm":
+            return _speech("I heard " + _ready_words(pending) + ". Is that right? Say yes, or give the time including P.M.", pending)
+        if phase in {"collect", "sides", "ready"}:
+            if pending.get("title") and not pending.get("date"):
+                return _speech("Which exact day is dinner for? Say, set dinner for tomorrow.", pending)
+            return _dinner_prompt(pending)
+    if kind == "appointment":
+        return _confirm(pending) if phase == "confirm" else _appointment_prompt(pending)
+    if kind == "flight_watch":
+        return _confirm_flight(pending) if phase == "confirm" else _flight_prompt(pending)
+    if kind == "timer" and phase == "collect":
+        return _timer_prompt(pending)
+    if kind == "shopping":
+        if phase == "confirm" and pending.get("action") == "clear":
+            return _confirm_shopping(pending)
+        if phase == "collect" and pending.get("action") in {"add", "remove"}:
+            action = pending["action"]
+            return _speech(f"What item should I {action}? Say, {action} olives.", pending)
+    if kind == "dinner_option" and phase == "collect":
+        return _speech("Say, select dinner option one, two, three, or four. You can also say select dinner followed by the title.", pending)
+    return None
+
+
 def lambda_handler(event, lambda_context):
     """ASK Lambda entry point. Credentials and arbitrary errors never enter speech."""
     try:
@@ -1043,20 +1093,9 @@ def lambda_handler(event, lambda_context):
             return _speech(HELP, pending)
         if name == "DinnerHelpIntent":
             return _speech(DINNER_HELP, pending)
-        if name == "AMAZON.FallbackIntent":
-            if pending and pending["kind"] == "dinner" and pending.get("phase") in {"sides", "ready"}:
-                return _dinner_prompt(pending)
-            return _speech("I did not catch that. What would you like? Say help for options.", pending)
-        if name == "AMAZON.RepeatIntent":
-            if pending and pending["kind"] == "dinner" and pending.get("phase") in {"collect", "sides", "ready", "ready_confirm"}:
-                if pending.get("phase") == "ready_confirm":
-                    return _speech("I heard " + _ready_words(pending) + ". Is that right?", pending)
-                return _dinner_prompt(pending)
-            if pending and pending.get("phase") == "confirm":
-                if pending["kind"] == "shopping":
-                    return _confirm_shopping(pending)
-                return _confirm_flight(pending) if pending["kind"] == "flight_watch" else _confirm(pending)
-            return _speech(WELCOME, pending)
+        if name in {"AMAZON.FallbackIntent", "AMAZON.RepeatIntent"}:
+            default = WELCOME if name == "AMAZON.RepeatIntent" else "I did not catch that. What would you like? Say help for options."
+            return _repeat_pending(pending) or _speech(default, pending)
         if name == "AMAZON.YesIntent" and not pending:
             return _speech("There is no request waiting for confirmation. What would you like?")
         client = BoardClient()

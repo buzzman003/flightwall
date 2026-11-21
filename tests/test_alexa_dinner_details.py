@@ -167,6 +167,20 @@ class DinnerDetailTests(unittest.TestCase):
         self.assertNotIn("sides", self.board.calls[-1])
         self.assertNotIn("ready_time", self.board.calls[-1])
 
+    def test_full_spoken_skip_and_save_phrases_also_work_in_elicited_slots(self):
+        first = self.meal()
+        ready = self.call("SetDinnerSidesIntent", {"Sides": "Skip the sides!"}, first)
+        self.assertIn("When should dinner be ready", speech(ready))
+        self.assertFalse(self.board.calls)
+        done = self.call("SetDinnerReadyTimeIntent", {"ReadyTime": "No ready time"}, ready)
+        self.assertIn("Saved Chicken teriyaki", speech(done))
+        self.assertNotIn("sides", self.board.calls[-1])
+        self.assertNotIn("ready_time", self.board.calls[-1])
+        another = self.meal(request_id="quick-save")
+        done = self.call("SetDinnerSidesIntent", {"Sides": "Save the dinner menu"}, another)
+        self.assertIn("Saved Chicken teriyaki", speech(done))
+        self.assertNotIn("sides", self.board.calls[-1])
+
     def test_explicit_side_label_is_split_but_sauce_is_not_guessed_as_side(self):
         first = self.call("AddDinnerTodayIntent", {"Meal": "chicken with sides of rice and peas"})
         self.assertIn("When should dinner be ready", speech(first))

@@ -157,6 +157,29 @@ class HouseholdVoiceTests(unittest.TestCase):
         self.assertIn("1 minute, 30 seconds", speech(saved))
         self.assertEqual(self.board.store.list_timers()[0]["duration_seconds"], 90)
 
+    def test_repeat_and_fallback_recover_the_same_pending_step_without_board_access(self):
+        cases = [
+            (self.call("StartTimerIntent", {"TimerDuration": "PT45S"}), "What should I call", "TimerLabel"),
+            (self.call("StartTimerIntent", {"TimerLabel": "Tea"}), "How long should it run", "TimerDuration"),
+            (self.call("TrackFlightIntent", {"FlightNumber": "123"}), "Which airline", None),
+            (self.call("TrackFlightIntent", {"FlightNumber": "123", "Airline": "Delta", "Date": "2026-11-03"}),
+             "Add DL flight 123", None),
+            (self.call("ClearShoppingListIntent"), "Clear the entire Flight Wall shopping list", None),
+        ]
+        for original, next_prompt, slot in cases:
+            for intent in ("AMAZON.RepeatIntent", "AMAZON.FallbackIntent"):
+                with self.subTest(intent=intent, next_prompt=next_prompt):
+                    calls = alexa.BoardClient.call_count
+                    resumed = self.call(intent, previous=original, request_id="recovery-turn")
+                    self.assertIn(next_prompt, speech(resumed))
+                    self.assertEqual(resumed["sessionAttributes"], original["sessionAttributes"])
+                    self.assertEqual(alexa.BoardClient.call_count, calls)
+                    self.assertFalse(resumed["response"]["shouldEndSession"])
+                    if slot:
+                        self.assertEqual(resumed["response"]["directives"][0]["slotToElicit"], slot)
+        self.assertFalse(self.board.starts)
+        self.assertFalse(self.board.watches)
+
     def test_named_five_minute_timer_uses_duration_slot_and_starts_on_board(self):
         model_path = Path(__file__).parents[1] / "integrations/alexa/interaction-model-en-US.json"
         intents = json.loads(model_path.read_text())["interactionModel"]["languageModel"]["intents"]

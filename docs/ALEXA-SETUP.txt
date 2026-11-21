@@ -1,3 +1,17 @@
+ALEXA FOLLOW-UPS (0.4.38)
+
+Say “Alexa, open Flight Wall skill” to start. Amazon also supports saying its
+wake word followed by the invocation name alone, as in “Alexa, Flight Wall.”
+Recognition of that shorter phrase depends on the device. The Alexa Skills Kit
+trigger receives requests after Alexa chooses the skill. It does not listen
+for sound or set the device's wake word. Keep the Skill ID check in place.
+
+Inside the skill, try “add a dinner card,” “start a timer for five minutes,”
+or “track Delta one twenty three.” Alexa asks for any missing details.
+Say “repeat” to hear the current question again. For optional dinner details,
+say “skip the sides,” “skip the ready time,” or “save the dinner menu.”
+This companion uses the existing board endpoints and works with 0.4.37.
+
 DAILY IDEAS AND OPTION CHOICE (0.4.8)
 In signed-in setup, page09 Dinner ideas saves food preferences and reads the
 current recipes on a phone. Enable its separate food consent/key/monthly app
