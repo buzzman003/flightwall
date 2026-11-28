@@ -14,6 +14,15 @@ from .personal import dinner_daily_window, dinner_meal_date, personal_card_visib
 from .card_preferences import card_enabled
 
 
+HOME_BRIEFING_VIEWS = {
+    "home_headlines": ("headlines", "home_briefing_enabled"),
+    "home_events": ("events", "home_briefing_enabled"),
+    "guest_ops": ("guest_ops", "guest_ops_enabled"),
+}
+HEADLINES_PER_PAGE = 2
+MAX_HEADLINES = 6
+
+
 def _time(value):
     if isinstance(value, datetime):
         result = value
@@ -42,6 +51,28 @@ def both_adults_away(presence):
 
 def either_adult_home(presence):
     return isinstance(presence, dict) and any(_known(presence.get(person), "home") for person in ("chris", "lisa"))
+
+
+def home_briefing_sections(status, config, now):
+    """Return eligible sections without trusting a previously computed Home flag."""
+    payload = status.get("home_briefing")
+    snapshot = status.get("snapshot")
+    demo = snapshot.get("demo") if isinstance(snapshot, dict) else status.get("demo")
+    if not isinstance(payload, dict) or demo is not False or status.get("backend_available") is not True:
+        return {}
+    from .home_briefing import permitted, visible_sections
+
+    presence = status.get("presence")
+    chris = presence.get("chris") if isinstance(presence, dict) else None
+    if not _known(chris, "home") or not permitted(config, {"chris_home": True}):
+        return {}
+    seen = _time(chris.get("last_seen") or chris.get("observed_at"))
+    ttl = config.get("presence_ttl_minutes", 90)
+    if seen is None or type(ttl) is not int or not -300 <= (now - seen).total_seconds() < ttl * 60:
+        return {}
+    fresh = visible_sections(payload, now, config.get("timezone", "UTC"))
+    return {section: fresh[section] for section, flag in HOME_BRIEFING_VIEWS.values()
+            if config.get(flag) is True and section in fresh}
 
 
 def _flights(status, config):
@@ -419,6 +450,16 @@ def build_rotation(status, config, now=None):
             and visit_permitted(config, context)
             and visible_activity(status.get("visit_activity"), now, config.get("timezone", "UTC"))):
         add("visit_activity")
+    briefing = home_briefing_sections(status, config, now)
+    for view, (section, _) in HOME_BRIEFING_VIEWS.items():
+        if section not in briefing:
+            continue
+        if view == "home_headlines":
+            count = min(len(briefing[section]["rows"]), MAX_HEADLINES)
+            for page in range(math.ceil(count / HEADLINES_PER_PAGE)):
+                add(view, f"{view}:{page}", briefing_page=page)
+        else:
+            add(view)
     if config.get("custody_outlook_enabled", True) and outlook.get("days"):
         add("custody_outlook")
     if snapshot.get("demo") is not True and card_enabled("today_activities", config):

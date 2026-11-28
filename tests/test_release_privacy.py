@@ -39,7 +39,8 @@ class ReleasePrivacyTests(unittest.TestCase):
                  "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock",
                  "adsblol-usage.json", "adsblol-fast-usage.json", "adsblol-usage.lock",
                  "personal-travel.json", "personal-travel.lock",
-                 "delta-travel-status.json", "delta-travel-lisa-status.json", "visit-activity.json")
+                 "delta-travel-status.json", "delta-travel-lisa-status.json", "visit-activity.json",
+                 "guest-ops-snapshot.json", "hospitable.key")
         for name in names:
             with self.subTest(name=name):
                 path = self.source / name

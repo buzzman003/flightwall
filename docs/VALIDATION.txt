@@ -1,3 +1,12 @@
+0.4.39 HOME BRIEFING
+
+Public-source checks covered NPR and BBC RSS and the official Destin and Fort
+Walton Beach event calendars. Dates on the local cards follow the cities'
+published dates. The sources sometimes encode inconsistent time zones.
+Synthetic Hospitable fixtures cover acceptance, owner stays, duplicate
+reservations, bounds and four-day counts. Verify the owner's separate API
+token and physical display before claiming automatic rental refresh.
+
 0.4.38 ALEXA FOLLOW-UPS
 
 Interaction-model tests check unique phrases and safe slot types. Handler and

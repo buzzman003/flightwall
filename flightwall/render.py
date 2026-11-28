@@ -224,8 +224,10 @@ def _footer(draw, state, view, now, tz, personal_item=None):
         status, color = ("SCHEDULE UNAVAILABLE / UNKNOWN IS NOT AWAY", AMBER) if outlook.get("stale", True) else ("FAMILY PLAN / CALENDAR SCHEDULE", MUTED)
     elif view == "today_activities":
         status, color = "FAMILY CALENDAR / LOCAL TIME", MUTED
-    elif view in {"chris_agenda", "visit_activity", "couple_photos"}:
+    elif view in {"chris_agenda", "visit_activity", "couple_photos", "home_headlines", "home_events"}:
         status, color = "", MUTED
+    elif view == "guest_ops":
+        status, color = "HOSPITABLE / SCHEDULED", MUTED
     elif view == "flight_watch":
         card = _selected_card(state, "flight_watch") or {}
         status, color = "PUBLIC REQUEST / " + str(card.get("date") or "DATE UNKNOWN")[:10], MUTED
@@ -1320,6 +1322,52 @@ def _visit_activity(draw, state, config, now):
     return True
 
 
+def _home_briefing(draw, view, state, config, now):
+    from .household_policy import HEADLINES_PER_PAGE, HOME_BRIEFING_VIEWS, MAX_HEADLINES, home_briefing_sections
+
+    section = home_briefing_sections(state, config, now).get(HOME_BRIEFING_VIEWS[view][0])
+    if not section or not section["rows"]:
+        return False
+    rows = section["rows"]
+    if view == "home_headlines":
+        page = state.get("briefing_page", 0)
+        count = min(len(rows), MAX_HEADLINES)
+        if type(page) is not int or not 0 <= page * HEADLINES_PER_PAGE < count:
+            return False
+        start = page * HEADLINES_PER_PAGE
+        _header(draw, state, now, "HEADLINES", page_scale=2)
+        for index, row in enumerate(rows[start:min(start + HEADLINES_PER_PAGE, count)]):
+            y = 67 + 80 * index
+            draw.rectangle((15, y, 497, y + 74), fill=PANEL, outline=LINE)
+            _draw_title(draw, row["title"], (25, y + 4), 460, 50, scales=(2, 1))
+            published = date.fromisoformat(row["date"]).strftime("%m/%d")
+            _text(draw, (25, y + 61), row["source"] + " / " + published, MUTED, max_width=460)
+    elif view == "home_events":
+        _header(draw, state, now, "LOCAL EVENTS", page_scale=2)
+        for index, row in enumerate(rows[:4]):
+            y = 67 + 39 * index
+            scheduled = date.fromisoformat(row["date"])
+            draw.rectangle((15, y, 497, y + 35), fill=PANEL, outline=LINE)
+            _text(draw, (65, y + 6), scheduled.strftime("%a"), CYAN, align="center")
+            _text(draw, (65, y + 20), scheduled.strftime("%m/%d"), WHITE, align="center")
+            _draw_title(draw, row["title"], (119, y + 3), 366, 23, scales=(2, 1))
+            _text(draw, (119, y + 25), row["source"], MUTED, max_width=366)
+    else:
+        _header(draw, state, now, "GUEST OPERATIONS", page_scale=2)
+        _text(draw, (264, 72), "ARRIVALS", CYAN, align="center")
+        _text(draw, (416, 72), "DEPARTURES", CYAN, align="center")
+        today = now.astimezone(_tz(config)).date()
+        for index, row in enumerate(sorted(rows, key=lambda item: item["date"])[:4]):
+            y = 89 + 32 * index
+            scheduled = date.fromisoformat(row["date"])
+            label = "TODAY" if scheduled == today else scheduled.strftime("%a").upper()
+            draw.rectangle((15, y, 497, y + 28), fill=PANEL, outline=CYAN if scheduled == today else LINE)
+            _text(draw, (23, y + 8), label + " " + scheduled.strftime("%m/%d"), WHITE)
+            _text(draw, (264, y + 7), str(row["arrivals"]), WHITE, 2, align="center")
+            _text(draw, (416, y + 7), str(row["departures"]), WHITE, 2, align="center")
+    return True
+
+
 def _today_activities(draw, state, config, now):
     from .outlook import ACTIVITIES_PER_PAGE, activity_agenda, agenda_focus
 
@@ -1574,6 +1622,11 @@ def render_frame(state, config, size=BASE_SIZE):
             image.info["agenda_shown_ids"] = shown
     elif view == "visit_activity":
         if not _visit_activity(draw, state, config, now):
+            view = "home"
+            state = dict(state, view="home")
+            _home(draw, state, config, now)
+    elif view in {"home_headlines", "home_events", "guest_ops"}:
+        if not _home_briefing(draw, view, state, config, now):
             view = "home"
             state = dict(state, view="home")
             _home(draw, state, config, now)

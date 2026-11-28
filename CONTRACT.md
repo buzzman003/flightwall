@@ -507,6 +507,16 @@ Version 0.4.10 integration:
 
 ## Private agenda and reservation changes (0.4.33)
 
+### Home Briefing (0.4.39)
+
+Optional headlines and municipal public events carry their source and date.
+Guest operations uses a separate owner-provisioned read-only Hospitable
+credential and displays scheduled arrival and departure totals only. Keep
+guest data, access codes, exact property identities and credential values out
+of displays, logs, MCP and releases. A fresh Chris Home report and Guest mode
+off are required on every frame. Old rental dates must not carry over at
+local midnight. A temporary private counts snapshot expires without a refresh.
+
 ### Visit Activity (0.4.36)
 
 An opt-in profile in the private data directory matches explicitly confirmed,

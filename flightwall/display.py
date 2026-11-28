@@ -25,7 +25,8 @@ from PIL import Image, ImageDraw
 
 from .render import compose_display_overlays, display_content_bounds, render_frame, shopping_ticker_names, visible_timers
 from .feeds import parse_time
-from .household_policy import build_rotation, card_visible, filter_personal_items, household_context
+from .household_policy import (HOME_BRIEFING_VIEWS, build_rotation, card_visible, filter_personal_items,
+                               home_briefing_sections, household_context)
 from .card_preferences import card_enabled
 from .couple_photos import LocalPhotoDeck, VIEW as COUPLE_PHOTOS, eligible as couple_photos_eligible
 from .tv_options import GROUPS, draw_options, next_value
@@ -101,6 +102,12 @@ def fresh_household_status(status, config, now=None, *, backend_available=True):
         if (not backend_available or not visit_permitted(config, result["household_context"])
                 or not visible_activity(result["visit_activity"], now, config.get("timezone", "UTC"))):
             result.pop("visit_activity")
+    if "home_briefing" in result:
+        sections = home_briefing_sections(result, config, now)
+        if sections:
+            result["home_briefing"] = sections
+        else:
+            result.pop("home_briefing")
     return result
 
 
@@ -179,6 +186,11 @@ def entry_render_state(status, config, entry, now=None):
         from .flight_context import build_flight_context
         state["flight_context"] = build_flight_context(status, config, now)
         state["brief_focus"] = status.get("brief_focus")
+    if view in HOME_BRIEFING_VIEWS:
+        section = HOME_BRIEFING_VIEWS[view][0]
+        briefing = status.get("home_briefing", {})
+        state["home_briefing"] = {section: briefing[section]} if section in briefing else {}
+        state["briefing_page"] = entry.get("briefing_page", 0)
     if view in {"personal", "message", "inspiration", "health", "layover", "local_visit", "flight_watch", "flight_status", "flight_brief", "trip_summary", "trip_map", "home", "setup", "custody_outlook", "today_activities", "operating_map", "trip_weather", "national_radar", "airport_alerts", "dinner_options"}:
         state["demo"] = False
     if view == "inspiration" and image_data and card_visible(view, item, context, config, now):

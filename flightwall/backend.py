@@ -27,6 +27,7 @@ from .content import SourceContent
 from .household_policy import household_context, filter_personal_items, card_visible
 from .chris_agenda import ChrisAgenda, calendar_enabled as chris_calendar_enabled, permitted as chris_agenda_permitted
 from .visit_activity import permitted as visit_activity_permitted
+from .home_briefing import HomeBriefing, permitted as home_briefing_permitted
 from .timers import TimerStore, TimerError
 from .shopping import ShoppingAlerts, ShoppingListStore
 from .outlook import family_travel_labels, local_visits, planned_buzz_days, trip_preview
@@ -102,6 +103,7 @@ class Runtime:
         self.shopping_alerts = ShoppingAlerts(data_dir, self.config.get, list_source=self.shopping_list)
         self.household = HouseholdCalendars(data_dir, self.config.get)
         self.chris_agenda = ChrisAgenda(data_dir, self.config.get, lambda: self.household.client_for("chris"))
+        self.home_briefing = HomeBriefing(data_dir, self.config.get)
         self.messages = MessageFeeds(data_dir, self.config.get)
         self.content = SourceContent(data_dir, self.config.get)
         self.updater_status = {"status": "disabled"}
@@ -114,6 +116,7 @@ class Runtime:
         self._content_lock = threading.Lock()
         self._mail_worker = None
         self._agenda_worker = None
+        self._home_briefing_worker = None
         self._content_worker = None
         self._weather_worker = None
         self._trip_weather_worker = None
@@ -332,6 +335,10 @@ class Runtime:
             activity = self.chris_agenda.visit_activity(now)
             if activity is not None:
                 status["visit_activity"] = activity
+        if snapshot.get("demo") is False and home_briefing_permitted(config, context):
+            briefing = self.home_briefing.snapshot(now, config)
+            if briefing:
+                status["home_briefing"] = briefing
         status["personal_travel"] = []
         status["personal_tracking"] = []
         if (snapshot.get("demo") is False and config.get("guest_mode") is False
@@ -442,6 +449,7 @@ class Runtime:
         status = self.display_status(now)
         status.pop("chris_agenda", None)
         status.pop("visit_activity", None)
+        status.pop("home_briefing", None)
         status.pop("personal_travel", None)
         status.pop("personal_tracking", None)
         status["messages"]["lisa"] = []
@@ -644,6 +652,7 @@ class Runtime:
 
     def _run(self):
         last_sync, last_update, last_mail, last_content = -1000, time.monotonic(), -1000, -1_000_000
+        last_briefing = -1000
         while not self.stop_event.is_set():
             config = self.config.get()
             tick = time.monotonic()
@@ -664,6 +673,13 @@ class Runtime:
             recent = self._vps_arrival(snapshot, config, selected, provider, now)
             context = household_context({"presence": self.presence.snapshot(now), "snapshot": snapshot,
                                          "recent_vps_arrival": recent, "operating_status": provider}, config, now)
+            if (snapshot.get("demo") is False and home_briefing_permitted(config, context)
+                    and tick - last_briefing >= 30
+                    and (self._home_briefing_worker is None or not self._home_briefing_worker.is_alive())):
+                self._home_briefing_worker = threading.Thread(target=self.home_briefing.refresh, args=(now,),
+                                                               name="flightwall-home-briefing", daemon=True)
+                self._home_briefing_worker.start()
+                last_briefing = tick
             try:
                 watches = self.flight_watches.list_watches()
             except (ValueError, OSError):
@@ -878,6 +894,8 @@ class Runtime:
             self.worker.join(timeout=2)
         if self._agenda_worker:
             self._agenda_worker.join(timeout=2)
+        if self._home_briefing_worker:
+            self._home_briefing_worker.join(timeout=2)
         if self._weather_worker:
             self._weather_worker.join(timeout=2)
         if self._trip_weather_worker:

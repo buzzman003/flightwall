@@ -75,7 +75,7 @@ def parser():
     recipe.add_argument("--sender", required=True)
     recipe.add_argument("--recipient", required=True)
     secret = commands.add_parser("store-secret", help="Store your own optional API credential privately")
-    secret.add_argument("name", choices=["flightaware", "openai"])
+    secret.add_argument("name", choices=["flightaware", "openai", "hospitable"])
     secret.add_argument("--file", type=Path)
     remote = commands.add_parser("remote-info", help="Show connection URL and private token file path")
     remote.add_argument("--show-token", action="store_true", help="Explicitly print the private control token locally")
@@ -343,7 +343,9 @@ def main(argv=None):
             mail = RecipeMail(store.data_dir, PersonalStore(store.data_dir, store.get)._locked, enabled=enabled)
             emit(mail.status())
         elif command == "store-secret":
-            prompt = "OpenAI API key (hidden): " if args.name == "openai" else "FlightAware AeroAPI key (hidden): "
+            label = {"openai": "OpenAI API key", "flightaware": "FlightAware AeroAPI key",
+                     "hospitable": "Hospitable read-only API token"}[args.name]
+            prompt = f"{label} (hidden): "
             key = args.file.read_text().strip() if args.file else getpass.getpass(prompt).strip()
             if not key or len(key) > 4096 or any(c.isspace() for c in key):
                 raise ValueError("The API key is empty or invalid")
@@ -351,8 +353,11 @@ def main(argv=None):
                 raise ValueError("Enter your own OpenAI API key; it is optional and separate from your ChatGPT subscription")
             path = store.data_dir / (args.name + ".key")
             _write_secret(path, key)
-            next_step = ("Optional: enable OpenAI locally in setup. API usage is billed through your own OpenAI API account."
-                         if args.name == "openai" else "Set your airline code and flightaware_enabled locally; API billing is through your FlightAware account.")
+            next_step = {
+                "openai": "Optional: enable OpenAI locally in setup. API usage is billed through your own OpenAI API account.",
+                "flightaware": "Set your airline code and flightaware_enabled locally; API billing is through your FlightAware account.",
+                "hospitable": "Enable guest_ops_enabled locally to refresh four days of arrival and departure counts.",
+            }[args.name]
             emit({"stored": True, "path": str(path), "next_step": next_step})
         elif command == "setup-info":
             config = store.get()

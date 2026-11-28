@@ -190,6 +190,26 @@ permissions and is never echoed by the command. Saving a key does not enable its
 feature. OpenAI API billing is separate from a ChatGPT subscription. All OpenAI
 features remain optional. Never put a literal key on a command line or into chat.
 
+HOME BRIEFING
+
+Enable the public headline and local event cards on the local Flight Wall CLI:
+
+    "$FW" config --set home_briefing_enabled true
+
+For automatic guest operations, create a dedicated Read only personal access
+token in Hospitable under Apps or Integrations → API access, and enter the
+value only at the hidden CLI prompt. Enable and disable its card separately:
+
+    "$FW" store-secret hospitable
+    "$FW" config --set guest_ops_enabled true
+
+The token is saved in the private data directory. Flight Wall reads scheduled
+guest arrivals and departures across the account. It never displays guest
+names, booking codes or prices. The four-day range starts on the board's
+local date and counts arrivals and departures on their property-local dates.
+Approved owner stays are excluded. The display needs a fresh Chris Home report
+and Guest mode off. Use false with either config setting to hide those cards.
+
 DIAGNOSTICS
 
     "$FW" diagnose

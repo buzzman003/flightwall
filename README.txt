@@ -1,3 +1,11 @@
+FLIGHT WALL 0.4.39 — HOME BRIEFING
+
+With a fresh Home report for Chris, Flight Wall can rotate dated NPR and BBC
+headlines, upcoming Destin and Fort Walton Beach public events, and four days
+of Hospitable arrivals and departures. Guest mode and expired presence hide
+these cards. The rental card shows only daily counts. See docs/CLI.txt for the
+separate display switches and private Hospitable token setup.
+
 FLIGHT WALL 0.4.38 — ALEXA FOLLOW-UPS
 
 The Alexa companion accepts more ways to ask for dinner cards, timers and

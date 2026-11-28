@@ -35,7 +35,7 @@ def main():
     prefix = f"flightwall-batocera-{version}"
     installer = output / f"{prefix}.tar.gz"
     private_dirs = {"__pycache__", "couple-photos"}
-    private_files = {"visit-activity.json"}
+    private_files = {"visit-activity.json", "guest-ops-snapshot.json", "hospitable.key"}
     # Audit the frozen tree once, then preserve every runtime file verbatim.
     _source_files(release)
 

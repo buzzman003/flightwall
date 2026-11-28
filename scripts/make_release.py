@@ -57,7 +57,7 @@ def _source_files(source: Path, private_key: Path | None = None):
                        "google-client.json", "google-token.json", "gmail-client.json", "gmail-token.json",
                        "household-calendars.json", "personal.json", "personal-dinner-details.json", "content.json", "layovers.json",
                        "dinner-options.json", "dinner-options-usage.json", "dinner-options.lock",
-                       "recipe-mail.json", "recipe-outbox.json", "family-agenda.json", "visit-activity.json",
+                       "recipe-mail.json", "recipe-outbox.json", "family-agenda.json", "visit-activity.json", "guest-ops-snapshot.json",
                        "timers.json", "flight-watches.json", "remote-oauth.json", "weather.json",
                        "consents.json", "setup-consents.json", "setup-complete.json",
                        "openai-usage.json", "flightaware-usage.json", "flight-environment.json",
